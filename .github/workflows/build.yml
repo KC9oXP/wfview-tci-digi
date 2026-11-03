@@ -65,8 +65,6 @@ jobs:
           nmake
       - name: End-to-end test against the mock wfview TCI server
         shell: cmd
-        env:
-          QT_QPA_PLATFORM: offscreen
         run: |
           mkdir build-tests && cd build-tests
           qmake ..\tests\test_e2e.pro CONFIG+=release
