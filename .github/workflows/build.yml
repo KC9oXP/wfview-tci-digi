@@ -1,0 +1,105 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  QT_VERSION: '6.8.1'
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
+          modules: qtwebsockets
+          cache: true
+      - name: Qt-free unit tests
+        run: |
+          g++ -std=c++17 -O2 -Wall -Isrc -Iengine tests/test_protocol.cpp src/tciprotocol.cpp engine/rttycore.cpp engine/rttytxsource.cpp -o test_protocol
+          ./test_protocol
+          g++ -std=c++17 -O2 -Isrc -Iengine -Iengine/ggmorse/include tests/test_cw.cpp src/tciprotocol.cpp engine/ggmorse/src/ggmorse.cpp engine/ggmorse/src/resampler.cpp -o test_cw
+          ./test_cw
+      - name: Build app
+        run: |
+          mkdir build && cd build
+          qmake ../tci-cw-rtty.pro CONFIG+=release
+          make -j4
+      - name: End-to-end test against the mock wfview TCI server
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          mkdir build-tests && cd build-tests
+          qmake ../tests/test_e2e.pro CONFIG+=release
+          make -j4
+          mkdir -p ../screens
+          ./test_e2e --screens ../screens
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screens-linux
+          path: screens/*.png
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          modules: qtwebsockets
+          cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Build app
+        shell: cmd
+        run: |
+          mkdir build && cd build
+          qmake ..\tci-cw-rtty.pro CONFIG+=release
+          nmake
+      - name: End-to-end test against the mock wfview TCI server
+        shell: cmd
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          mkdir build-tests && cd build-tests
+          qmake ..\tests\test_e2e.pro CONFIG+=release
+          nmake
+          windeployqt --release --no-translations release\test_e2e.exe
+          release\test_e2e.exe
+      - name: Package
+        shell: pwsh
+        run: |
+          $ver = (Select-String -Path tci-cw-rtty.pro -Pattern '^VERSION = (.+)$').Matches[0].Groups[1].Value.Trim()
+          $out = "tci-cw-rtty-$ver-win64"
+          New-Item -ItemType Directory $out | Out-Null
+          Copy-Item build\release\tci-cw-rtty.exe $out\
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw "$out\tci-cw-rtty.exe"
+          Copy-Item README.md, LICENSE $out\
+          Compress-Archive -Path "$out\*" -DestinationPath "$out.zip"
+          "ZIP=$out.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tci-cw-rtty-win64
+          path: ${{ env.ZIP }}
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: qtwebsockets
+          cache: true
+      - name: Build app
+        run: |
+          mkdir build && cd build
+          qmake ../tci-cw-rtty.pro CONFIG+=release
+          make -j4
