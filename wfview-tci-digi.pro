@@ -1,8 +1,8 @@
-# TCI CW/RTTY - stand-alone CW decoder and RTTY modem for wfview over TCI.
+# wfview TCI Digi - stand-alone CW decoder and RTTY modem for wfview over TCI.
 # Qt 6 (Widgets, WebSockets), C++17.
 
 TEMPLATE = app
-TARGET = tci-cw-rtty
+TARGET = wfview-tci-digi
 QT += widgets websockets
 CONFIG += c++17
 CONFIG -= console
@@ -12,7 +12,7 @@ DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
     QMAKE_TARGET_COMPANY = KC9oXP
-    QMAKE_TARGET_PRODUCT = "TCI CW/RTTY"
+    QMAKE_TARGET_PRODUCT = "wfview TCI Digi"
     QMAKE_TARGET_DESCRIPTION = "CW decoder and RTTY modem for wfview over TCI"
     msvc: QMAKE_CXXFLAGS += /utf-8
     DEFINES += _USE_MATH_DEFINES NOMINMAX

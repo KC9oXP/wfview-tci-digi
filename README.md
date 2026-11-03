@@ -1,4 +1,4 @@
-# TCI CW/RTTY
+# wfview TCI Digi
 
 A stand-alone CW decoder and RTTY modem that connects to **wfview** over **TCI**
 (Transceiver Control Interface). wfview handles the radio; this program gets the
@@ -6,9 +6,13 @@ receive audio, sends transmit audio, and keys PTT, all through wfview's TCI serv
 It works the same whether wfview reaches the radio over LAN or over USB, and it
 should work with any other TCI server too.
 
+> **Unofficial companion.** This is not (yet) part of the wfview project. It is
+> offered to the wfview team for possible adoption; see *Future* below.
+
 It started as the CW decoder and RTTY window proposed for wfview v3
-(wf-group/wfview PRs #151 and #152). Moving them out of wfview keeps wfview's own
-code unchanged and gives wfview's TCI server a real client to test against.
+(wf-group/wfview PRs #151 and #152). On #152, Elliott (W6EL) suggested building it
+as a separate program that talks to wfview over TCI, so wfview v3 can ship without
+it and wfview's TCI server gets a real client to test against.
 
 ## Features
 
@@ -45,6 +49,9 @@ code unchanged and gives wfview's TCI server a real client to test against.
 
 ## Setting up wfview (v3)
 
+wfview **v3** is required. wfview 2.24 answers TCI (the radio, frequency and mode
+show up) but never sends TCI audio, so the status bar stays at "RX audio: none".
+
 1. **Settings > External Control > TCI Server Port**: set a port to enable the TCI
    server (0 = disabled). The default is **50001**.
 2. Set up wfview's receive audio as usual (LAN audio, or the radio's USB audio codec).
@@ -53,7 +60,7 @@ code unchanged and gives wfview's TCI server a real client to test against.
    **DIGU** (USB-D) or **DIGL** (LSB-D). The program warns if the radio is in a mode that
    does not take computer audio.
 4. Connect wfview to the radio (wfview refuses TCI clients while no radio is connected).
-5. Start TCI CW/RTTY, enter the computer running wfview (127.0.0.1 if it is the same
+5. Start wfview TCI Digi, enter the computer running wfview (127.0.0.1 if it is the same
    one) and port, and press **Connect**. With *Reconnect* ticked it keeps retrying
    every 5 s, so it can be started before wfview.
 
@@ -63,7 +70,7 @@ Qt 6 (Widgets, WebSockets), a C++17 compiler.
 
 ```
 mkdir build && cd build
-qmake ../tci-cw-rtty.pro CONFIG+=release
+qmake ../wfview-tci-digi.pro CONFIG+=release
 make          # nmake with MSVC on Windows
 ```
 
@@ -98,6 +105,16 @@ Found while writing this client; the client works around each one.
 - `modulations_list` reports FM as `FM`, but `modulation` reports it as `nfm`.
 - TCI has no command for the radio's CW pitch, so the CW decoder has no "follow radio
   pitch" mode here.
+
+## Future
+
+- More modes (PSK31 next), each as a Qt-free engine with tests, the same way the CW
+  and RTTY engines are written.
+- The goal is for this to become part of wfview if it fits the wfview team's plans:
+  as a companion program in the wf-group organization, as a second program built
+  from the wfview tree, or folded back into wfview itself after v3. The engines have
+  no Qt dependency and the code follows wfview's `.clang-format`, Qt version, qmake
+  build and GPLv3 license, so any of these should be straightforward.
 
 ## License
 

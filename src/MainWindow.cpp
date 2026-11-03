@@ -78,7 +78,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     : QMainWindow(parent)
     , m_settings(settings)
 {
-    setWindowTitle(tr("TCI CW/RTTY %1").arg(QStringLiteral(APP_VERSION)));
+    setWindowTitle(tr("wfview TCI Digi %1").arg(QStringLiteral(APP_VERSION)));
 
     m_client = new TciClient(this);
     m_cw = new CwDecoder(this);
@@ -285,8 +285,8 @@ void MainWindow::buildMenus()
                     {
                         QMessageBox::about(
                             this,
-                            tr("About TCI CW/RTTY"),
-                            tr("<b>TCI CW/RTTY %1</b><br><br>"
+                            tr("About wfview TCI Digi"),
+                            tr("<b>wfview TCI Digi %1</b><br><br>"
                                "Software CW decoder and RTTY modem that works with wfview (or any TCI "
                                "server) over TCI: receive audio, transmit audio, PTT, frequency and mode.<br><br>"
                                "CW decoding uses ggmorse (MIT) and a hand-key decoder; RTTY uses a "

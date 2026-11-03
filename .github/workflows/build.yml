@@ -30,7 +30,7 @@ jobs:
       - name: Build app
         run: |
           mkdir build && cd build
-          qmake ../tci-cw-rtty.pro CONFIG+=release
+          qmake ../wfview-tci-digi.pro CONFIG+=release
           make -j4
       - name: End-to-end test against the mock wfview TCI server
         env:
@@ -61,7 +61,7 @@ jobs:
         shell: cmd
         run: |
           mkdir build && cd build
-          qmake ..\tci-cw-rtty.pro CONFIG+=release
+          qmake ..\wfview-tci-digi.pro CONFIG+=release
           nmake
       - name: End-to-end test against the mock wfview TCI server
         shell: cmd
@@ -74,17 +74,17 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          $ver = (Select-String -Path tci-cw-rtty.pro -Pattern '^VERSION = (.+)$').Matches[0].Groups[1].Value.Trim()
-          $out = "tci-cw-rtty-$ver-win64"
+          $ver = (Select-String -Path wfview-tci-digi.pro -Pattern '^VERSION = (.+)$').Matches[0].Groups[1].Value.Trim()
+          $out = "wfview-tci-digi-$ver-win64"
           New-Item -ItemType Directory $out | Out-Null
-          Copy-Item build\release\tci-cw-rtty.exe $out\
-          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw "$out\tci-cw-rtty.exe"
+          Copy-Item build\release\wfview-tci-digi.exe $out\
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw "$out\wfview-tci-digi.exe"
           Copy-Item README.md, LICENSE $out\
           Compress-Archive -Path "$out\*" -DestinationPath "$out.zip"
           "ZIP=$out.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
       - uses: actions/upload-artifact@v4
         with:
-          name: tci-cw-rtty-win64
+          name: wfview-tci-digi-win64
           path: ${{ env.ZIP }}
 
   macos:
@@ -99,5 +99,5 @@ jobs:
       - name: Build app
         run: |
           mkdir build && cd build
-          qmake ../tci-cw-rtty.pro CONFIG+=release
+          qmake ../wfview-tci-digi.pro CONFIG+=release
           make -j4
