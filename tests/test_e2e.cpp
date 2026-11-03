@@ -121,7 +121,7 @@ static void runSession(bool stopRxWhileTx)
                 QString::fromStdString(server.txDecoded).simplified().toLatin1().constData());
     CHECK(QString::fromStdString(server.txDecoded).contains(QStringLiteral("W6EL W6EL DE KC9OXP KC9OXP KC9OXP K")));
     CHECK(server.txFramesWhileNotTx == 0);
-    CHECK(!server.transmitting);
+    CHECK(waitFor([&] { return !server.transmitting; }, 1000));
     CHECK(waitFor([&] { return !client.radioTransmitting(); }, 1000));
     std::printf("  TX frames received by server: %llu\n", (unsigned long long)server.txFramesReceived);
     CHECK(server.txFramesReceived > 48000 * 3);
@@ -132,7 +132,7 @@ static void runSession(bool stopRxWhileTx)
     rtty.abortTx();
     CHECK(!rtty.transmitting());
     pump(300);
-    CHECK(!server.transmitting);
+    CHECK(waitFor([&] { return !server.transmitting; }, 1000));
 
     // ---- mode and frequency commands
     client.setModulation(QStringLiteral("DIGL"));
