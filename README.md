@@ -9,7 +9,7 @@
 
 ![PSK tab](docs/screenshots/psk.png)
 
-Stand-alone digital modes - CW decoder, RTTY, PSK (BPSK31/63/125) and Feld Hell -
+Stand-alone digital modes - CW, RTTY, PSK (BPSK31/63/125) and Feld Hell -
 that connect to **wfview** over **TCI**
 (Transceiver Control Interface). wfview handles the radio; this program gets the
 receive audio, sends transmit audio, and keys PTT, all through wfview's TCI server.
@@ -26,7 +26,7 @@ it and wfview's TCI server gets a real client to test against.
 
 ## Features
 
-**CW (receive)**
+**CW (receive and transmit)**
 - Two decoders: *Machine* (ggmorse, for keyers and computer-sent CW) and *Hand key*
   (learns each sender's timing).
 - Pitch: Auto (strongest steady tone, 200-1200 Hz) or Fixed (200-3000 Hz; Hand key is
@@ -34,6 +34,13 @@ it and wfview's TCI server gets a real client to test against.
 - Auto or fixed speed, squelch, re-sync.
 - Multi-signal list: every CW signal from 200 to 2000 Hz with its pitch, speed, SNR and
   text. Double-click a row to decode that station.
+- Transmit as **audio CW**: a keyed tone sent as TX audio with the radio in DIGU/USB, the
+  way fldigi does CW. On the air it is a normal CW signal at the dial frequency plus the
+  pitch. Speed 5-60 WPM, pitch 300-1500 Hz (*= RX pitch* puts you on the station you are
+  decoding), 5 ms shaped edges (no key clicks), prosigns `<SK>` `<AR>` `<BT>` `<KN>` `<BK>`,
+  the same macros / type-ahead / Hold TX / TX level as the other modes. (wfview's TCI server
+  has no command for the radio's own CW keyer yet, so the radio is not in CW mode while
+  this sends.)
 
 **RTTY (receive and transmit)**
 - Any baud/shift (45.45/50/75/100 bd, 170/200/425/850 Hz presets), 1/1.5/2 stop bits,
@@ -77,6 +84,10 @@ it and wfview's TCI server gets a real client to test against.
 Only one mode transmits at a time: starting a transmission in one tab stops any
 other. *My call* is shared by all tabs.
 
+While transmitting, the top bar shows the output power, ALC and SWR wfview reports. If
+the radio keys up but reports no output power, a hint explains what to check (see
+*Radio data mode and modulation input* below).
+
 **TCI**
 - Frequency and mode shown and settable from the top bar.
 - *View > TCI log*: connection messages plus a box to send raw TCI commands.
@@ -100,8 +111,9 @@ All taken on an IC-7610 with wfview v3 over TCI, receiving test signals.
 |---|---|
 | ![CW tab, Hand key engine](docs/screenshots/cw-hand-key.png) | |
 
-The RTTY and CW screenshots are from 0.1.0, when the program was called TCI CW/RTTY;
-those tabs work the same in 0.2.0.
+The RTTY and CW screenshots are from 0.1.0, when the program was called TCI CW/RTTY.
+RTTY works the same now; the CW tab has since gained a transmit area under the decode
+pane.
 
 ## Setting up wfview (v3)
 
@@ -120,6 +132,29 @@ show up) but never sends TCI audio, so the status bar stays at "RX audio: none".
 5. Start wfview TCI Digi, enter the computer running wfview (127.0.0.1 if it is the same
    one) and port, and press **Connect**. With *Reconnect* ticked it keeps retrying
    every 5 s, so it can be started before wfview.
+
+## Radio data mode and modulation input
+
+Every transmit mode here (RTTY, PSK, Hell and CW) sends **audio**. The radio only puts
+that audio on the air if it is in a data (or SSB) mode **and** that data mode takes its
+audio from the input wfview is feeding: the LAN input when wfview connects over the
+network, the USB input when it connects over USB. Get this wrong and the radio keys up
+with no output power.
+
+How to set it depends on the radio. On Icom radios each data mode (D1, D2, D3; *Data 1/2/3*
+in wfview) has its own modulation input (DATA MOD: MIC, ACC, USB, LAN). Check, in the
+radio's menu or in wfview's *Settings > Radio Settings > Current transmit modulation
+source*:
+
+1. which input each data mode uses, and
+2. that wfview has the radio in the data mode whose input matches the connection.
+
+Example (the author's IC-7610): DATA1 = USB, DATA2 = LAN, DATA3 = ACC, so with wfview on
+LAN the radio must be in **Data 2**. wfview can set the inputs every time it connects:
+*Set transmit mod input sources on connect*, with Data On = LAN (or USB).
+
+Set the data mode in wfview. Choosing DIGU/DIGL in this program's mode box switches wfview
+to **Data 1**, whatever data mode the radio was in (see the notes below).
 
 ## Building
 
@@ -140,14 +175,17 @@ g++ -std=c++17 -O2 -Isrc -Iengine -Iengine/ggmorse/include tests/test_cw.cpp src
 # PSK and Feld Hell modems (loopback at several speeds, sample rates, offsets and noise)
 g++ -std=c++17 -O2 -Iengine tests/test_psk.cpp engine/pskcore.cpp -o test_psk
 g++ -std=c++17 -O2 -Iengine tests/test_hell.cpp engine/hellcore.cpp -o test_hell
+# CW transmit (keyer timing, key clicks, prosigns, loopback through the CW decoder)
+g++ -std=c++17 -O2 -Isrc -Iengine -Iengine/ggmorse/include tests/test_cwtx.cpp engine/cwtxcore.cpp engine/modemtxsource.cpp engine/pskcore.cpp engine/hellcore.cpp engine/ggmorse/src/ggmorse.cpp engine/ggmorse/src/resampler.cpp -o test_cwtx
 
-# End to end against a mock of wfview's TCI server (~90 s)
+# End to end against a mock of wfview's TCI server (~2 min)
 qmake ../tests/test_e2e.pro && make && QT_QPA_PLATFORM=offscreen ./test_e2e
 ```
 
 `test_e2e --serve 50001` runs only the mock server, which plays an RTTY station
-(2125/2295 Hz), a BPSK31 station (1000 Hz) and a Feld Hell station (500 Hz), and
-decodes the RTTY and BPSK31 you transmit, so the program can be tried without a radio.
+(2125/2295 Hz), a BPSK31 station (1000 Hz) and a Feld Hell station (500 Hz), decodes
+the RTTY, BPSK31 and CW you transmit, and reports TX power from your audio, so the program
+can be tried without a radio.
 
 ## Notes on wfview's TCI server (v3, November 2026)
 
@@ -166,9 +204,19 @@ Found while writing this client; the client works around each one.
 - `modulations_list` reports FM as `FM`, but `modulation` reports it as `nfm`.
 - TCI has no command for the radio's CW pitch, so the CW decoder has no "follow radio
   pitch" mode here.
+- **No CW keying over TCI.** wfview's TCI server does not implement `cw_macros` (the TCI
+  command for sending CW text with the radio's keyer), so CW transmit here is audio CW.
+- **DIGU/DIGL always mean Data 1.** A TCI `modulation:0,digu;` puts the radio in USB with
+  data mode D1, even if it was in D2 or D3. On a radio whose D1 input is not the one wfview
+  feeds, transmit goes silent. Set the data mode in wfview instead.
+- **`tx_sensors_enable` argument order.** The TCI spec is `tx_sensors_enable:true,<ms>;`;
+  wfview 3.00 reads the enable flag from the second argument, so this client sends
+  `tx_sensors_enable:0,true;` to wfview. wfview then sends `tx_sensors` with its ALC meter
+  in the "mic" field.
 
 ## Future
 
+- CW with the radio's own keyer once wfview's TCI server supports `cw_macros`.
 - More modes (QPSK31, MFSK, Olivia are candidates), each as a Qt-free engine with
   tests, the same way the CW, RTTY, PSK and Hell engines are written.
 - The goal is for this to become part of wfview if it fits the wfview team's plans:

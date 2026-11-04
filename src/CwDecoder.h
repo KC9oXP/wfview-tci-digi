@@ -98,6 +98,11 @@ public:
     {
         return m_pitchHz;
     }
+    // The pitch being decoded now: the fixed pitch, or the last tracked one.
+    int currentPitchHz() const
+    {
+        return m_fixedPitch || m_lastPitchHz <= 0 ? m_pitchHz : m_lastPitchHz;
+    }
     bool fixedSpeed() const
     {
         return m_fixedSpeed;
@@ -148,6 +153,7 @@ private:
     bool m_multi = false;
     bool m_fixedPitch = false;
     int m_pitchHz = 600;
+    int m_lastPitchHz = 0;
     bool m_fixedSpeed = false;
     int m_speedWpm = 20;
 };

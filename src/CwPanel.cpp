@@ -1,7 +1,11 @@
 #include "CwPanel.h"
 
+#include "CwTxEngine.h"
+#include "ModemTxBox.h"
+
 #include <QCheckBox>
 #include <QComboBox>
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -21,9 +25,10 @@ namespace
 constexpr int maxDecodeChars = 200000;
 }
 
-CwPanel::CwPanel(CwDecoder *decoder, QSettings *settings, QWidget *parent)
+CwPanel::CwPanel(CwDecoder *decoder, CwTxEngine *tx, QSettings *settings, QWidget *parent)
     : QWidget(parent)
     , m_dec(decoder)
+    , m_tx(tx)
     , m_settings(settings)
 {
     auto *root = new QVBoxLayout(this);
@@ -90,6 +95,7 @@ CwPanel::CwPanel(CwDecoder *decoder, QSettings *settings, QWidget *parent)
     m_text = new QPlainTextEdit();
     m_text->setReadOnly(true);
     m_text->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    m_text->setToolTip(tr("Double-click a call sign to copy it to the Call field."));
     QFont mono(QStringLiteral("Consolas"));
     mono.setStyleHint(QFont::Monospace);
     mono.setPointSizeF(mono.pointSizeF() * 1.15);
@@ -110,7 +116,63 @@ CwPanel::CwPanel(CwDecoder *decoder, QSettings *settings, QWidget *parent)
     m_split->addWidget(m_table);
     m_split->setStretchFactor(0, 3);
     m_split->setStretchFactor(1, 2);
-    root->addWidget(m_split, 1);
+
+    // ---- transmit: speed and pitch, then the shared macros / type-ahead area
+    auto *txw = new QWidget();
+    auto *tv = new QVBoxLayout(txw);
+    tv->setContentsMargins(0, 0, 0, 0);
+    auto *txRow = new QHBoxLayout();
+    auto *txLabel = new QLabel(tr("<b>Transmit</b> (audio CW)"));
+    txLabel->setToolTip(tr("Sends CW as a keyed audio tone with the radio in DIGU/USB, like fldigi's CW mode.\n"
+                           "On the air it is a normal CW signal at the dial frequency plus the pitch."));
+    txRow->addWidget(txLabel);
+    txRow->addWidget(new QLabel(tr("Speed")));
+    m_txWpm = new QSpinBox();
+    m_txWpm->setRange(5, 60);
+    m_txWpm->setSuffix(tr(" WPM"));
+    txRow->addWidget(m_txWpm);
+    txRow->addWidget(new QLabel(tr("Pitch")));
+    m_txPitch = new QSpinBox();
+    m_txPitch->setRange(300, 1500);
+    m_txPitch->setSingleStep(10);
+    m_txPitch->setSuffix(tr(" Hz"));
+    m_txPitch->setToolTip(tr("Tone frequency. Your signal goes out at the dial frequency plus this (USB)."));
+    txRow->addWidget(m_txPitch);
+    auto *useRx = new QPushButton(tr("= RX pitch"));
+    useRx->setToolTip(tr("Transmit on the pitch the decoder is using, i.e. on the other station's frequency."));
+    txRow->addWidget(useRx);
+    txRow->addStretch(1);
+    tv->addLayout(txRow);
+    m_txStatus = new QLabel();
+    m_txStatus->setWordWrap(true);
+    m_txStatus->setVisible(false);
+    tv->addWidget(m_txStatus);
+    m_txBox = new ModemTxBox(m_tx, QStringLiteral("CW"));
+    tv->addWidget(m_txBox, 1);
+
+    m_outer = new QSplitter(Qt::Vertical);
+    m_outer->setChildrenCollapsible(false);
+    m_outer->addWidget(m_split);
+    m_outer->addWidget(txw);
+    m_outer->setStretchFactor(0, 1);
+    m_outer->setStretchFactor(1, 0);
+    root->addWidget(m_outer, 1);
+    m_txBox->installShortcuts(this);
+    m_text->viewport()->installEventFilter(this);
+
+    connect(m_txWpm, &QSpinBox::valueChanged, m_tx, &CwTxEngine::setWpm);
+    connect(m_txPitch, &QSpinBox::valueChanged, this, [this](int hz) { m_tx->setCarrierHz(hz); });
+    connect(useRx, &QPushButton::clicked, this, [this]() { m_tx->setCarrierHz(m_dec->currentPitchHz()); });
+    connect(m_tx, &ModemEngine::settingsChanged, this, &CwPanel::syncTx);
+    connect(m_tx,
+            &ModemEngine::statusChanged,
+            this,
+            [this](const QString &t)
+            {
+                m_txStatus->setText(t);
+                m_txStatus->setVisible(!t.isEmpty() && t != tr("Off") && !t.startsWith(tr("Listening")));
+            });
+    connect(m_tx, &ModemEngine::textAppended, this, &CwPanel::appendText);
 
     // ---- wiring
     connect(m_decode, &QPushButton::toggled, m_dec, &CwDecoder::setEnabled);
@@ -143,6 +205,32 @@ CwPanel::CwPanel(CwDecoder *decoder, QSettings *settings, QWidget *parent)
 
     loadState();
     syncFromDecoder();
+    syncTx();
+}
+
+void CwPanel::syncTx()
+{
+    const QSignalBlocker b1(m_txWpm), b2(m_txPitch);
+    m_txWpm->setValue(m_tx->wpm());
+    m_txPitch->setValue(qRound(m_tx->carrierHz()));
+}
+
+bool CwPanel::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == m_text->viewport() && event->type() == QEvent::MouseButtonDblClick)
+    {
+        // Let the text edit select the word first, then offer it as the call.
+        const bool handled = QWidget::eventFilter(obj, event);
+        QMetaObject::invokeMethod(
+            this, [this]() { m_txBox->offerCall(m_text->textCursor().selectedText()); }, Qt::QueuedConnection);
+        return handled;
+    }
+    return QWidget::eventFilter(obj, event);
+}
+
+void CwPanel::setRadioState(bool ready, bool canTransmit, const QString &mode)
+{
+    m_txBox->setRadioState(ready, canTransmit, mode);
 }
 
 void CwPanel::loadState()
@@ -158,7 +246,13 @@ void CwPanel::loadState()
     m_dec->setSquelch(m_settings->value(QStringLiteral("Squelch"), m_dec->squelch()).toBool());
     m_dec->setMultiSignal(m_settings->value(QStringLiteral("Multi"), m_dec->multiSignal()).toBool());
     m_split->restoreState(m_settings->value(QStringLiteral("Split")).toByteArray());
+    const QByteArray outer = m_settings->value(QStringLiteral("TxSplit")).toByteArray();
     m_settings->endGroup();
+    if (outer.isEmpty() || !m_outer->restoreState(outer))
+    {
+        const int line = fontMetrics().lineSpacing();
+        m_outer->setSizes({24 * line, m_outer->widget(1)->minimumSizeHint().height() + 4 * line});
+    }
 }
 
 void CwPanel::saveState()
@@ -174,6 +268,7 @@ void CwPanel::saveState()
     m_settings->setValue(QStringLiteral("Squelch"), m_dec->squelch());
     m_settings->setValue(QStringLiteral("Multi"), m_dec->multiSignal());
     m_settings->setValue(QStringLiteral("Split"), m_split->saveState());
+    m_settings->setValue(QStringLiteral("TxSplit"), m_outer->saveState());
     m_settings->endGroup();
 }
 

@@ -26,11 +26,16 @@ void ModemTxSource::start(double prerollSec)
 void ModemTxSource::queueText(const std::string &text)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
+    modQueueText(text, m_echo);
+}
+
+void ModemTxSource::modQueueText(const std::string &text, std::deque<std::pair<size_t, char>> &echo)
+{
     for (char c : text)
     {
         const size_t after = modQueueChar(c);
         if (after > 0)
-            m_echo.emplace_back(after, c);
+            echo.emplace_back(after, c);
     }
 }
 
@@ -93,4 +98,37 @@ void PskTxSource::setBaud(double baud)
 {
     std::lock_guard<std::mutex> lock(mutex());
     m_mod.setBaud(baud);
+}
+
+void CwTxSource::setWpm(double wpm)
+{
+    std::lock_guard<std::mutex> lock(mutex());
+    m_mod.setWpm(wpm);
+}
+
+void CwTxSource::modQueueText(const std::string &text, std::deque<std::pair<size_t, char>> &echo)
+{
+    for (size_t i = 0; i < text.size(); ++i)
+    {
+        const char c = text[i];
+        if (c == '<')
+        {
+            const size_t end = text.find('>', i + 1);
+            if (end != std::string::npos && end - i <= 4)
+            {
+                const size_t after = m_mod.queueProsign(text.substr(i + 1, end - i - 1));
+                if (after > 0)
+                {
+                    for (size_t k = i; k <= end; ++k)
+                        echo.emplace_back(after, text[k]);
+                    // a prosign is a letter: the gap after it is already queued
+                }
+                i = end;
+                continue;
+            }
+        }
+        const size_t after = m_mod.queueChar(c);
+        if (after > 0)
+            echo.emplace_back(after, c);
+    }
 }

@@ -7,6 +7,7 @@
 
 class CwDecoder;
 class CwPanel;
+class CwTxEngine;
 class HellEngine;
 class HellPanel;
 class ModemEngine;
@@ -25,6 +26,7 @@ class QTabWidget;
 class RttyEngine;
 class RttyPanel;
 class SpectrumEngine;
+class TxPowerWatch;
 
 class MainWindow : public QMainWindow
 {
@@ -48,12 +50,14 @@ private slots:
 
 private:
     QWidget *buildConnectionBar();
+    QWidget *buildTxHint();
     void buildLogDock();
     void buildMenus();
     void applyTheme(bool dark);
     void updateRadioState();
     void saveAll();
     void onTransmitRequested(QObject *who, bool on);
+    bool anyTransmitting() const;
 
     QSettings *m_settings;
     TciClient *m_client = nullptr;
@@ -66,6 +70,8 @@ private:
     PskPanel *m_pskPanel = nullptr;
     HellPanel *m_hellPanel = nullptr;
     SpectrumEngine *m_spectrum = nullptr;
+    CwTxEngine *m_cwTx = nullptr;
+    QList<ModemEngine *> m_modems; // PSK, Hell, CW transmit
 
     QLineEdit *m_host = nullptr;
     QSpinBox *m_port = nullptr;
@@ -75,6 +81,9 @@ private:
     QLineEdit *m_freq = nullptr;
     QComboBox *m_mode = nullptr;
     QLabel *m_txLamp = nullptr;
+    QLabel *m_txMeter = nullptr;
+    QWidget *m_txHint = nullptr;
+    TxPowerWatch *m_powerWatch = nullptr;
     QTabWidget *m_tabs = nullptr;
     QLabel *m_diag = nullptr;
 

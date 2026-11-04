@@ -195,6 +195,11 @@ void TciClient::handleCommand(const std::string &name, const std::vector<std::st
             }
         }
     }
+    else if (name == "tx_sensors" && args.size() >= 5)
+    {
+        if (arg(0) == "0")
+            emit txSensors(qarg(1).toDouble(), qarg(2).toDouble(), qarg(4).toDouble());
+    }
     else if (name == "audio_stream_channels")
     {
         m_announcedChannels = qarg(0).toInt();
@@ -210,6 +215,10 @@ void TciClient::handleCommand(const std::string &name, const std::vector<std::st
         sendText(QStringLiteral("audio_stream_sample_type:float32;"));
         sendText(QStringLiteral("audio_stream_channels:2;"));
         sendText(QStringLiteral("audio_start:0;"));
+        // Power/ALC/SWR while transmitting. The TCI spec is "enable,interval_ms";
+        // wfview 3.00 reads the enable flag from the second argument instead.
+        sendText(m_isWfview ? QStringLiteral("tx_sensors_enable:0,true;")
+                            : QStringLiteral("tx_sensors_enable:true,200;"));
         setState(State::Ready, tr("Connected to %1").arg(m_device.isEmpty() ? m_url.toString() : m_device));
     }
 }

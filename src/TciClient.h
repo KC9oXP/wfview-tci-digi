@@ -109,6 +109,9 @@ signals:
     void frequencyChanged(qint64 hz);
     void modulationChanged(const QString &mode);
     void radioTransmitChanged(bool on);
+    // While transmitting (tx_sensors): ALC (wfview sends its ALC meter in the
+    // "mic" field), output power and SWR as the server reports them.
+    void txSensors(double alc, double power, double swr);
     void rxAudio(QVector<float> mono, float sampleRate);
     // About once a second: a one-line summary of the audio streams.
     void diagnostics(const QString &text);

@@ -6,21 +6,23 @@
 //   test_e2e --screens DIR  also render the main window at several sizes to PNGs in DIR
 
 #include "CwDecoder.h"
+#include "CwTxEngine.h"
 #include "HellEngine.h"
 #include "MainWindow.h"
 #include "MockTciServer.h"
 #include "PskEngine.h"
 #include "RttyEngine.h"
 #include "TciClient.h"
+#include "TxPowerWatch.h"
 #include "modemtxsource.h"
 #include "rttytxsource.h"
 
 #include <QApplication>
 #include <QDir>
 #include <QElapsedTimer>
-#include <QSettings>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QSettings>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -72,16 +74,29 @@ static void runSession(bool stopRxWhileTx)
     CwDecoder cw;
     PskEngine psk;
     HellEngine hell;
+    CwTxEngine cwTx;
     std::shared_ptr<RttyTxSource> tx = rtty.txSource();
     std::shared_ptr<ModemTxSource> pskTx = psk.txSource();
+    std::shared_ptr<ModemTxSource> cwTxSrc = cwTx.txSource();
     client.setTxRender(
-        [tx, pskTx](float *o, size_t f, int c, float r)
+        [tx, pskTx, cwTxSrc](float *o, size_t f, int c, float r)
         {
             if (pskTx->active())
                 pskTx->render(o, f, c, r);
+            else if (cwTxSrc->active())
+                cwTxSrc->render(o, f, c, r);
             else
                 tx->render(o, f, c, r);
         });
+    QObject::connect(&client, &TciClient::radioTransmitChanged, &cwTx, &ModemEngine::setRadioTransmitting);
+    QObject::connect(&cwTx, &ModemEngine::transmitRequested, &client, &TciClient::setTransmit);
+    TxPowerWatch watch;
+    QObject::connect(&client, &TciClient::txSensors, &watch, &TxPowerWatch::onSensors);
+    QObject::connect(&client, &TciClient::radioTransmitChanged, &watch, &TxPowerWatch::setRadioTransmitting);
+    QObject::connect(&psk, &ModemEngine::transmitRequested, &watch, &TxPowerWatch::setOurTransmit);
+    QObject::connect(&cwTx, &ModemEngine::transmitRequested, &watch, &TxPowerWatch::setOurTransmit);
+    int noPower = 0;
+    QObject::connect(&watch, &TxPowerWatch::noPower, [&noPower]() { ++noPower; });
     QObject::connect(&client, &TciClient::rxAudio, &psk, &ModemEngine::pushAudio);
     QObject::connect(&client, &TciClient::rxAudio, &hell, &ModemEngine::pushAudio);
     QObject::connect(&client, &TciClient::radioTransmitChanged, &psk, &ModemEngine::setRadioTransmitting);
@@ -169,8 +184,44 @@ static void runSession(bool stopRxWhileTx)
     CHECK(QString::fromStdString(server.txPskDecoded).contains(QStringLiteral("W6EL W6EL de KC9OXP KC9OXP KC9OXP k")));
     CHECK(waitFor([&] { return !server.transmitting; }, 1000));
     CHECK(pskText.contains(QStringLiteral("[TX] W6EL W6EL de KC9OXP KC9OXP KC9OXP k")));
+    // tx_sensors arrived and showed power, so no "no output" hint
+    std::printf("  tx_sensors during PSK TX: %d reports, max %.1f W\n", watch.reports(), watch.maxPower());
+    CHECK(server.txSensorsEnabled);
+    CHECK(watch.reports() >= TxPowerWatch::kMinReports);
+    CHECK(watch.maxPower() > 5.0);
+    CHECK(noPower == 0);
+
+    // ---- radio ignores our audio (wrong data mode / DATA MOD input): the hint fires
+    server.muteTx = true;
+    psk.send(QStringLiteral("no power test no power test\n"));
+    CHECK(waitFor([&] { return !psk.transmitting(); }, 30000));
+    CHECK(waitFor([&] { return !client.radioTransmitting(); }, 1000));
+    std::printf(
+        "  muted radio: %d reports, max %.1f W, noPower fired %d\n", watch.reports(), watch.maxPower(), noPower);
+    CHECK(noPower == 1);
+    server.muteTx = false;
     psk.setDecoding(false);
     server.txPskDecoded.clear();
+
+    // ---- CW transmit (audio CW): the server decodes it
+    cwTx.loadSettings(nullptr);
+    cwTx.setConnected(client.isReady(), !client.receiveOnly());
+    cwTx.setMyCall(QStringLiteral("KC9OXP"));
+    cwTx.setCall(QStringLiteral("W6EL"));
+    cwTx.setWpm(25);
+    cwTx.setCarrierHz(650.0);
+    server.txCwDecoded.clear();
+    QString cwEcho;
+    QObject::connect(&cwTx, &ModemEngine::textAppended, [&cwEcho](const QString &t) { cwEcho += t; });
+    cwTx.sendMacro(1); // "{CALL} DE {MYCALL} {MYCALL} K "
+    CHECK(cwTx.transmitting());
+    CHECK(waitFor([&] { return !cwTx.transmitting(); }, 30000));
+    pump(1500); // the decoder holds the last word back briefly
+    std::printf("  server decoded our CW: %s\n", server.txCwDecoded.c_str());
+    std::printf("  CW echo: %s\n", qPrintable(cwEcho.simplified()));
+    CHECK(QString::fromStdString(server.txCwDecoded).contains(QStringLiteral("KC9OXP")));
+    CHECK(cwEcho.contains(QStringLiteral("W6EL DE KC9OXP KC9OXP K")));
+    CHECK(noPower == 1); // CW had power
 
     // ---- transmit
     rtty.setMyCall(QStringLiteral("KC9OXP"));
@@ -243,20 +294,31 @@ static void renderScreens(const QString &dir)
         {
             w.resize(s);
             pump(1200);
-            const QString f = QDir(dir).filePath(
-                QStringLiteral("%1-%2x%3.png").arg(names[tab]).arg(s.width()).arg(s.height()));
+            const QString f
+                = QDir(dir).filePath(QStringLiteral("%1-%2x%3.png").arg(names[tab]).arg(s.width()).arg(s.height()));
             w.grab().save(f);
             std::printf("  %s (actual %dx%d)\n", qPrintable(f), w.width(), w.height());
         }
     }
     std::printf("  minimum size: %dx%d\n", w.minimumSizeHint().width(), w.minimumSizeHint().height());
+    if (QWidget *hint = w.findChild<QWidget *>(QStringLiteral("txHint")))
+    {
+        tabs->setCurrentIndex(2);
+        w.resize(QSize(1100, 760));
+        hint->show();
+        pump(600);
+        const QString f = QDir(dir).filePath(QStringLiteral("no-power-hint-1100x760.png"));
+        w.grab().save(f);
+        std::printf("  %s\n", qPrintable(f));
+        hint->hide();
+    }
     // My call is shared: set in settings for the new modes, it reaches every tab.
     int calls = 0;
     for (QLineEdit *e : w.findChildren<QLineEdit *>())
         if (e->text() == QStringLiteral("KC9OXP"))
             ++calls;
     std::printf("  My call fields showing KC9OXP: %d\n", calls);
-    CHECK(calls == 3); // RTTY, PSK, Hell
+    CHECK(calls == 4); // RTTY, PSK, Hell, CW
 }
 
 int main(int argc, char *argv[])

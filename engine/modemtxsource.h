@@ -9,6 +9,7 @@
 // A subclass supplies the modulator; this class adds the mutex, the TX level,
 // the "sent so far" echo and the frame counter used by the TX watchdog.
 
+#include "cwtxcore.h"
 #include "hellcore.h"
 #include "pskcore.h"
 
@@ -54,6 +55,9 @@ protected:
     virtual void modClear() = 0;
     virtual void modPreroll(double sec) = 0;
     virtual size_t modQueueChar(char c) = 0; // counted units after c, 0 = dropped
+    // Queue text, adding (count after it, char) for every character to echo.
+    // The default queues character by character.
+    virtual void modQueueText(const std::string &text, std::deque<std::pair<size_t, char>> &echo);
     virtual void modTail(double sec) = 0;
     virtual bool modIdle() const = 0;
     virtual size_t modUnitsSent() const = 0;
@@ -110,6 +114,51 @@ protected:
 
 private:
     PskModulator m_mod;
+};
+
+class CwTxSource : public ModemTxSource
+{
+public:
+    void setWpm(double wpm);
+
+protected:
+    void modClear() override
+    {
+        m_mod.clear();
+    }
+    void modPreroll(double sec) override
+    {
+        m_mod.preroll(sec);
+    }
+    size_t modQueueChar(char c) override
+    {
+        return m_mod.queueChar(c);
+    }
+    // Understands <SK>, <AR>, <BT>, <KN>, ... (sent as one character).
+    void modQueueText(const std::string &text, std::deque<std::pair<size_t, char>> &echo) override;
+    void modTail(double sec) override
+    {
+        m_mod.tail(sec);
+    }
+    bool modIdle() const override
+    {
+        return m_mod.idle();
+    }
+    size_t modUnitsSent() const override
+    {
+        return m_mod.unitsSent();
+    }
+    void modSetCarrier(double hz) override
+    {
+        m_mod.setPitch(hz);
+    }
+    void modRender(float *mono, size_t n, double fs) override
+    {
+        m_mod.render(mono, n, fs);
+    }
+
+private:
+    CwModulator m_mod;
 };
 
 class HellTxSource : public ModemTxSource

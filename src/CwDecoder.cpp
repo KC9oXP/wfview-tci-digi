@@ -312,6 +312,8 @@ void CwDecoder::onStats(float pitchHz, float speedWpm, float snrDb, bool locked,
 {
     if (!m_enabled)
         return;
+    if (pitchHz > 0.0f)
+        m_lastPitchHz = qRound(pitchHz);
     const QString source = m_fixedPitch ? tr("fixed") : (locked ? tr("locked") : tr("searching"));
     const QString engineNote
         = effectiveEngine() != m_engine ? tr("   (Hand key used above %1 Hz)").arg(machineMaxPitch()) : QString();

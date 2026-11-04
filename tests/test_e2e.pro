@@ -29,6 +29,9 @@ HEADERS += \
     ../src/WaterfallWidget.h \
     ../src/HellWidget.h \
     ../src/ModemPanel.h \
+    ../src/ModemTxBox.h \
+    ../src/CwTxEngine.h \
+    ../src/TxPowerWatch.h \
     ../src/PskPanel.h \
     ../src/HellPanel.h \
     ../src/MainWindow.h
@@ -50,6 +53,9 @@ SOURCES += \
     ../src/WaterfallWidget.cpp \
     ../src/HellWidget.cpp \
     ../src/ModemPanel.cpp \
+    ../src/ModemTxBox.cpp \
+    ../src/CwTxEngine.cpp \
+    ../src/TxPowerWatch.cpp \
     ../src/PskPanel.cpp \
     ../src/HellPanel.cpp \
     ../src/MainWindow.cpp \
@@ -57,6 +63,7 @@ SOURCES += \
     ../engine/rttytxsource.cpp \
     ../engine/pskcore.cpp \
     ../engine/hellcore.cpp \
+    ../engine/cwtxcore.cpp \
     ../engine/modemtxsource.cpp \
     ../engine/spectrum.cpp \
     ../engine/ggmorse/src/ggmorse.cpp \

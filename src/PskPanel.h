@@ -9,6 +9,10 @@ class PskEngine;
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
+class QLabel;
+class QPlainTextEdit;
+class QPushButton;
+class QSlider;
 class QProgressBar;
 
 class PskPanel : public ModemPanel

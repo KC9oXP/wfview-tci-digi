@@ -2,6 +2,7 @@
 
 #include "CwDecoder.h"
 #include "CwPanel.h"
+#include "CwTxEngine.h"
 #include "HellEngine.h"
 #include "HellPanel.h"
 #include "PskEngine.h"
@@ -9,6 +10,7 @@
 #include "RttyEngine.h"
 #include "RttyPanel.h"
 #include "SpectrumEngine.h"
+#include "TxPowerWatch.h"
 #include "modemtxsource.h"
 #include "rttytxsource.h"
 
@@ -94,30 +96,36 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_psk->loadSettings(m_settings);
     m_hell = new HellEngine(this);
     m_hell->loadSettings(m_settings);
+    m_cwTx = new CwTxEngine(this);
+    m_cwTx->loadSettings(m_settings);
     m_spectrum = new SpectrumEngine(this);
+    m_modems = {m_psk, m_hell, m_cwTx};
 
     // TX audio comes from whichever mode is transmitting (only one can: see
     // onTransmitRequested). RTTY renders silence when idle.
     std::shared_ptr<RttyTxSource> rttyTx = m_rtty->txSource();
-    std::shared_ptr<ModemTxSource> pskTx = m_psk->txSource();
-    std::shared_ptr<ModemTxSource> hellTx = m_hell->txSource();
+    std::vector<std::shared_ptr<ModemTxSource>> modemTx;
+    for (ModemEngine *e : m_modems)
+        modemTx.push_back(e->txSource());
     m_client->setTxRender(
-        [rttyTx, pskTx, hellTx](float *out, size_t frames, int channels, float rate)
+        [rttyTx, modemTx](float *out, size_t frames, int channels, float rate)
         {
-            if (pskTx->active())
-                pskTx->render(out, frames, channels, rate);
-            else if (hellTx->active())
-                hellTx->render(out, frames, channels, rate);
-            else
-                rttyTx->render(out, frames, channels, rate);
+            for (const std::shared_ptr<ModemTxSource> &t : modemTx)
+                if (t->active())
+                {
+                    t->render(out, frames, channels, rate);
+                    return;
+                }
+            rttyTx->render(out, frames, channels, rate);
         });
 
     auto *central = new QWidget();
     auto *v = new QVBoxLayout(central);
     v->addWidget(buildConnectionBar());
+    v->addWidget(buildTxHint());
 
     m_tabs = new QTabWidget();
-    m_cwPanel = new CwPanel(m_cw, m_settings);
+    m_cwPanel = new CwPanel(m_cw, m_cwTx, m_settings);
     m_rttyPanel = new RttyPanel(m_rtty, m_settings);
     m_pskPanel = new PskPanel(m_psk, m_settings);
     m_hellPanel = new HellPanel(m_hell, m_settings);
@@ -149,23 +157,35 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_spectrum, &SpectrumEngine::line, m_pskPanel, &ModemPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_hellPanel, &ModemPanel::addSpectrumLine);
     connect(m_client, &TciClient::diagnostics, m_diag, &QLabel::setText);
+    m_powerWatch = new TxPowerWatch(this);
+    connect(m_client, &TciClient::txSensors, m_powerWatch, &TxPowerWatch::onSensors);
+    connect(m_client, &TciClient::radioTransmitChanged, m_powerWatch, &TxPowerWatch::setRadioTransmitting);
+    connect(m_powerWatch, &TxPowerWatch::readout, m_txMeter, &QLabel::setText);
+    connect(m_powerWatch,
+            &TxPowerWatch::noPower,
+            this,
+            [this]()
+            {
+                m_txHint->show();
+                log(tr("Radio transmitted with no output power: check its data mode and DATA MOD input (LAN/USB)."));
+            });
     connect(m_client, &TciClient::logLine, this, &MainWindow::log);
     connect(m_rtty, &RttyEngine::transmitRequested, this, [this](bool on) { onTransmitRequested(m_rtty, on); });
-    connect(m_psk, &ModemEngine::transmitRequested, this, [this](bool on) { onTransmitRequested(m_psk, on); });
-    connect(m_hell, &ModemEngine::transmitRequested, this, [this](bool on) { onTransmitRequested(m_hell, on); });
+    for (ModemEngine *e : m_modems)
+        connect(e, &ModemEngine::transmitRequested, this, [this, e](bool on) { onTransmitRequested(e, on); });
 
     // One "My call" for every mode.
     const auto shareCall = [this](const QString &c)
     {
         m_rtty->setMyCall(c);
-        m_psk->setMyCall(c);
-        m_hell->setMyCall(c);
+        for (ModemEngine *e : m_modems)
+            e->setMyCall(c);
     };
-    // Start from the shared value (PSK/Hell read Station/MyCall, falling back to 0.1.0's RTTY/MyCall).
+    // Start from the shared value (the new modes read Station/MyCall, falling back to 0.1.0's RTTY/MyCall).
     shareCall(m_psk->myCall().isEmpty() ? m_rtty->myCall() : m_psk->myCall());
     connect(m_rtty, &RttyEngine::settingsChanged, this, [this, shareCall]() { shareCall(m_rtty->myCall()); });
-    connect(m_psk, &ModemEngine::settingsChanged, this, [this, shareCall]() { shareCall(m_psk->myCall()); });
-    connect(m_hell, &ModemEngine::settingsChanged, this, [this, shareCall]() { shareCall(m_hell->myCall()); });
+    for (ModemEngine *e : m_modems)
+        connect(e, &ModemEngine::settingsChanged, this, [e, shareCall]() { shareCall(e->myCall()); });
 
     m_reconnect.setInterval(reconnectMs);
     m_reconnect.setSingleShot(true);
@@ -191,6 +211,32 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
 }
 
 MainWindow::~MainWindow() = default;
+
+QWidget *MainWindow::buildTxHint()
+{
+    m_txHint = new QWidget();
+    m_txHint->setObjectName(QStringLiteral("txHint"));
+    m_txHint->setStyleSheet(QStringLiteral("#txHint { background-color: #5a4310; border-radius: 3px; }"));
+    auto *h = new QHBoxLayout(m_txHint);
+    h->setContentsMargins(8, 4, 4, 4);
+    auto *text = new QLabel(
+        tr("<b>The radio keyed up but reported no output power.</b> The transmit audio reaches the radio, but "
+           "not through the input the radio is using. Check that the radio's <b>data mode</b> (Data 1/2/3 in "
+           "wfview) uses the <b>DATA MOD input</b> that matches how wfview connects to it, LAN or USB. For "
+           "example, on an IC-7610 with DATA1 = USB and DATA2 = LAN, use Data 2 when wfview connects over LAN. "
+           "Also check the TX level, and that the radio is in a data or SSB mode."));
+    text->setWordWrap(true);
+    text->setStyleSheet(QStringLiteral("color: #ffe7b0;"));
+    h->addWidget(text, 1);
+    auto *close = new QPushButton(QStringLiteral("\u2715"));
+    close->setFlat(true);
+    close->setToolTip(tr("Hide"));
+    close->setFixedWidth(close->sizeHint().height());
+    h->addWidget(close, 0, Qt::AlignTop);
+    connect(close, &QPushButton::clicked, m_txHint, &QWidget::hide);
+    m_txHint->hide();
+    return m_txHint;
+}
 
 QWidget *MainWindow::buildConnectionBar()
 {
@@ -231,13 +277,18 @@ QWidget *MainWindow::buildConnectionBar()
     m_freq->setMaximumWidth(QFontMetrics(ff).horizontalAdvance(QStringLiteral("888.888.888")) + 24);
     h->addWidget(m_freq);
     m_mode = new QComboBox();
-    m_mode->setToolTip(tr("Radio mode. Transmitting RTTY, PSK or Hell needs DIGU or DIGL (USB-D / LSB-D)."));
+    m_mode->setToolTip(tr("Radio mode. Every transmit mode here sends audio, so it needs a data mode (DIGU/DIGL) "
+                          "or USB/LSB.\nNote: choosing DIGU/DIGL here makes wfview use Data 1. If your radio's "
+                          "Data 1 input is not the one wfview feeds (LAN or USB), set the data mode in wfview instead."));
     m_mode->setMinimumContentsLength(5);
     h->addWidget(m_mode);
     m_txLamp = new QLabel(tr(" RX "));
     m_txLamp->setAlignment(Qt::AlignCenter);
     m_txLamp->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("  TX  ")) + 8);
     h->addWidget(m_txLamp);
+    m_txMeter = new QLabel();
+    m_txMeter->setToolTip(tr("Output power, ALC and SWR as wfview reports them while transmitting."));
+    h->addWidget(m_txMeter);
 
     connect(m_connect, &QPushButton::clicked, this, &MainWindow::toggleConnection);
     connect(m_freq,
@@ -328,7 +379,7 @@ void MainWindow::buildMenus()
                             tr("<b>wfview TCI Digi %1</b><br><br>"
                                "Digital modes for wfview (or any TCI server) over TCI: receive audio, transmit "
                                "audio, PTT, frequency and mode.<br><br>"
-                               "CW: ggmorse (MIT) and a hand-key decoder.<br>"
+                               "CW: ggmorse (MIT) and a hand-key decoder; transmit as keyed audio.<br>"
                                "RTTY: mark/space filter demodulator with W7AY optimal ATC.<br>"
                                "PSK: BPSK31/63/125, matched-filter receiver with AFC.<br>"
                                "Hell: Feld Hell (Hellschreiber) send and painted receive.<br><br>"
@@ -452,8 +503,8 @@ void MainWindow::onModulation(const QString &mode)
 void MainWindow::onRadioTransmit(bool on)
 {
     m_rtty->setRadioTransmitting(on);
-    m_psk->setRadioTransmitting(on);
-    m_hell->setRadioTransmitting(on);
+    for (ModemEngine *e : m_modems)
+        e->setRadioTransmitting(on);
     m_cw->setPaused(on); // do not decode our own sidetone / monitor
     m_txLamp->setText(on ? tr(" TX ") : tr(" RX "));
     m_txLamp->setStyleSheet(on ? QStringLiteral("background-color: #c02020; color: white; font-weight: bold;")
@@ -467,17 +518,29 @@ void MainWindow::onTransmitRequested(QObject *who, bool on)
         // Only one mode may transmit: stop any other first.
         if (who != m_rtty && m_rtty->transmitting())
             m_rtty->abortTx();
-        if (who != m_psk && m_psk->transmitting())
-            m_psk->abortTx();
-        if (who != m_hell && m_hell->transmitting())
-            m_hell->abortTx();
+        for (ModemEngine *e : m_modems)
+            if (who != e && e->transmitting())
+                e->abortTx();
     }
-    else if (m_rtty->transmitting() || m_psk->transmitting() || m_hell->transmitting())
+    else if (anyTransmitting())
     {
         return; // another mode has taken over; keep PTT
     }
     m_client->setTransmit(on);
+    m_powerWatch->setOurTransmit(on);
+    if (on)
+        m_txHint->hide();
     log(on ? tr("TX requested (trx:0,true)") : tr("TX released (trx:0,false)"));
+}
+
+bool MainWindow::anyTransmitting() const
+{
+    if (m_rtty->transmitting())
+        return true;
+    for (ModemEngine *e : m_modems)
+        if (e->transmitting())
+            return true;
+    return false;
 }
 
 void MainWindow::updateRadioState()
@@ -486,8 +549,9 @@ void MainWindow::updateRadioState()
     const bool canTx = ready && !m_client->receiveOnly();
     m_rtty->setConnected(ready, canTx);
     m_rttyPanel->setRadioState(ready, canTx, m_client->modulation());
-    m_psk->setConnected(ready, canTx);
-    m_hell->setConnected(ready, canTx);
+    for (ModemEngine *e : m_modems)
+        e->setConnected(ready, canTx);
+    m_cwPanel->setRadioState(ready, canTx, m_client->modulation());
     m_pskPanel->setRadioState(ready, canTx, m_client->modulation());
     m_hellPanel->setRadioState(ready, canTx, m_client->modulation());
     m_freq->setEnabled(ready);
@@ -518,10 +582,9 @@ void MainWindow::closeEvent(QCloseEvent *event)
 {
     if (m_rtty->transmitting())
         m_rtty->abortTx();
-    if (m_psk->transmitting())
-        m_psk->abortTx();
-    if (m_hell->transmitting())
-        m_hell->abortTx();
+    for (ModemEngine *e : m_modems)
+        if (e->transmitting())
+            e->abortTx();
     m_wantConnected = false;
     m_client->disconnectFromServer();
     saveAll();

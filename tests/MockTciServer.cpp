@@ -3,6 +3,7 @@
 #include "tciprotocol.h"
 
 #include <QWebSocket>
+#include <cmath>
 #include <cstring>
 #include <random>
 #include <vector>
@@ -41,10 +42,13 @@ MockTciServer::MockTciServer(QObject *parent)
     m_txPsk.setBaud(31.25);
     m_txPsk.setCarrier(1000.0);
     m_txPsk.setSquelch(0.0);
+    m_txCw.setTrackRange(200.0f, 1200.0f, -1.0f);
 
     connect(m_server.get(), &QWebSocketServer::newConnection, this, &MockTciServer::onNewConnection);
     m_timer.setInterval(10);
     connect(&m_timer, &QTimer::timeout, this, &MockTciServer::tick);
+    m_sensorTimer.setInterval(200);
+    connect(&m_sensorTimer, &QTimer::timeout, this, &MockTciServer::sendTxSensors);
 }
 
 bool MockTciServer::listen(quint16 port)
@@ -118,6 +122,10 @@ void MockTciServer::onText(const QString &msg)
             m_clock.start();
             m_timer.start();
         }
+        else if (c.name == "tx_sensors_enable" && c.args.size() >= 2)
+        {
+            txSensorsEnabled = tci::toBool(c.args[1]); // as wfview 3.00 reads it
+        }
         else if (c.name == "audio_stop")
         {
             m_streaming = false;
@@ -137,6 +145,13 @@ void MockTciServer::onText(const QString &msg)
             {
                 m_txDemod.reset();
                 m_txPsk.reset();
+                m_sensorTimer.stop();
+            }
+            else
+            {
+                m_txRms = 0.0;
+                m_txRmsN = 0;
+                m_sensorTimer.start();
             }
         }
         else if (c.name == "modulation" && c.args.size() >= 2)
@@ -170,8 +185,14 @@ void MockTciServer::onBinary(const QByteArray &frame)
         return;
     }
     txFramesReceived += mono.size();
+    for (float v : mono)
+        m_txRms += double(v) * double(v);
+    m_txRmsN += mono.size();
     txDecoded += m_txDemod.process(mono.data(), mono.size());
     txPskDecoded += m_txPsk.process(mono.data(), mono.size());
+    std::string cw;
+    m_txCw.feed(mono.data(), int(mono.size()), 48000.0f, cw);
+    txCwDecoded += cw;
 }
 
 void MockTciServer::tick()
@@ -225,4 +246,20 @@ void MockTciServer::sendRxPacket()
     const uint32_t rx = uint32_t(tci::StreamType::RxAudio);
     std::memcpy(f.data() + 24, &rx, 4);
     m_client->sendBinaryMessage(QByteArray(reinterpret_cast<const char *>(f.data()), int(f.size())));
+}
+
+void MockTciServer::sendTxSensors()
+{
+    if (!m_client || !transmitting || !txSensorsEnabled)
+        return;
+    // 100 W for a full-scale tone; 0 W if the "radio" ignores our audio.
+    const double rms = m_txRmsN ? std::sqrt(m_txRms / double(m_txRmsN)) : 0.0;
+    m_txRms = 0.0;
+    m_txRmsN = 0;
+    const double power = muteTx ? 0.0 : std::min(100.0, 200.0 * rms * rms);
+    ++txSensorReports;
+    m_client->sendTextMessage(QStringLiteral("tx_sensors:0,%1,%2,%2,%3;")
+                                  .arg(muteTx ? 0.0 : 1.5, 0, 'f', 1)
+                                  .arg(power, 0, 'f', 1)
+                                  .arg(1.1, 0, 'f', 1));
 }

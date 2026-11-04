@@ -99,7 +99,6 @@ QWidget *PskPanel::buildTop()
     v->addLayout(r2);
 
     v->addWidget(waterfall(), 1);
-    v->addWidget(modeWarningLabel());
     v->addWidget(statusLabel());
 
     connect(m_decode, &QPushButton::toggled, m_psk, &ModemEngine::setDecoding);

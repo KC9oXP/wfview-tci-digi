@@ -8,6 +8,7 @@
 // also carries a BPSK31 station at 1000 Hz and a Feld Hell station at 500 Hz,
 // and transmitted BPSK31 at 1000 Hz is decoded too.
 
+#include "cwdecodercore.h"
 #include "modemtxsource.h"
 #include "pskcore.h"
 #include "rttycore.h"
@@ -39,18 +40,25 @@ public:
 
     std::string txDecoded; // RTTY decoded from the client's TX audio
     std::string txPskDecoded; // BPSK31 at 1000 Hz decoded from the client's TX audio
+    std::string txCwDecoded; // CW (any pitch 200-1200 Hz) decoded from the client's TX audio
     quint64 txFramesReceived = 0;
     quint64 txFramesWhileNotTx = 0; // frames that arrived before trx:true (should be 0)
     bool transmitting = false;
     QString lastMode = QStringLiteral("digu");
     qint64 freq = 14080000;
     int txPackets = 0;
+    // Acts like a radio whose data mode listens to another input: keys up but
+    // reports 0 W however loud the TX audio is.
+    bool muteTx = false;
+    bool txSensorsEnabled = false; // the client sent tx_sensors_enable (wfview style)
+    int txSensorReports = 0;
 
 private slots:
     void onNewConnection();
     void onText(const QString &msg);
     void onBinary(const QByteArray &frame);
     void tick();
+    void sendTxSensors();
 
 private:
     void sendRxPacket();
@@ -61,6 +69,9 @@ private:
     QWebSocket *m_client = nullptr;
     bool m_streaming = false;
     QTimer m_timer;
+    QTimer m_sensorTimer;
+    double m_txRms = 0.0; // of the TX audio received since the last report
+    quint64 m_txRmsN = 0;
     QElapsedTimer m_clock;
     quint64 m_framesSent = 0;
     RttyTxSource m_rxSignal; // receive audio: an RTTY station
@@ -68,5 +79,6 @@ private:
     HellTxSource m_rxHell; // ... and a Feld Hell station
     RttyDemodulator m_txDemod;
     PskDemodulator m_txPsk;
+    CwDecoderCore m_txCw;
     RttyConfig m_cfg;
 };

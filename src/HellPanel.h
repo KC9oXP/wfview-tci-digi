@@ -10,6 +10,10 @@ class HellEngine;
 class HellWidget;
 class QComboBox;
 class QDoubleSpinBox;
+class QLabel;
+class QPlainTextEdit;
+class QPushButton;
+class QSlider;
 
 class HellPanel : public ModemPanel
 {

@@ -7,7 +7,7 @@ QT += widgets websockets
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.2.0
+VERSION = 0.3.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -38,6 +38,9 @@ HEADERS += \
     src/WaterfallWidget.h \
     src/HellWidget.h \
     src/ModemPanel.h \
+    src/ModemTxBox.h \
+    src/CwTxEngine.h \
+    src/TxPowerWatch.h \
     src/PskPanel.h \
     src/HellPanel.h \
     src/MainWindow.h \
@@ -49,6 +52,7 @@ HEADERS += \
     engine/rttytxsource.h \
     engine/pskcore.h \
     engine/hellcore.h \
+    engine/cwtxcore.h \
     engine/modemtxsource.h \
     engine/spectrum.h \
     engine/ggmorse/include/ggmorse/ggmorse.h
@@ -69,6 +73,9 @@ SOURCES += \
     src/WaterfallWidget.cpp \
     src/HellWidget.cpp \
     src/ModemPanel.cpp \
+    src/ModemTxBox.cpp \
+    src/CwTxEngine.cpp \
+    src/TxPowerWatch.cpp \
     src/PskPanel.cpp \
     src/HellPanel.cpp \
     src/MainWindow.cpp \
@@ -76,6 +83,7 @@ SOURCES += \
     engine/rttytxsource.cpp \
     engine/pskcore.cpp \
     engine/hellcore.cpp \
+    engine/cwtxcore.cpp \
     engine/modemtxsource.cpp \
     engine/spectrum.cpp \
     engine/ggmorse/src/ggmorse.cpp \

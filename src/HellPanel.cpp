@@ -110,7 +110,6 @@ QWidget *HellPanel::buildTop()
     v->addLayout(r1);
 
     v->addWidget(waterfall(), 1);
-    v->addWidget(modeWarningLabel());
     v->addWidget(statusLabel());
 
     connect(m_decode, &QPushButton::toggled, m_hell, &ModemEngine::setDecoding);

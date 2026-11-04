@@ -31,6 +31,8 @@ jobs:
           ./test_psk
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_hell.cpp engine/hellcore.cpp -o test_hell
           ./test_hell
+          g++ -std=c++17 -O2 -Isrc -Iengine -Iengine/ggmorse/include tests/test_cwtx.cpp engine/cwtxcore.cpp engine/modemtxsource.cpp engine/pskcore.cpp engine/hellcore.cpp engine/ggmorse/src/ggmorse.cpp engine/ggmorse/src/resampler.cpp -o test_cwtx
+          ./test_cwtx
       - name: Build app
         run: |
           mkdir build && cd build
