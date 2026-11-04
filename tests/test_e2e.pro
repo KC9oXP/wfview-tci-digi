@@ -11,6 +11,7 @@ win32 {
 }
 
 INCLUDEPATH += $$PWD $$PWD/../src $$PWD/../engine $$PWD/../engine/ggmorse/include
+RESOURCES += ../wfview-tci-digi.qrc
 
 HEADERS += \
     MockTciServer.h \
@@ -21,6 +22,15 @@ HEADERS += \
     ../src/ScopeWidget.h \
     ../src/CwPanel.h \
     ../src/RttyPanel.h \
+    ../src/ModemEngine.h \
+    ../src/PskEngine.h \
+    ../src/HellEngine.h \
+    ../src/SpectrumEngine.h \
+    ../src/WaterfallWidget.h \
+    ../src/HellWidget.h \
+    ../src/ModemPanel.h \
+    ../src/PskPanel.h \
+    ../src/HellPanel.h \
     ../src/MainWindow.h
 
 SOURCES += \
@@ -33,8 +43,21 @@ SOURCES += \
     ../src/ScopeWidget.cpp \
     ../src/CwPanel.cpp \
     ../src/RttyPanel.cpp \
+    ../src/ModemEngine.cpp \
+    ../src/PskEngine.cpp \
+    ../src/HellEngine.cpp \
+    ../src/SpectrumEngine.cpp \
+    ../src/WaterfallWidget.cpp \
+    ../src/HellWidget.cpp \
+    ../src/ModemPanel.cpp \
+    ../src/PskPanel.cpp \
+    ../src/HellPanel.cpp \
     ../src/MainWindow.cpp \
     ../engine/rttycore.cpp \
     ../engine/rttytxsource.cpp \
+    ../engine/pskcore.cpp \
+    ../engine/hellcore.cpp \
+    ../engine/modemtxsource.cpp \
+    ../engine/spectrum.cpp \
     ../engine/ggmorse/src/ggmorse.cpp \
     ../engine/ggmorse/src/resampler.cpp

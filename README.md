@@ -1,6 +1,7 @@
 # wfview TCI Digi
 
-A stand-alone CW decoder and RTTY modem that connects to **wfview** over **TCI**
+Stand-alone digital modes - CW decoder, RTTY, PSK (BPSK31/63/125) and Feld Hell -
+that connect to **wfview** over **TCI**
 (Transceiver Control Interface). wfview handles the radio; this program gets the
 receive audio, sends transmit audio, and keys PTT, all through wfview's TCI server.
 It works the same whether wfview reaches the radio over LAN or over USB, and it
@@ -40,6 +41,33 @@ it and wfview's TCI server gets a real client to test against.
   to transmit, or the radio drops out of transmit (e.g. wfview's PTT timeout).
 - Double-click a call in the receive pane to put it in the Call field.
 
+**PSK (receive and transmit)**
+- BPSK31, BPSK63 and BPSK125 with standard Varicode.
+- Matched-filter receiver: carrier mixed to baseband, a two-symbol Hann filter,
+  symbol timing from the envelope, differential phase decisions. Copies cleanly down
+  to about -4 dB SNR in the signal bandwidth in the tests.
+- Waterfall (0-3 kHz): click a signal to tune, the click snaps to the signal's
+  centre; the mouse wheel fine-tunes 1 Hz.
+- AFC (within one baud of where you tuned) and a phase-quality squelch with a
+  quality bar.
+- Transmit on the receive frequency: 32 symbols of idle reversals before the text,
+  a short tail and a shaped fade-out after it, so no key clicks.
+- Same macros, Call/My call, type-ahead box, Hold TX, TX level, Esc and watchdogs as
+  RTTY.
+
+**Feld Hell (receive and transmit)**
+- Standard Feld Hell: 7-column characters, 14 half-pixels per column, 245 pixels a
+  second (2.5 characters a second), shaped on/off keying (power more than 40 dB down
+  outside +/-250 Hz).
+- Receive is painted, not decoded, like every Hell program: each column is drawn
+  twice, one copy above the other, so text that drifts up or down stays readable.
+  Zoom 1-4x, contrast, RX trim to straighten slanted text.
+- Waterfall with click-to-tune, macros (sent in capitals; the font has 59 characters),
+  transmitted text shown in a strip below the picture.
+
+Only one mode transmits at a time: starting a transmission in one tab stops any
+other. *My call* is shared by all tabs.
+
 **TCI**
 - Frequency and mode shown and settable from the top bar.
 - *View > TCI log*: connection messages plus a box to send raw TCI commands.
@@ -57,7 +85,8 @@ show up) but never sends TCI audio, so the status bar stays at "RX audio: none".
 2. Set up wfview's receive audio as usual (LAN audio, or the radio's USB audio codec).
 3. For transmit: tick **Settings > User Interface > Enable PTT Controls**, and put the
    radio in a data mode:
-   **DIGU** (USB-D) or **DIGL** (LSB-D). The program warns if the radio is in a mode that
+   **DIGU** (USB-D) or **DIGL** (LSB-D). PSK and Hell work on either sideband; PSK
+   on USB-D is the usual convention. The program warns if the radio is in a mode that
    does not take computer audio.
 4. Connect wfview to the radio (wfview refuses TCI clients while no radio is connected).
 5. Start wfview TCI Digi, enter the computer running wfview (127.0.0.1 if it is the same
@@ -80,13 +109,17 @@ Tests:
 # Qt-free (protocol helpers, RTTY and CW through TCI frames)
 g++ -std=c++17 -O2 -Isrc -Iengine tests/test_protocol.cpp src/tciprotocol.cpp engine/rttycore.cpp engine/rttytxsource.cpp -o test_protocol
 g++ -std=c++17 -O2 -Isrc -Iengine -Iengine/ggmorse/include tests/test_cw.cpp src/tciprotocol.cpp engine/ggmorse/src/ggmorse.cpp engine/ggmorse/src/resampler.cpp -o test_cw
+# PSK and Feld Hell modems (loopback at several speeds, sample rates, offsets and noise)
+g++ -std=c++17 -O2 -Iengine tests/test_psk.cpp engine/pskcore.cpp -o test_psk
+g++ -std=c++17 -O2 -Iengine tests/test_hell.cpp engine/hellcore.cpp -o test_hell
 
-# End to end against a mock of wfview's TCI server (~40 s)
+# End to end against a mock of wfview's TCI server (~90 s)
 qmake ../tests/test_e2e.pro && make && QT_QPA_PLATFORM=offscreen ./test_e2e
 ```
 
-`test_e2e --serve 50001` runs only the mock server, which plays an RTTY station and
-decodes what you transmit, so the program can be tried without a radio.
+`test_e2e --serve 50001` runs only the mock server, which plays an RTTY station
+(2125/2295 Hz), a BPSK31 station (1000 Hz) and a Feld Hell station (500 Hz), and
+decodes the RTTY and BPSK31 you transmit, so the program can be tried without a radio.
 
 ## Notes on wfview's TCI server (v3, November 2026)
 
@@ -108,8 +141,8 @@ Found while writing this client; the client works around each one.
 
 ## Future
 
-- More modes (PSK31 next), each as a Qt-free engine with tests, the same way the CW
-  and RTTY engines are written.
+- More modes (QPSK31, MFSK, Olivia are candidates), each as a Qt-free engine with
+  tests, the same way the CW, RTTY, PSK and Hell engines are written.
 - The goal is for this to become part of wfview if it fits the wfview team's plans:
   as a companion program in the wf-group organization, as a second program built
   from the wfview tree, or folded back into wfview itself after v3. The engines have
@@ -119,4 +152,5 @@ Found while writing this client; the client works around each one.
 ## License
 
 GPLv3 (see LICENSE). The CW and RTTY engines come from the author's wfview work.
+The PSK and Feld Hell engines and the 5x7 Hell font were written for this program.
 `engine/ggmorse` is ggmorse by Georgi Gerganov, MIT license (see its LICENSE).

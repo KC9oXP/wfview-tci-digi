@@ -7,6 +7,11 @@
 
 class CwDecoder;
 class CwPanel;
+class HellEngine;
+class HellPanel;
+class ModemEngine;
+class PskEngine;
+class PskPanel;
 class QCheckBox;
 class QComboBox;
 class QDockWidget;
@@ -19,6 +24,7 @@ class QSpinBox;
 class QTabWidget;
 class RttyEngine;
 class RttyPanel;
+class SpectrumEngine;
 
 class MainWindow : public QMainWindow
 {
@@ -47,6 +53,7 @@ private:
     void applyTheme(bool dark);
     void updateRadioState();
     void saveAll();
+    void onTransmitRequested(QObject *who, bool on);
 
     QSettings *m_settings;
     TciClient *m_client = nullptr;
@@ -54,6 +61,11 @@ private:
     RttyEngine *m_rtty = nullptr;
     CwPanel *m_cwPanel = nullptr;
     RttyPanel *m_rttyPanel = nullptr;
+    PskEngine *m_psk = nullptr;
+    HellEngine *m_hell = nullptr;
+    PskPanel *m_pskPanel = nullptr;
+    HellPanel *m_hellPanel = nullptr;
+    SpectrumEngine *m_spectrum = nullptr;
 
     QLineEdit *m_host = nullptr;
     QSpinBox *m_port = nullptr;

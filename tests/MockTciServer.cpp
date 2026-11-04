@@ -26,8 +26,21 @@ MockTciServer::MockTciServer(QObject *parent)
     m_rxSignal.setDiddle(true);
     m_rxSignal.start(0.5);
     refillRx();
+    refillModes();
     m_txDemod.setConfig(m_cfg);
     m_txDemod.setSquelch(0.0);
+
+    m_rxPsk.setBaud(31.25);
+    m_rxPsk.setCarrier(1000.0);
+    m_rxPsk.setLevel(0.25f);
+    m_rxPsk.start(1.0);
+    m_rxHell.setCarrier(500.0);
+    m_rxHell.setLevel(0.25f);
+    m_rxHell.start(0.2);
+    m_txPsk.setSampleRate(48000.0);
+    m_txPsk.setBaud(31.25);
+    m_txPsk.setCarrier(1000.0);
+    m_txPsk.setSquelch(0.0);
 
     connect(m_server.get(), &QWebSocketServer::newConnection, this, &MockTciServer::onNewConnection);
     m_timer.setInterval(10);
@@ -47,6 +60,14 @@ quint16 MockTciServer::port() const
 void MockTciServer::refillRx()
 {
     m_rxSignal.queueText("RYRYRY CQ CQ DE W6EL W6EL W6EL K\n");
+}
+
+void MockTciServer::refillModes()
+{
+    if (m_rxPsk.idle())
+        m_rxPsk.queueText("psk test de W6EL W6EL pse k\n");
+    if (m_rxHell.idle())
+        m_rxHell.queueText("HELL DE W6EL ");
 }
 
 void MockTciServer::onNewConnection()
@@ -113,7 +134,10 @@ void MockTciServer::onText(const QString &msg)
                                        m_client->sendTextMessage(echo);
                                });
             if (!transmitting)
+            {
                 m_txDemod.reset();
+                m_txPsk.reset();
+            }
         }
         else if (c.name == "modulation" && c.args.size() >= 2)
         {
@@ -147,6 +171,7 @@ void MockTciServer::onBinary(const QByteArray &frame)
     }
     txFramesReceived += mono.size();
     txDecoded += m_txDemod.process(mono.data(), mono.size());
+    txPskDecoded += m_txPsk.process(mono.data(), mono.size());
 }
 
 void MockTciServer::tick()
@@ -175,6 +200,20 @@ void MockTciServer::sendRxPacket()
     m_rxSignal.render(stereo.data(), kFrames, 2, 48000.0f);
     if (m_rxSignal.idle())
         refillRx();
+    std::vector<float> other(kFrames);
+    m_rxPsk.render(other.data(), kFrames, 1, 48000.0f);
+    for (size_t i = 0; i < kFrames; ++i)
+    {
+        stereo[2 * i] += other[i];
+        stereo[2 * i + 1] += other[i];
+    }
+    m_rxHell.render(other.data(), kFrames, 1, 48000.0f);
+    for (size_t i = 0; i < kFrames; ++i)
+    {
+        stereo[2 * i] += other[i];
+        stereo[2 * i + 1] += other[i];
+    }
+    refillModes();
     std::normal_distribution<float> nd(0.0f, 0.05f);
     for (size_t i = 0; i < kFrames; ++i)
     {

@@ -1,4 +1,4 @@
-# wfview TCI Digi - stand-alone CW decoder and RTTY modem for wfview over TCI.
+# wfview TCI Digi - stand-alone CW, RTTY, PSK and Feld Hell for wfview over TCI.
 # Qt 6 (Widgets, WebSockets), C++17.
 
 TEMPLATE = app
@@ -7,18 +7,21 @@ QT += widgets websockets
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.1.0
+VERSION = 0.2.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
     QMAKE_TARGET_COMPANY = KC9oXP
     QMAKE_TARGET_PRODUCT = "wfview TCI Digi"
-    QMAKE_TARGET_DESCRIPTION = "CW decoder and RTTY modem for wfview over TCI"
+    QMAKE_TARGET_DESCRIPTION = "CW, RTTY, PSK and Feld Hell for wfview over TCI"
+    RC_ICONS = icons/wfview-tci-digi.ico
     msvc: QMAKE_CXXFLAGS += /utf-8
     DEFINES += _USE_MATH_DEFINES NOMINMAX
 }
 
 INCLUDEPATH += src engine engine/ggmorse/include
+RESOURCES += wfview-tci-digi.qrc
+macx: ICON = icons/wfview-tci-digi.icns
 
 HEADERS += \
     src/tciprotocol.h \
@@ -28,6 +31,15 @@ HEADERS += \
     src/ScopeWidget.h \
     src/CwPanel.h \
     src/RttyPanel.h \
+    src/ModemEngine.h \
+    src/PskEngine.h \
+    src/HellEngine.h \
+    src/SpectrumEngine.h \
+    src/WaterfallWidget.h \
+    src/HellWidget.h \
+    src/ModemPanel.h \
+    src/PskPanel.h \
+    src/HellPanel.h \
     src/MainWindow.h \
     engine/cwdecodercore.h \
     engine/cwhandkeydecoder.h \
@@ -35,6 +47,10 @@ HEADERS += \
     engine/cwwordjoiner.h \
     engine/rttycore.h \
     engine/rttytxsource.h \
+    engine/pskcore.h \
+    engine/hellcore.h \
+    engine/modemtxsource.h \
+    engine/spectrum.h \
     engine/ggmorse/include/ggmorse/ggmorse.h
 
 SOURCES += \
@@ -46,8 +62,21 @@ SOURCES += \
     src/ScopeWidget.cpp \
     src/CwPanel.cpp \
     src/RttyPanel.cpp \
+    src/ModemEngine.cpp \
+    src/PskEngine.cpp \
+    src/HellEngine.cpp \
+    src/SpectrumEngine.cpp \
+    src/WaterfallWidget.cpp \
+    src/HellWidget.cpp \
+    src/ModemPanel.cpp \
+    src/PskPanel.cpp \
+    src/HellPanel.cpp \
     src/MainWindow.cpp \
     engine/rttycore.cpp \
     engine/rttytxsource.cpp \
+    engine/pskcore.cpp \
+    engine/hellcore.cpp \
+    engine/modemtxsource.cpp \
+    engine/spectrum.cpp \
     engine/ggmorse/src/ggmorse.cpp \
     engine/ggmorse/src/resampler.cpp

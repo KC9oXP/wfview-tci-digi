@@ -4,8 +4,12 @@
 // messages, a TX chrono frame before every RX audio frame, interleaved stereo
 // RX audio with "channels = 1" in the header, and TX audio accepted only after
 // the client sent trx:0,true. It plays an RTTY signal as receive audio and
-// decodes whatever RTTY the client transmits.
+// decodes whatever RTTY the client transmits. Since 0.2.0 the receive audio
+// also carries a BPSK31 station at 1000 Hz and a Feld Hell station at 500 Hz,
+// and transmitted BPSK31 at 1000 Hz is decoded too.
 
+#include "modemtxsource.h"
+#include "pskcore.h"
 #include "rttycore.h"
 #include "rttytxsource.h"
 
@@ -34,6 +38,7 @@ public:
     int trxEchoMs = 80;
 
     std::string txDecoded; // RTTY decoded from the client's TX audio
+    std::string txPskDecoded; // BPSK31 at 1000 Hz decoded from the client's TX audio
     quint64 txFramesReceived = 0;
     quint64 txFramesWhileNotTx = 0; // frames that arrived before trx:true (should be 0)
     bool transmitting = false;
@@ -50,6 +55,7 @@ private slots:
 private:
     void sendRxPacket();
     void refillRx();
+    void refillModes();
 
     std::unique_ptr<QWebSocketServer> m_server;
     QWebSocket *m_client = nullptr;
@@ -58,6 +64,9 @@ private:
     QElapsedTimer m_clock;
     quint64 m_framesSent = 0;
     RttyTxSource m_rxSignal; // receive audio: an RTTY station
+    PskTxSource m_rxPsk; // ... a BPSK31 station
+    HellTxSource m_rxHell; // ... and a Feld Hell station
     RttyDemodulator m_txDemod;
+    PskDemodulator m_txPsk;
     RttyConfig m_cfg;
 };

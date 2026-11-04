@@ -27,6 +27,10 @@ jobs:
           ./test_protocol
           g++ -std=c++17 -O2 -Isrc -Iengine -Iengine/ggmorse/include tests/test_cw.cpp src/tciprotocol.cpp engine/ggmorse/src/ggmorse.cpp engine/ggmorse/src/resampler.cpp -o test_cw
           ./test_cw
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_psk.cpp engine/pskcore.cpp -o test_psk
+          ./test_psk
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_hell.cpp engine/hellcore.cpp -o test_hell
+          ./test_hell
       - name: Build app
         run: |
           mkdir build && cd build

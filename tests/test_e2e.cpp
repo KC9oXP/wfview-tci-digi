@@ -1,4 +1,4 @@
-// End-to-end test of the TCI client, the RTTY engine and the CW decoder
+// End-to-end test of the TCI client, the RTTY and PSK engines, Feld Hell receive and the CW decoder
 // against MockTciServer (which behaves like wfview 3.00's TCI server).
 //
 //   test_e2e            run the tests (about 40 s, real time)
@@ -6,16 +6,20 @@
 //   test_e2e --screens DIR  also render the main window at several sizes to PNGs in DIR
 
 #include "CwDecoder.h"
+#include "HellEngine.h"
 #include "MainWindow.h"
 #include "MockTciServer.h"
+#include "PskEngine.h"
 #include "RttyEngine.h"
 #include "TciClient.h"
+#include "modemtxsource.h"
 #include "rttytxsource.h"
 
 #include <QApplication>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QSettings>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QTabWidget>
 #include <QTemporaryDir>
@@ -66,8 +70,34 @@ static void runSession(bool stopRxWhileTx)
     TciClient client;
     RttyEngine rtty;
     CwDecoder cw;
+    PskEngine psk;
+    HellEngine hell;
     std::shared_ptr<RttyTxSource> tx = rtty.txSource();
-    client.setTxRender([tx](float *o, size_t f, int c, float r) { tx->render(o, f, c, r); });
+    std::shared_ptr<ModemTxSource> pskTx = psk.txSource();
+    client.setTxRender(
+        [tx, pskTx](float *o, size_t f, int c, float r)
+        {
+            if (pskTx->active())
+                pskTx->render(o, f, c, r);
+            else
+                tx->render(o, f, c, r);
+        });
+    QObject::connect(&client, &TciClient::rxAudio, &psk, &ModemEngine::pushAudio);
+    QObject::connect(&client, &TciClient::rxAudio, &hell, &ModemEngine::pushAudio);
+    QObject::connect(&client, &TciClient::radioTransmitChanged, &psk, &ModemEngine::setRadioTransmitting);
+    QObject::connect(&psk, &ModemEngine::transmitRequested, &client, &TciClient::setTransmit);
+    QString pskText;
+    QObject::connect(&psk, &ModemEngine::textAppended, [&pskText](const QString &t) { pskText += t; });
+    int hellCols = 0;
+    float hellPeak = 0.0f;
+    QObject::connect(&hell,
+                     &HellEngine::columns,
+                     [&hellCols, &hellPeak](const QVector<float> &c)
+                     {
+                         hellCols += int(c.size()) / hell::kRows;
+                         for (float v : c)
+                             hellPeak = std::max(hellPeak, v);
+                     });
     QObject::connect(&client, &TciClient::rxAudio, &rtty, &RttyEngine::pushAudio);
     QObject::connect(&client, &TciClient::rxAudio, &cw, &CwDecoder::pushAudio);
     QObject::connect(&client, &TciClient::radioTransmitChanged, &rtty, &RttyEngine::setRadioTransmitting);
@@ -108,6 +138,39 @@ static void runSession(bool stopRxWhileTx)
     CHECK(waitFor([&] { return status.startsWith(QStringLiteral("Tuned")); }, 3000));
     std::printf("  %s\n", qPrintable(status));
     CHECK(qAbs(rtty.markHz() - 2295) <= 5);
+
+    // ---- PSK and Hell receive (stations at 1000 and 500 Hz in the same audio)
+    psk.loadSettings(nullptr);
+    hell.loadSettings(nullptr);
+    psk.setConnected(client.isReady(), !client.receiveOnly());
+    hell.setConnected(client.isReady(), !client.receiveOnly());
+    psk.setCarrierHz(1003.0); // a little off: AFC pulls in
+    hell.setCarrierHz(500.0);
+    psk.setDecoding(true);
+    hell.setDecoding(true);
+    CHECK(waitFor([&] { return pskText.contains(QStringLiteral("psk test de W6EL W6EL pse k")); }, 20000));
+    std::printf("  PSK received: %s\n", qPrintable(pskText.simplified().left(120)));
+    std::printf("  PSK AFC: %.2f Hz\n", psk.carrierHz());
+    CHECK(qAbs(psk.carrierHz() - 1000.0) < 1.0);
+    CHECK(hellCols > 50);
+    CHECK(hellPeak > 0.9f);
+    std::printf("  Hell columns painted: %d\n", hellCols);
+    hell.setDecoding(false);
+
+    // ---- PSK transmit
+    psk.setMyCall(QStringLiteral("KC9OXP"));
+    psk.setCall(QStringLiteral("W6EL"));
+    psk.setCarrierHz(1000.0);
+    psk.sendMacro(1); // "{CALL} {CALL} de {MYCALL} {MYCALL} {MYCALL} k"
+    CHECK(psk.transmitting());
+    CHECK(waitFor([&] { return client.radioTransmitting(); }, 1000));
+    CHECK(waitFor([&] { return !psk.transmitting(); }, 30000));
+    std::printf("  server decoded our PSK: %s\n", server.txPskDecoded.c_str());
+    CHECK(QString::fromStdString(server.txPskDecoded).contains(QStringLiteral("W6EL W6EL de KC9OXP KC9OXP KC9OXP k")));
+    CHECK(waitFor([&] { return !server.transmitting; }, 1000));
+    CHECK(pskText.contains(QStringLiteral("[TX] W6EL W6EL de KC9OXP KC9OXP KC9OXP k")));
+    psk.setDecoding(false);
+    server.txPskDecoded.clear();
 
     // ---- transmit
     rtty.setMyCall(QStringLiteral("KC9OXP"));
@@ -160,17 +223,20 @@ static void renderScreens(const QString &dir)
     QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
     settings.setValue(QStringLiteral("TCI/Port"), server.port());
     settings.setValue(QStringLiteral("TCI/ConnectOnStart"), true);
+    settings.setValue(QStringLiteral("Hell/Carrier"), 500.0); // the mock's Hell station
+    settings.setValue(QStringLiteral("Station/MyCall"), QStringLiteral("KC9OXP"));
     MainWindow w(&settings);
     w.show();
     pump(1500);
     auto *tabs = w.findChild<QTabWidget *>();
-    // Switch Decode on in both tabs so the scope and decode panes are live.
+    // Switch Decode on in every tab so the scope, waterfall and decode panes are live.
     for (QPushButton *b : w.findChildren<QPushButton *>())
         if (b->text() == QStringLiteral("Decode") && !b->isChecked())
             b->click();
-    pump(6000);
+    pump(12000); // enough for a few Hell words
     const QList<QSize> sizes = {QSize(1100, 760), QSize(640, 520), QSize(1600, 1000)};
-    for (int tab = 0; tab < 2; ++tab)
+    static const char *const names[] = {"cw", "rtty", "psk", "hell"};
+    for (int tab = 0; tab < tabs->count() && tab < 4; ++tab)
     {
         tabs->setCurrentIndex(tab);
         for (const QSize &s : sizes)
@@ -178,12 +244,19 @@ static void renderScreens(const QString &dir)
             w.resize(s);
             pump(1200);
             const QString f = QDir(dir).filePath(
-                QStringLiteral("%1-%2x%3.png").arg(tab == 0 ? "cw" : "rtty").arg(s.width()).arg(s.height()));
+                QStringLiteral("%1-%2x%3.png").arg(names[tab]).arg(s.width()).arg(s.height()));
             w.grab().save(f);
             std::printf("  %s (actual %dx%d)\n", qPrintable(f), w.width(), w.height());
         }
     }
     std::printf("  minimum size: %dx%d\n", w.minimumSizeHint().width(), w.minimumSizeHint().height());
+    // My call is shared: set in settings for the new modes, it reaches every tab.
+    int calls = 0;
+    for (QLineEdit *e : w.findChildren<QLineEdit *>())
+        if (e->text() == QStringLiteral("KC9OXP"))
+            ++calls;
+    std::printf("  My call fields showing KC9OXP: %d\n", calls);
+    CHECK(calls == 3); // RTTY, PSK, Hell
 }
 
 int main(int argc, char *argv[])
