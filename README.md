@@ -1,5 +1,14 @@
 # wfview TCI Digi
 
+> [!WARNING]
+> **Alpha release: not fully developed and still very much in testing.**
+> Expect bugs, rough edges and changes between versions. It has been tried on one
+> station (IC-7610 with wfview v3) so far. When you transmit, start into a dummy load
+> or at low power and keep an eye on the radio. Bug reports and test results are
+> welcome in the Issues tab.
+
+![PSK tab](docs/screenshots/psk.png)
+
 Stand-alone digital modes - CW decoder, RTTY, PSK (BPSK31/63/125) and Feld Hell -
 that connect to **wfview** over **TCI**
 (Transceiver Control Interface). wfview handles the radio; this program gets the
@@ -74,6 +83,25 @@ other. *My call* is shared by all tabs.
 - The status bar shows the receive and transmit audio streams once a second
   (rate, channels, frames per packet, packets/s, peak level, how TX is paced). Handy
   for comparing wfview's LAN and USB audio paths.
+
+## Screenshots
+
+All taken on an IC-7610 with wfview v3 over TCI, receiving test signals.
+
+| PSK (BPSK31) | Feld Hell |
+|---|---|
+| ![PSK tab](docs/screenshots/psk.png) | ![Hell tab](docs/screenshots/hell.png) |
+
+| RTTY (0.1.0) | CW, Machine engine (0.1.0) |
+|---|---|
+| ![RTTY tab](docs/screenshots/rtty.png) | ![CW tab, Machine engine with the multi-signal list](docs/screenshots/cw-machine.png) |
+
+| CW, Hand key engine (0.1.0) | |
+|---|---|
+| ![CW tab, Hand key engine](docs/screenshots/cw-hand-key.png) | |
+
+The RTTY and CW screenshots are from 0.1.0, when the program was called TCI CW/RTTY;
+those tabs work the same in 0.2.0.
 
 ## Setting up wfview (v3)
 
