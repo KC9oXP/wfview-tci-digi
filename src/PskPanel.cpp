@@ -1,6 +1,7 @@
 #include "PskPanel.h"
 
 #include "PskEngine.h"
+#include "RxText.h"
 #include "WaterfallWidget.h"
 
 #include <QCheckBox>
@@ -22,7 +23,7 @@
 
 namespace
 {
-constexpr int maxRxChars = 200000;
+constexpr int maxRxChars = 1000000;
 }
 
 PskPanel::PskPanel(PskEngine *engine, QSettings *settings, QWidget *parent)
@@ -31,6 +32,7 @@ PskPanel::PskPanel(PskEngine *engine, QSettings *settings, QWidget *parent)
 {
     QWidget *top = buildTop();
     m_rx = new QPlainTextEdit();
+    RxScrollback::attach(m_rx, QStringLiteral("PSK"));
     m_rx->setReadOnly(true);
     QFont f(QStringLiteral("Consolas"));
     f.setStyleHint(QFont::Monospace);
@@ -139,19 +141,7 @@ void PskPanel::syncStats()
 
 void PskPanel::appendText(const QString &text)
 {
-    QScrollBar *sb = m_rx->verticalScrollBar();
-    const bool atEnd = sb->value() >= sb->maximum() - 2;
-    m_rx->moveCursor(QTextCursor::End);
-    m_rx->insertPlainText(text);
-    if (m_rx->document()->characterCount() > maxRxChars)
-    {
-        QTextCursor c(m_rx->document());
-        c.movePosition(QTextCursor::Start);
-        c.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor, 200);
-        c.removeSelectedText();
-    }
-    if (atEnd)
-        sb->setValue(sb->maximum());
+    RxText::append(m_rx, text, maxRxChars);
 }
 
 bool PskPanel::eventFilter(QObject *obj, QEvent *event)

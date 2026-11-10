@@ -5,7 +5,19 @@
 #include <QMainWindow>
 #include <QTimer>
 
+class AudioHub;
 class CwDecoder;
+class NavtexEngine;
+class NavtexPanel;
+class OliviaEngine;
+class OliviaPanel;
+class QsoLogDock;
+class SessionLog;
+class SstvEngine;
+class SstvPanel;
+class WaterfallWidget;
+class WefaxEngine;
+class WefaxPanel;
 class CwPanel;
 class CwTxEngine;
 class HellEngine;
@@ -53,6 +65,14 @@ private:
     QWidget *buildTxHint();
     void buildLogDock();
     void buildMenus();
+    void buildFileMenu();
+    void wireLogs();
+    void updateQsoMode();
+    QString stampText() const;
+    void saveWindowShot();
+    void saveWaterfallShot(WaterfallWidget *wf = nullptr);
+    void playWav(double speed);
+    void updateAudioStatus();
     void applyTheme(bool dark);
     void updateRadioState();
     void saveAll();
@@ -71,7 +91,21 @@ private:
     HellPanel *m_hellPanel = nullptr;
     SpectrumEngine *m_spectrum = nullptr;
     CwTxEngine *m_cwTx = nullptr;
-    QList<ModemEngine *> m_modems; // PSK, Hell, CW transmit
+    OliviaEngine *m_olivia = nullptr;
+    OliviaPanel *m_oliviaPanel = nullptr;
+    NavtexEngine *m_navtex = nullptr;
+    NavtexPanel *m_navtexPanel = nullptr;
+    SstvEngine *m_sstv = nullptr;
+    SstvPanel *m_sstvPanel = nullptr;
+    WefaxEngine *m_wefax = nullptr;
+    WefaxPanel *m_wefaxPanel = nullptr;
+    AudioHub *m_audio = nullptr;
+    SessionLog *m_session = nullptr;
+    QsoLogDock *m_qso = nullptr;
+    QLabel *m_audioState = nullptr;
+    QAction *m_recordAct = nullptr;
+    QAction *m_stopPlayAct = nullptr;
+    QList<ModemEngine *> m_modems; // PSK, Hell, CW transmit, Olivia, SSTV
 
     QLineEdit *m_host = nullptr;
     QSpinBox *m_port = nullptr;

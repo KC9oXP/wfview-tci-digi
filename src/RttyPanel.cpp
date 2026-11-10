@@ -1,6 +1,7 @@
 #include "RttyPanel.h"
 
 #include "RttyEngine.h"
+#include "RxText.h"
 #include "ScopeWidget.h"
 
 #include <QCheckBox>
@@ -33,7 +34,7 @@
 
 namespace
 {
-constexpr int maxRxChars = 200000;
+constexpr int maxRxChars = 1000000;
 
 QFont monoFont()
 {
@@ -66,6 +67,7 @@ RttyPanel::RttyPanel(RttyEngine *engine, QSettings *settings, QWidget *parent)
     m_split->addWidget(buildTop());
 
     m_rx = new QPlainTextEdit();
+    RxScrollback::attach(m_rx, QStringLiteral("RTTY"));
     m_rx->setReadOnly(true);
     m_rx->setFont(monoFont());
     m_rx->setMinimumHeight(60);
@@ -200,6 +202,49 @@ QWidget *RttyPanel::buildTop()
     g->addWidget(new QLabel(tr("Figures")), row, 2);
     g->addWidget(m_figures, row, 3);
     ++row;
+    {
+        // Common settings in one pick; each field can still be changed after.
+        auto *preset = new QComboBox();
+        preset->addItem(tr("Choose..."));
+        preset->addItem(tr("Amateur 45.45 baud / 170 Hz"));
+        preset->addItem(tr("Amateur 50 baud / 170 Hz"));
+        preset->addItem(tr("Amateur 75 baud / 170 Hz"));
+        preset->addItem(tr("DWD weather 50 baud / 450 Hz (ITA2)"));
+        preset->addItem(tr("100 baud / 850 Hz (ITA2)"));
+        preset->setToolTip(tr("Fill in baud, shift, stop bits and figures for a common RTTY service.\n"
+                              "DWD (German weather service): 4583, 7646, 10100.8 kHz; tune so the pair sits "
+                              "on your mark/space tones, Reverse if needed."));
+        g->addWidget(new QLabel(tr("Preset")), row, 0);
+        g->addWidget(preset, row, 1, 1, 3);
+        connect(preset,
+                &QComboBox::activated,
+                this,
+                [this, preset](int i)
+                {
+                    struct P
+                    {
+                        double baud;
+                        int shift;
+                        double stop;
+                        bool ita2;
+                    };
+                    static const P ps[] = {{45.45, 170, 1.5, false},
+                                           {50.0, 170, 1.5, false},
+                                           {75.0, 170, 1.5, false},
+                                           {50.0, 450, 1.5, true},
+                                           {100.0, 850, 1.5, true}};
+                    if (i < 1 || i > 5)
+                        return;
+                    const P &p = ps[i - 1];
+                    m_rtty->setBaud(p.baud);
+                    m_rtty->setShift(p.shift);
+                    m_rtty->setStopBits(p.stop);
+                    m_rtty->setIta2(p.ita2);
+                    const QSignalBlocker b(preset);
+                    preset->setCurrentIndex(0);
+                });
+        ++row;
+    }
     m_myCall = new QLineEdit();
     m_myCall->setPlaceholderText(tr("your call"));
     m_myCall->setToolTip(tr("Your own call sign, used by {MYCALL} in the macros."));
@@ -471,19 +516,7 @@ void RttyPanel::updateScopeIdle()
 
 void RttyPanel::appendText(const QString &text)
 {
-    QScrollBar *sb = m_rx->verticalScrollBar();
-    const bool atEnd = sb->value() >= sb->maximum() - 2;
-    m_rx->moveCursor(QTextCursor::End);
-    m_rx->insertPlainText(text);
-    if (m_rx->document()->characterCount() > maxRxChars)
-    {
-        QTextCursor c(m_rx->document());
-        c.movePosition(QTextCursor::Start);
-        c.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor, 200);
-        c.removeSelectedText();
-    }
-    if (atEnd)
-        sb->setValue(sb->maximum());
+    RxText::append(m_rx, text, maxRxChars);
 }
 
 void RttyPanel::sendTyped()

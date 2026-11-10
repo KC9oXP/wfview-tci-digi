@@ -2,6 +2,7 @@
 
 #include "CwTxEngine.h"
 #include "ModemTxBox.h"
+#include "RxText.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -22,7 +23,7 @@
 
 namespace
 {
-constexpr int maxDecodeChars = 200000;
+constexpr int maxDecodeChars = 1000000;
 }
 
 CwPanel::CwPanel(CwDecoder *decoder, CwTxEngine *tx, QSettings *settings, QWidget *parent)
@@ -93,6 +94,7 @@ CwPanel::CwPanel(CwDecoder *decoder, CwTxEngine *tx, QSettings *settings, QWidge
     // ---- decode pane + multi-signal list share the remaining height
     m_split = new QSplitter(Qt::Vertical);
     m_text = new QPlainTextEdit();
+    RxScrollback::attach(m_text, QStringLiteral("CW"));
     m_text->setReadOnly(true);
     m_text->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     m_text->setToolTip(tr("Double-click a call sign to copy it to the Call field."));
@@ -291,19 +293,7 @@ void CwPanel::syncFromDecoder()
 
 void CwPanel::appendText(const QString &text)
 {
-    QScrollBar *sb = m_text->verticalScrollBar();
-    const bool atEnd = sb->value() >= sb->maximum() - 2;
-    m_text->moveCursor(QTextCursor::End);
-    m_text->insertPlainText(text);
-    if (m_text->document()->characterCount() > maxDecodeChars)
-    {
-        QTextCursor c(m_text->document());
-        c.movePosition(QTextCursor::Start);
-        c.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor, 200);
-        c.removeSelectedText();
-    }
-    if (atEnd)
-        sb->setValue(sb->maximum());
+    RxText::append(m_text, text, maxDecodeChars);
 }
 
 void CwPanel::showChannels(const QVector<CwChannelInfo> &channels)

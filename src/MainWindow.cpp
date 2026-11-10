@@ -1,16 +1,29 @@
 #include "MainWindow.h"
 
+#include "AppPaths.h"
+#include "AudioHub.h"
 #include "CwDecoder.h"
 #include "CwPanel.h"
 #include "CwTxEngine.h"
 #include "HellEngine.h"
 #include "HellPanel.h"
+#include "NavtexEngine.h"
+#include "NavtexPanel.h"
+#include "OliviaEngine.h"
+#include "OliviaPanel.h"
 #include "PskEngine.h"
 #include "PskPanel.h"
+#include "QsoLog.h"
 #include "RttyEngine.h"
 #include "RttyPanel.h"
+#include "SessionLog.h"
 #include "SpectrumEngine.h"
+#include "SstvEngine.h"
+#include "SstvPanel.h"
 #include "TxPowerWatch.h"
+#include "WaterfallWidget.h"
+#include "WefaxEngine.h"
+#include "WefaxPanel.h"
 #include "modemtxsource.h"
 #include "rttytxsource.h"
 
@@ -20,12 +33,18 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDateTime>
+#include <QDesktopServices>
+#include <QDir>
 #include <QDockWidget>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPalette>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -36,6 +55,7 @@
 #include <QStatusBar>
 #include <QStyleFactory>
 #include <QTabWidget>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #ifndef APP_VERSION
@@ -86,6 +106,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     : QMainWindow(parent)
     , m_settings(settings)
 {
+    AppPaths::init(m_settings);
     setWindowTitle(tr("wfview TCI Digi %1").arg(QStringLiteral(APP_VERSION)));
 
     m_client = new TciClient(this);
@@ -98,8 +119,17 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_hell->loadSettings(m_settings);
     m_cwTx = new CwTxEngine(this);
     m_cwTx->loadSettings(m_settings);
+    m_olivia = new OliviaEngine(this);
+    m_olivia->loadSettings(m_settings);
+    m_sstv = new SstvEngine(this);
+    m_sstv->loadSettings(m_settings);
+    m_navtex = new NavtexEngine(m_settings, this);
+    m_wefax = new WefaxEngine(m_settings, this);
     m_spectrum = new SpectrumEngine(this);
-    m_modems = {m_psk, m_hell, m_cwTx};
+    m_audio = new AudioHub(this);
+    m_audio->setRingSeconds(m_settings->value(QStringLiteral("Audio/RingSeconds"), 120).toInt());
+    m_session = new SessionLog(m_settings, this);
+    m_modems = {m_psk, m_hell, m_cwTx, m_olivia, m_sstv};
 
     // TX audio comes from whichever mode is transmitting (only one can: see
     // onTransmitRequested). RTTY renders silence when idle.
@@ -133,14 +163,28 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_tabs->addTab(m_rttyPanel, tr("RTTY"));
     m_tabs->addTab(m_pskPanel, tr("PSK"));
     m_tabs->addTab(m_hellPanel, tr("Hell"));
+    m_oliviaPanel = new OliviaPanel(m_olivia, m_settings);
+    m_navtexPanel = new NavtexPanel(m_navtex);
+    m_sstvPanel = new SstvPanel(m_sstv, m_settings);
+    m_wefaxPanel = new WefaxPanel(m_wefax);
+    m_tabs->addTab(m_oliviaPanel, tr("Olivia"));
+    m_tabs->addTab(m_navtexPanel, tr("NAVTEX"));
+    m_tabs->addTab(m_sstvPanel, tr("SSTV"));
+    m_tabs->addTab(m_wefaxPanel, tr("WEFAX"));
     v->addWidget(m_tabs, 1);
     setCentralWidget(central);
 
     m_diag = new QLabel(tr("Not connected"));
     m_diag->setTextInteractionFlags(Qt::TextSelectableByMouse);
     statusBar()->addWidget(m_diag, 1);
+    m_audioState = new QLabel();
+    statusBar()->addPermanentWidget(m_audioState);
 
     buildLogDock();
+    m_qso = new QsoLogDock(m_settings, this);
+    addDockWidget(Qt::RightDockWidgetArea, m_qso);
+    m_qso->hide();
+    buildFileMenu();
     buildMenus();
 
     // ---- wiring
@@ -149,13 +193,27 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_client, &TciClient::frequencyChanged, this, &MainWindow::onFrequency);
     connect(m_client, &TciClient::modulationChanged, this, &MainWindow::onModulation);
     connect(m_client, &TciClient::radioTransmitChanged, this, &MainWindow::onRadioTransmit);
-    connect(m_client, &TciClient::rxAudio, m_cw, &CwDecoder::pushAudio);
-    connect(m_client, &TciClient::rxAudio, m_rtty, &RttyEngine::pushAudio);
-    connect(m_client, &TciClient::rxAudio, m_psk, &ModemEngine::pushAudio);
-    connect(m_client, &TciClient::rxAudio, m_hell, &ModemEngine::pushAudio);
-    connect(m_client, &TciClient::rxAudio, m_spectrum, &SpectrumEngine::pushAudio);
+    // Receive audio goes through the hub (ring buffer, recording, WAV playback).
+    connect(m_client, &TciClient::rxAudio, m_audio, &AudioHub::fromRadio);
+    connect(m_audio, &AudioHub::audio, m_cw, &CwDecoder::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_rtty, &RttyEngine::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_psk, &ModemEngine::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_hell, &ModemEngine::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_olivia, &ModemEngine::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_sstv, &ModemEngine::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_navtex, &NavtexEngine::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_wefax, &WefaxEngine::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_spectrum, &SpectrumEngine::pushAudio);
+    connect(m_audio, &AudioHub::playbackChanged, this, [this](bool, double) { updateAudioStatus(); });
+    connect(m_audio, &AudioHub::recordingChanged, this, [this](bool, double) { updateAudioStatus(); });
     connect(m_spectrum, &SpectrumEngine::line, m_pskPanel, &ModemPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_hellPanel, &ModemPanel::addSpectrumLine);
+    connect(m_spectrum, &SpectrumEngine::line, m_oliviaPanel, &ModemPanel::addSpectrumLine);
+    connect(m_spectrum, &SpectrumEngine::line, m_navtexPanel, &NavtexPanel::addSpectrumLine);
+    connect(m_spectrum, &SpectrumEngine::line, m_sstvPanel, &SstvPanel::addSpectrumLine);
+    connect(m_spectrum, &SpectrumEngine::line, m_wefaxPanel, &WefaxPanel::addSpectrumLine);
+    for (WaterfallWidget *wf : findChildren<WaterfallWidget *>())
+        connect(wf, &WaterfallWidget::saveRequested, this, [this, wf]() { saveWaterfallShot(wf); });
     connect(m_client, &TciClient::diagnostics, m_diag, &QLabel::setText);
     m_powerWatch = new TxPowerWatch(this);
     connect(m_client, &TciClient::txSensors, m_powerWatch, &TxPowerWatch::onSensors);
@@ -187,6 +245,8 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     for (ModemEngine *e : m_modems)
         connect(e, &ModemEngine::settingsChanged, this, [e, shareCall]() { shareCall(e->myCall()); });
 
+    wireLogs();
+
     m_reconnect.setInterval(reconnectMs);
     m_reconnect.setSingleShot(true);
     connect(&m_reconnect,
@@ -204,6 +264,8 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     restoreState(m_settings->value(QStringLiteral("State")).toByteArray());
     m_tabs->setCurrentIndex(m_settings->value(QStringLiteral("Tab"), 0).toInt());
     m_settings->endGroup();
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int) { updateQsoMode(); });
+    updateQsoMode();
     if (m_settings->value(QStringLiteral("TCI/ConnectOnStart"), false).toBool())
         QTimer::singleShot(0, this, &MainWindow::toggleConnection);
 
@@ -277,9 +339,10 @@ QWidget *MainWindow::buildConnectionBar()
     m_freq->setMaximumWidth(QFontMetrics(ff).horizontalAdvance(QStringLiteral("888.888.888")) + 24);
     h->addWidget(m_freq);
     m_mode = new QComboBox();
-    m_mode->setToolTip(tr("Radio mode. Every transmit mode here sends audio, so it needs a data mode (DIGU/DIGL) "
-                          "or USB/LSB.\nNote: choosing DIGU/DIGL here makes wfview use Data 1. If your radio's "
-                          "Data 1 input is not the one wfview feeds (LAN or USB), set the data mode in wfview instead."));
+    m_mode->setToolTip(
+        tr("Radio mode. Every transmit mode here sends audio, so it needs a data mode (DIGU/DIGL) "
+           "or USB/LSB.\nNote: choosing DIGU/DIGL here makes wfview use Data 1. If your radio's "
+           "Data 1 input is not the one wfview feeds (LAN or USB), set the data mode in wfview instead."));
     m_mode->setMinimumContentsLength(5);
     h->addWidget(m_mode);
     m_txLamp = new QLabel(tr(" RX "));
@@ -346,6 +409,9 @@ void MainWindow::buildMenus()
 {
     QMenu *view = menuBar()->addMenu(tr("&View"));
     view->addAction(m_logDock->toggleViewAction());
+    QAction *qsoAct = m_qso->toggleViewAction();
+    qsoAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Q));
+    view->addAction(qsoAct);
     QAction *dark = view->addAction(tr("Dark theme"));
     dark->setCheckable(true);
     dark->setChecked(m_settings->value(QStringLiteral("Window/Dark"), true).toBool());
@@ -367,6 +433,39 @@ void MainWindow::buildMenus()
             &QAction::toggled,
             this,
             [this](bool on) { m_settings->setValue(QStringLiteral("TCI/ConnectOnStart"), on); });
+    QAction *sess = opts->addAction(tr("Session log (decoded text to a daily file per mode)"));
+    sess->setCheckable(true);
+    sess->setChecked(m_session->enabled());
+    connect(sess, &QAction::toggled, m_session, &SessionLog::setEnabled);
+    QMenu *ring = opts->addMenu(tr("Audio kept for \"Save last...\""));
+    for (int sec : {60, 120, 300, 600})
+    {
+        QAction *a = ring->addAction(tr("%1 minutes").arg(sec / 60.0, 0, 'g', 2));
+        a->setCheckable(true);
+        a->setChecked(m_audio->ringSeconds() == sec);
+        connect(a,
+                &QAction::triggered,
+                this,
+                [this, ring, a, sec]()
+                {
+                    for (QAction *o : ring->actions())
+                        o->setChecked(o == a);
+                    m_audio->setRingSeconds(sec);
+                    m_settings->setValue(QStringLiteral("Audio/RingSeconds"), sec);
+                });
+    }
+    opts->addAction(tr("Data folder..."),
+                    this,
+                    [this]()
+                    {
+                        const QString d = QFileDialog::getExistingDirectory(
+                            this, tr("Folder for logs, pictures, screenshots and recordings"), AppPaths::base());
+                        if (!d.isEmpty())
+                        {
+                            AppPaths::setBase(d);
+                            log(tr("Data folder: %1").arg(QDir::toNativeSeparators(AppPaths::base())));
+                        }
+                    });
 
     QMenu *help = menuBar()->addMenu(tr("&Help"));
     help->addAction(tr("About"),
@@ -382,7 +481,11 @@ void MainWindow::buildMenus()
                                "CW: ggmorse (MIT) and a hand-key decoder; transmit as keyed audio.<br>"
                                "RTTY: mark/space filter demodulator with W7AY optimal ATC.<br>"
                                "PSK: BPSK31/63/125, matched-filter receiver with AFC.<br>"
-                               "Hell: Feld Hell (Hellschreiber) send and painted receive.<br><br>"
+                               "Hell: Feld Hell (Hellschreiber) send and painted receive.<br>"
+                               "Olivia / Contestia: Pawel Jalocha's MFSK library, as in fldigi.<br>"
+                               "NAVTEX / SITOR-B: receive (decoder after fldigi's).<br>"
+                               "SSTV: Martin, Scottie, Robot, PD modes, VIS, auto slant; send pictures.<br>"
+                               "WEFAX: HF weather fax receive with APT start/stop and phasing.<br><br>"
                                "License: GPLv3.")
                                 .arg(QStringLiteral(APP_VERSION)));
                     });
@@ -488,6 +591,8 @@ void MainWindow::onFrequency(qint64 hz)
 {
     if (!m_freq->hasFocus())
         m_freq->setText(formatFreq(hz));
+    m_session->setRadio(hz, m_client->modulation());
+    m_qso->setRadio(hz, m_client->modulation());
 }
 
 void MainWindow::onModulation(const QString &mode)
@@ -497,6 +602,8 @@ void MainWindow::onModulation(const QString &mode)
         m_mode->addItem(mode);
     m_mode->setCurrentText(mode);
     m_rtty->setRadioMode(mode);
+    m_session->setRadio(m_client->frequencyHz(), mode);
+    m_qso->setRadio(m_client->frequencyHz(), mode);
     updateRadioState();
 }
 
@@ -554,6 +661,8 @@ void MainWindow::updateRadioState()
     m_cwPanel->setRadioState(ready, canTx, m_client->modulation());
     m_pskPanel->setRadioState(ready, canTx, m_client->modulation());
     m_hellPanel->setRadioState(ready, canTx, m_client->modulation());
+    m_oliviaPanel->setRadioState(ready, canTx, m_client->modulation());
+    m_sstvPanel->setRadioState(ready, canTx, m_client->modulation());
     m_freq->setEnabled(ready);
     m_mode->setEnabled(ready);
 }
@@ -569,6 +678,8 @@ void MainWindow::saveAll()
     m_rttyPanel->saveState();
     m_pskPanel->saveState();
     m_hellPanel->saveState();
+    m_oliviaPanel->saveState();
+    m_sstvPanel->saveState();
     m_settings->beginGroup(QStringLiteral("Window"));
     m_settings->setValue(QStringLiteral("Geometry"), saveGeometry());
     m_settings->setValue(QStringLiteral("State"), saveState());
@@ -586,7 +697,298 @@ void MainWindow::closeEvent(QCloseEvent *event)
         if (e->transmitting())
             e->abortTx();
     m_wantConnected = false;
+    m_audio->stopRecording();
+    m_audio->stopPlayback();
     m_client->disconnectFromServer();
     saveAll();
     QMainWindow::closeEvent(event);
+}
+
+// ---------------------------------------------------------------------------
+// Files: screenshots, audio, logs
+// ---------------------------------------------------------------------------
+
+void MainWindow::buildFileMenu()
+{
+    QMenu *file = menuBar()->addMenu(tr("&File"));
+    QAction *shot = file->addAction(tr("Save window screenshot"), this, &MainWindow::saveWindowShot);
+    shot->setShortcut(QKeySequence(Qt::Key_F12));
+    QAction *wf = file->addAction(tr("Save waterfall picture"), this, [this]() { saveWaterfallShot(); });
+    wf->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
+    file->addSeparator();
+    QAction *last = file->addAction(
+        tr("Save the last 2 minutes of receive audio"),
+        this,
+        [this]()
+        {
+            QString err;
+            const QString p = m_audio->saveLast(m_audio->ringSeconds(), &err);
+            log(p.isEmpty() ? tr("Audio not saved: %1").arg(err)
+                            : tr("Saved %1 s of receive audio to %2")
+                                  .arg(qRound(std::min<double>(m_audio->bufferedSeconds(), m_audio->ringSeconds())))
+                                  .arg(QDir::toNativeSeparators(p)));
+            statusBar()->showMessage(p.isEmpty() ? err : QDir::toNativeSeparators(p), 8000);
+        });
+    last->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
+    connect(file,
+            &QMenu::aboutToShow,
+            this,
+            [this, last]()
+            {
+                last->setText(tr("Save the last %1 of receive audio")
+                                  .arg(m_audio->ringSeconds() >= 120 ? tr("%1 minutes").arg(m_audio->ringSeconds() / 60)
+                                                                     : tr("%1 seconds").arg(m_audio->ringSeconds())));
+            });
+    m_recordAct = file->addAction(tr("Record receive audio"));
+    m_recordAct->setCheckable(true);
+    connect(m_recordAct,
+            &QAction::toggled,
+            this,
+            [this](bool on)
+            {
+                if (on == m_audio->recording())
+                    return;
+                if (on)
+                {
+                    QString err;
+                    if (!m_audio->startRecording(&err))
+                    {
+                        const QSignalBlocker b(m_recordAct);
+                        m_recordAct->setChecked(false);
+                        statusBar()->showMessage(err, 8000);
+                        return;
+                    }
+                    log(tr("Recording to %1").arg(QDir::toNativeSeparators(m_audio->recordingPath())));
+                }
+                else
+                {
+                    m_audio->stopRecording();
+                    log(tr("Recording saved: %1").arg(QDir::toNativeSeparators(m_audio->recordingPath())));
+                }
+            });
+    file->addAction(tr("Play a WAV file into the decoders..."), this, [this]() { playWav(1.0); });
+    file->addAction(tr("Play a WAV file, 4x speed..."), this, [this]() { playWav(4.0); });
+    m_stopPlayAct = file->addAction(tr("Stop playback"), m_audio, &AudioHub::stopPlayback);
+    m_stopPlayAct->setEnabled(false);
+    file->addSeparator();
+    file->addAction(
+        tr("Open data folder"), this, []() { QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::base())); });
+    file->addAction(tr("Open the logs folder"),
+                    this,
+                    [this]() { QDesktopServices::openUrl(QUrl::fromLocalFile(m_session->folder())); });
+    file->addSeparator();
+    file->addAction(tr("Quit"), this, &QWidget::close);
+}
+
+void MainWindow::playWav(double speed)
+{
+    const QString start = m_settings->value(QStringLiteral("Audio/PlayDir"), AppPaths::recordings()).toString();
+    const QString path = QFileDialog::getOpenFileName(this, tr("Play a recording"), start, tr("WAV audio (*.wav)"));
+    if (path.isEmpty())
+        return;
+    m_settings->setValue(QStringLiteral("Audio/PlayDir"), QFileInfo(path).absolutePath());
+    QString err;
+    if (!m_audio->play(path, speed, &err))
+    {
+        QMessageBox::warning(this, tr("Playback"), tr("Cannot play %1:\n%2").arg(path, err));
+        return;
+    }
+    log(tr("Playing %1 at %2x (radio audio held off until it ends)").arg(QDir::toNativeSeparators(path)).arg(speed));
+}
+
+void MainWindow::updateAudioStatus()
+{
+    QStringList parts;
+    if (m_audio->playing())
+        parts << tr("<b>Playing</b> %1").arg(QFileInfo(m_audio->playbackFile()).fileName());
+    if (m_audio->recording())
+        parts << tr("<span style='color:#ff6060'><b>REC</b></span>");
+    m_audioState->setText(parts.join(QStringLiteral("  ")));
+    if (m_stopPlayAct)
+        m_stopPlayAct->setEnabled(m_audio->playing());
+    if (m_recordAct && m_recordAct->isChecked() != m_audio->recording())
+    {
+        const QSignalBlocker b(m_recordAct);
+        m_recordAct->setChecked(m_audio->recording());
+    }
+}
+
+QString MainWindow::stampText() const
+{
+    const QString call = m_psk->myCall();
+    const QString when = QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss'Z'"));
+    const QString freq
+        = m_client->frequencyHz() > 0 ? formatFreq(m_client->frequencyHz()) + QStringLiteral(" Hz") : QString();
+    QStringList parts;
+    if (!call.isEmpty())
+        parts << call;
+    parts << when;
+    if (!freq.isEmpty())
+        parts << freq + QLatin1Char(' ') + m_client->modulation();
+    parts << m_tabs->tabText(m_tabs->currentIndex());
+    return parts.join(QStringLiteral("   "));
+}
+
+void MainWindow::saveWindowShot()
+{
+    const QPixmap px = grab();
+    const QString path
+        = QDir(AppPaths::screenshots())
+              .filePath(QStringLiteral("window-%1-%2.png")
+                            .arg(AppPaths::stamp(), AppPaths::safe(m_tabs->tabText(m_tabs->currentIndex()))));
+    if (px.save(path))
+    {
+        log(tr("Screenshot saved: %1").arg(QDir::toNativeSeparators(path)));
+        statusBar()->showMessage(tr("Screenshot saved: %1").arg(QDir::toNativeSeparators(path)), 8000);
+    }
+}
+
+void MainWindow::saveWaterfallShot(WaterfallWidget *wf)
+{
+    if (!wf)
+        wf = m_tabs->currentWidget() ? m_tabs->currentWidget()->findChild<WaterfallWidget *>() : nullptr;
+    if (!wf)
+    {
+        statusBar()->showMessage(tr("This tab has no waterfall."), 5000);
+        return;
+    }
+    // The waterfall as shown, with a line saying who, when and where.
+    const QPixmap px = wf->grab();
+    const int bar = fontMetrics().height() + 8;
+    QImage out(px.width(), px.height() + bar, QImage::Format_RGB32);
+    out.fill(QColor(20, 22, 26));
+    QPainter p(&out);
+    p.drawPixmap(0, 0, px);
+    p.setPen(QColor(230, 230, 230));
+    p.drawText(QRect(6, px.height(), out.width() - 12, bar), Qt::AlignVCenter | Qt::AlignLeft, stampText());
+    p.end();
+    const QString path
+        = QDir(AppPaths::screenshots())
+              .filePath(QStringLiteral("waterfall-%1-%2.png")
+                            .arg(AppPaths::stamp(), AppPaths::safe(m_tabs->tabText(m_tabs->currentIndex()))));
+    if (out.save(path))
+    {
+        log(tr("Waterfall saved: %1").arg(QDir::toNativeSeparators(path)));
+        statusBar()->showMessage(tr("Waterfall saved: %1").arg(QDir::toNativeSeparators(path)), 8000);
+    }
+}
+
+void MainWindow::wireLogs()
+{
+    // Session log: what each mode decodes (and sends), labelled with the mode.
+    connect(m_cw,
+            &CwDecoder::textAppended,
+            this,
+            [this](const QString &t) { m_session->add(QStringLiteral("CW"), tr("CW"), t); });
+    connect(m_cwTx,
+            &ModemEngine::textAppended,
+            this,
+            [this](const QString &t) { m_session->add(QStringLiteral("CW"), tr("CW"), t); });
+    connect(m_rtty,
+            &RttyEngine::textAppended,
+            this,
+            [this](const QString &t)
+            {
+                m_session->add(QStringLiteral("RTTY"),
+                               tr("RTTY %1 Bd / %2 Hz").arg(m_rtty->baud(), 0, 'g', 4).arg(m_rtty->shift()),
+                               t);
+            });
+    connect(m_psk,
+            &ModemEngine::textAppended,
+            this,
+            [this](const QString &t)
+            {
+                m_session->add(QStringLiteral("PSK"),
+                               tr("PSK %1 @ %2 Hz")
+                                   .arg(QString::fromLatin1(psk::speedName(m_psk->speed())))
+                                   .arg(qRound(m_psk->carrierHz())),
+                               t);
+            });
+    connect(m_hell,
+            &ModemEngine::textAppended,
+            this,
+            [this](const QString &t) { m_session->add(QStringLiteral("Hell"), tr("Feld Hell (sent)"), t); });
+    connect(m_olivia,
+            &ModemEngine::textAppended,
+            this,
+            [this](const QString &t)
+            {
+                m_session->add(QStringLiteral("Olivia"),
+                               tr("%1 @ %2 Hz").arg(m_olivia->modeName()).arg(qRound(m_olivia->carrierHz())),
+                               t);
+            });
+    connect(m_navtex,
+            &NavtexEngine::textAppended,
+            this,
+            [this](const QString &t)
+            { m_session->add(QStringLiteral("NAVTEX"), tr("NAVTEX @ %1 Hz").arg(qRound(m_navtex->centreHz())), t); });
+    connect(m_sstv,
+            &SstvEngine::logLine,
+            this,
+            [this](const QString &t) { m_session->add(QStringLiteral("SSTV"), tr("SSTV"), t); });
+    connect(m_wefax,
+            &WefaxEngine::logLine,
+            this,
+            [this](const QString &t) { m_session->add(QStringLiteral("WEFAX"), tr("WEFAX"), t); });
+
+    // QSO log: the other station's call follows whichever mode set it last.
+    const auto followCall = [this](const QString &c) { m_qso->setCall(c); };
+    connect(m_rtty, &RttyEngine::settingsChanged, this, [this, followCall]() { followCall(m_rtty->call()); });
+    for (ModemEngine *e : m_modems)
+        connect(e,
+                &ModemEngine::settingsChanged,
+                this,
+                [this, e, followCall]()
+                {
+                    followCall(e->call());
+                    m_qso->setMyCall(e->myCall());
+                });
+    m_qso->setMyCall(m_psk->myCall());
+    connect(m_qso,
+            &QsoLogDock::logged,
+            this,
+            [this](const QString &line)
+            {
+                log(line);
+                statusBar()->showMessage(line, 6000);
+            });
+    connect(m_psk, &ModemEngine::settingsChanged, this, &MainWindow::updateQsoMode);
+    connect(m_olivia, &ModemEngine::settingsChanged, this, &MainWindow::updateQsoMode);
+}
+
+void MainWindow::updateQsoMode()
+{
+    if (!m_qso)
+        return;
+    QWidget *w = m_tabs->currentWidget();
+    QString mode, sub;
+    if (w == m_cwPanel)
+        mode = QStringLiteral("CW");
+    else if (w == m_rttyPanel)
+        mode = QStringLiteral("RTTY");
+    else if (w == m_pskPanel)
+    {
+        mode = QStringLiteral("PSK");
+        sub = QStringList {QStringLiteral("PSK31"), QStringLiteral("PSK63"), QStringLiteral("PSK125")}.value(
+            m_psk->speed());
+    }
+    else if (w == m_hellPanel)
+    {
+        mode = QStringLiteral("HELL");
+        sub = QStringLiteral("FMHELL");
+    }
+    else if (w == m_oliviaPanel)
+    {
+        if (m_olivia->contestia())
+            mode = QStringLiteral("CONTESTI");
+        else
+        {
+            mode = QStringLiteral("OLIVIA");
+            sub = QStringLiteral("OLIVIA %1/%2").arg(m_olivia->tones()).arg(m_olivia->bandwidth());
+        }
+    }
+    else if (w == m_sstvPanel)
+        mode = QStringLiteral("SSTV");
+    // NAVTEX and WEFAX are receive-only: no QSO mode.
+    m_qso->setMode(mode, sub, m_tabs->tabText(m_tabs->currentIndex()));
 }

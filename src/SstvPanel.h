@@ -1,0 +1,79 @@
+#pragma once
+
+// SSTV tab.
+//   receive: Decode, auto slant / trim, Start now (no VIS) and Stop, the
+//   picture as it comes in, a strip of received pictures, a small waterfall
+//   transmit: open or paste a picture, mode, text overlay ({MYCALL} {CALL}
+//   {RST}), preview, Send / Abort, level and progress
+
+#include <QImage>
+#include <QWidget>
+
+class ImageView;
+class QCheckBox;
+class QComboBox;
+class QLabel;
+class QLineEdit;
+class QListWidget;
+class QProgressBar;
+class QPushButton;
+class QSettings;
+class QSlider;
+class QSpinBox;
+class SstvEngine;
+class WaterfallWidget;
+
+class SstvPanel : public QWidget
+{
+    Q_OBJECT
+
+public:
+    SstvPanel(SstvEngine *engine, QSettings *settings, QWidget *parent = nullptr);
+    void saveState();
+    WaterfallWidget *waterfall() const
+    {
+        return m_wf;
+    }
+
+public slots:
+    void setRadioState(bool ready, bool canTransmit, const QString &mode);
+    void addSpectrumLine(const QVector<float> &db, double hzPerBin);
+
+private:
+    QWidget *buildRx();
+    QWidget *buildTx();
+    void sync();
+    void syncTx(bool on);
+    void loadTxImage(const QImage &img);
+    void updatePreview();
+    QImage composeTx() const;
+    void addThumb(const QString &path, const QImage &img);
+
+    SstvEngine *m_sstv;
+    QSettings *m_settings;
+    bool m_ready = false, m_canTx = false;
+
+    QPushButton *m_decode = nullptr;
+    QCheckBox *m_autoSlant = nullptr;
+    QSpinBox *m_trim = nullptr;
+    QComboBox *m_manualMode = nullptr;
+    QPushButton *m_startNow = nullptr;
+    QPushButton *m_stop = nullptr;
+    QPushButton *m_save = nullptr;
+    QLabel *m_status = nullptr;
+    QLabel *m_level = nullptr;
+    ImageView *m_view = nullptr;
+    QListWidget *m_gallery = nullptr;
+    WaterfallWidget *m_wf = nullptr;
+
+    QImage m_txSource;
+    QComboBox *m_txMode = nullptr;
+    QLineEdit *m_overlay = nullptr;
+    QLineEdit *m_call = nullptr;
+    ImageView *m_preview = nullptr;
+    QPushButton *m_send = nullptr;
+    QPushButton *m_abort = nullptr;
+    QSlider *m_txLevel = nullptr;
+    QProgressBar *m_progress = nullptr;
+    QLabel *m_txWarn = nullptr;
+};

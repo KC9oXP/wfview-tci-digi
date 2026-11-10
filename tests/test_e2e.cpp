@@ -3,24 +3,39 @@
 //
 //   test_e2e            run the tests (about 40 s, real time)
 //   test_e2e --serve N  only run the mock server on port N (to try the app without a radio)
+//   test_e2e --new      only the tests of the 0.4.0 additions
 //   test_e2e --screens DIR  also render the main window at several sizes to PNGs in DIR
 
+#include "AudioHub.h"
 #include "CwDecoder.h"
 #include "CwTxEngine.h"
 #include "HellEngine.h"
 #include "MainWindow.h"
 #include "MockTciServer.h"
+#include "NavtexEngine.h"
+#include "OliviaEngine.h"
 #include "PskEngine.h"
+#include "QsoLog.h"
 #include "RttyEngine.h"
+#include "SstvEngine.h"
 #include "TciClient.h"
 #include "TxPowerWatch.h"
+#include "WefaxEngine.h"
 #include "modemtxsource.h"
+#include "navtexcore.h"
+#include "oliviacore.h"
 #include "rttytxsource.h"
+#include "sstvcore.h"
+#include "wavfile.h"
+#include "wefaxcore.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QTabWidget>
@@ -265,6 +280,235 @@ static void runSession(bool stopRxWhileTx)
     CHECK(!rtty.transmitting());
 }
 
+// A WAV with Olivia 8/500, NAVTEX, an SSTV Robot 36 picture and a short
+// weather fax, played through AudioHub into the app's decoders.
+static QString makeTestWav(const QString &dir)
+{
+    const double fs = 48000.0;
+    std::vector<float> a(size_t(fs), 0.0f), b(960);
+    const auto gap = [&](double sec) { a.insert(a.end(), size_t(sec * fs), 0.0f); };
+    {
+        olivia::Config c;
+        c.centreHz = 1500;
+        OliviaModulator m;
+        m.setConfig(c);
+        m.preroll(0.5);
+        for (char ch : std::string("OLIVIA TEST de KC9OXP\n"))
+            m.queueChar(ch);
+        bool tailed = false;
+        for (int g = 0; g < 100000; ++g)
+        {
+            if (m.idle())
+            {
+                if (tailed)
+                    break;
+                m.tail(0);
+                tailed = true;
+            }
+            m.render(b.data(), b.size(), fs);
+            for (float v : b)
+                a.push_back(0.3f * v);
+        }
+        gap(10.0); // let the Olivia receiver integrate past the end
+    }
+    {
+        NavtexEncoder n;
+        n.start("ZCZC AA01\nNAVTEX TEST MESSAGE 42\nNNNN\n", 4.0);
+        while (!n.done())
+        {
+            n.render(b.data(), b.size(), fs);
+            for (float v : b)
+                a.push_back(0.3f * v);
+        }
+        gap(1.0);
+    }
+    {
+        const sstv::ModeInfo &m = sstv::info(sstv::Robot36);
+        std::vector<uint32_t> img(size_t(m.width) * m.height);
+        for (int y = 0; y < m.height; ++y)
+            for (int x = 0; x < m.width; ++x)
+                img[size_t(y) * m.width + x] = (uint32_t(x * 255 / m.width) << 16) | uint32_t(y * 255 / m.height);
+        SstvEncoder e;
+        e.start(sstv::Robot36, img);
+        while (!e.done())
+        {
+            e.render(b.data(), b.size(), fs);
+            for (float v : b)
+                a.push_back(0.3f * v);
+        }
+        gap(2.0);
+    }
+    {
+        const int W = wefax::widthForIoc(576);
+        std::vector<uint8_t> img(size_t(W) * 30);
+        for (size_t i = 0; i < img.size(); ++i)
+            img[i] = uint8_t((i % size_t(W)) * 255 / size_t(W));
+        WefaxEncoder f;
+        f.start(img, W, 120, 576, 10);
+        while (!f.done())
+        {
+            f.render(b.data(), b.size(), fs);
+            for (float v : b)
+                a.push_back(0.3f * v);
+        }
+        gap(2.0);
+    }
+    const QString path = QDir(dir).filePath(QStringLiteral("newmodes.wav"));
+    WavWriter w;
+    w.open(path.toStdString(), int(fs));
+    w.write(a.data(), a.size());
+    w.close();
+    std::printf("  test WAV: %.1f s\n", a.size() / fs);
+    return path;
+}
+
+static QString paneText(QWidget *tab)
+{
+    QString all;
+    for (QPlainTextEdit *e : tab->findChildren<QPlainTextEdit *>())
+        all += e->toPlainText();
+    return all;
+}
+
+static void runNewModes()
+{
+    std::printf("\n=== new modes: WAV playback into Olivia, NAVTEX, SSTV, WEFAX; logs ===\n");
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("Station/MyCall"), QStringLiteral("KC9OXP"));
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    MainWindow w(&settings);
+    w.show();
+    pump(300);
+    auto *tabs = w.findChild<QTabWidget *>();
+    for (QPushButton *b : w.findChildren<QPushButton *>())
+        if (b->text() == QStringLiteral("Decode") && !b->isChecked())
+            b->click();
+    auto *hub = w.findChild<AudioHub *>();
+    CHECK(hub != nullptr);
+    const QString wavPath = makeTestWav(tmp.path());
+    QString err;
+    CHECK(hub->play(wavPath, 8.0, &err));
+    CHECK(waitFor([&] { return !hub->playing(); }, 60000));
+    pump(4000);
+
+    QWidget *oliviaTab = nullptr, *navtexTab = nullptr;
+    for (int i = 0; i < tabs->count(); ++i)
+    {
+        if (tabs->tabText(i) == QStringLiteral("Olivia"))
+            oliviaTab = tabs->widget(i);
+        if (tabs->tabText(i) == QStringLiteral("NAVTEX"))
+            navtexTab = tabs->widget(i);
+    }
+    const QString ol = paneText(oliviaTab), nav = paneText(navtexTab);
+    std::printf("  Olivia pane: [%s]\n  NAVTEX pane: [%s]\n", qPrintable(ol.trimmed()), qPrintable(nav.trimmed()));
+    CHECK(ol.contains(QStringLiteral("OLIVIA TEST de KC9OXP")));
+    CHECK(nav.contains(QStringLiteral("NAVTEX TEST MESSAGE 42")));
+    const QDir data(tmp.filePath(QStringLiteral("data")));
+    const QStringList sstvFiles = QDir(data.filePath(QStringLiteral("sstv"))).entryList({QStringLiteral("*.png")});
+    const QStringList faxFiles = QDir(data.filePath(QStringLiteral("wefax"))).entryList({QStringLiteral("*.png")});
+    std::printf("  SSTV files %s\n  WEFAX files %s\n", qPrintable(sstvFiles.join(' ')), qPrintable(faxFiles.join(' ')));
+    CHECK(sstvFiles.size() == 1 && sstvFiles.value(0).contains(QStringLiteral("Robot-36")));
+    CHECK(faxFiles.size() == 1);
+    if (faxFiles.size() == 1)
+    {
+        const QImage fax(QDir(data.filePath(QStringLiteral("wefax"))).filePath(faxFiles.at(0)));
+        std::printf("  WEFAX picture %dx%d\n", fax.width(), fax.height());
+        CHECK(fax.width() == 1810 && fax.height() >= 28 && fax.height() <= 40);
+    }
+
+    // session log
+    const QDir logDir(data.filePath(QStringLiteral("logs")));
+    std::printf("  logs: %s\n", qPrintable(logDir.entryList(QDir::Files).join(QStringLiteral(", "))));
+    const auto readLog = [&](const QString &mode)
+    {
+        const QStringList f = logDir.entryList({QStringLiteral("* ") + mode + QStringLiteral(".txt")});
+        QFile lf(logDir.filePath(f.value(0)));
+        return f.size() == 1 && lf.open(QIODevice::ReadOnly) ? QString::fromUtf8(lf.readAll()) : QString();
+    };
+    const QString olLog = readLog(QStringLiteral("Olivia"));
+    CHECK(olLog.contains(QStringLiteral("--- ")) && olLog.contains(QStringLiteral("Olivia 8/500 @ 1500 Hz")));
+    CHECK(olLog.contains(QStringLiteral("OLIVIA TEST de KC9OXP")));
+    CHECK(readLog(QStringLiteral("NAVTEX")).contains(QStringLiteral("NAVTEX TEST MESSAGE 42")));
+    CHECK(readLog(QStringLiteral("SSTV")).contains(QStringLiteral("[SSTV] received Robot 36")));
+    CHECK(readLog(QStringLiteral("WEFAX")).contains(QStringLiteral("[WEFAX]")));
+
+    // QSO log on the Olivia tab
+    tabs->setCurrentWidget(oliviaTab);
+    auto *qso = w.findChild<QsoLogDock *>();
+    qso->setCall(QStringLiteral("W6EL"));
+    for (QPushButton *b : qso->findChildren<QPushButton *>())
+        if (b->text() == QStringLiteral("Log QSO"))
+            b->click();
+    QFile af(qso->logPath());
+    const QList<Qso> q = af.open(QIODevice::ReadOnly) ? Adif::parse(QString::fromUtf8(af.readAll())) : QList<Qso>();
+    CHECK(q.size() == 1);
+    if (!q.isEmpty())
+    {
+        std::printf("  ADIF: %s", qPrintable(Adif::record(q.first())));
+        CHECK(q.first().call == QStringLiteral("W6EL"));
+        CHECK(q.first().mode == QStringLiteral("OLIVIA") && q.first().submode == QStringLiteral("OLIVIA 8/500"));
+        CHECK(q.first().myCall == QStringLiteral("KC9OXP"));
+        CHECK(q.first().on.isValid());
+    }
+
+    // window screenshot (F12)
+    for (QAction *a : w.findChildren<QAction *>())
+        if (a->text() == QStringLiteral("Save window screenshot"))
+            a->trigger();
+    CHECK(QDir(data.filePath(QStringLiteral("screenshots"))).entryList({QStringLiteral("window-*.png")}).size() == 1);
+}
+
+static void runNewModesTx()
+{
+    std::printf("\n=== new modes: Olivia and SSTV transmit to the mock server; save last audio ===\n");
+    MockTciServer server;
+    server.listen();
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("TCI/Port"), server.port());
+    settings.setValue(QStringLiteral("TCI/ConnectOnStart"), true);
+    settings.setValue(QStringLiteral("Station/MyCall"), QStringLiteral("KC9OXP"));
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    MainWindow w(&settings);
+    w.show();
+    auto *client = w.findChild<TciClient *>();
+    CHECK(waitFor([&] { return client->isReady(); }, 5000));
+    pump(2500);
+
+    auto *hub = w.findChild<AudioHub *>();
+    QString err;
+    const QString saved = hub->saveLast(60, &err);
+    std::printf("  saved last audio: %s %s\n", qPrintable(saved), qPrintable(err));
+    std::vector<float> back;
+    double rate = 0;
+    std::string e;
+    CHECK(!saved.isEmpty() && wav::read(saved.toStdString(), back, rate, e) && rate == 48000.0 && back.size() > 48000);
+
+    auto *ol = w.findChild<OliviaEngine *>();
+    const quint64 before = server.txFramesReceived;
+    ol->send(QStringLiteral("TEST"));
+    CHECK(ol->transmitting());
+    CHECK(waitFor([&] { return !ol->transmitting(); }, 30000)); // releases by itself when sent
+    std::printf("  Olivia TX frames %llu\n", (unsigned long long)(server.txFramesReceived - before));
+    CHECK(server.txFramesReceived - before > 48000 * 3);
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 2000));
+
+    auto *sstvEng = w.findChild<SstvEngine *>();
+    sstvEng->setTxMode(sstv::Robot36);
+    QImage pic(320, 240, QImage::Format_RGB32);
+    pic.fill(Qt::blue);
+    const quint64 before2 = server.txFramesReceived;
+    sstvEng->sendImage(pic);
+    CHECK(sstvEng->transmitting());
+    CHECK(waitFor([&] { return server.txFramesReceived - before2 > 48000 * 4; }, 10000));
+    std::printf("  SSTV progress %.3f of %.1f s\n", sstvEng->txProgress(), sstvEng->txSeconds());
+    CHECK(sstvEng->txProgress() > 0.05 && sstvEng->txSeconds() > 36.0);
+    sstvEng->abortTx();
+    CHECK(!sstvEng->transmitting());
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 2000));
+}
+
 static void renderScreens(const QString &dir)
 {
     std::printf("\n=== window screenshots ===\n");
@@ -276,6 +520,7 @@ static void renderScreens(const QString &dir)
     settings.setValue(QStringLiteral("TCI/ConnectOnStart"), true);
     settings.setValue(QStringLiteral("Hell/Carrier"), 500.0); // the mock's Hell station
     settings.setValue(QStringLiteral("Station/MyCall"), QStringLiteral("KC9OXP"));
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
     MainWindow w(&settings);
     w.show();
     pump(1500);
@@ -286,10 +531,14 @@ static void renderScreens(const QString &dir)
             b->click();
     pump(12000); // enough for a few Hell words
     const QList<QSize> sizes = {QSize(1100, 760), QSize(640, 520), QSize(1600, 1000)};
-    static const char *const names[] = {"cw", "rtty", "psk", "hell"};
-    for (int tab = 0; tab < tabs->count() && tab < 4; ++tab)
+    static const char *const names[] = {"cw", "rtty", "psk", "hell", "olivia", "navtex", "sstv", "wefax"};
+    for (int tab = 0; tab < tabs->count() && tab < 8; ++tab)
     {
         tabs->setCurrentIndex(tab);
+        std::printf("  tab %s minimum %dx%d\n",
+                    names[tab],
+                    tabs->widget(tab)->minimumSizeHint().width(),
+                    tabs->widget(tab)->minimumSizeHint().height());
         for (const QSize &s : sizes)
         {
             w.resize(s);
@@ -318,7 +567,7 @@ static void renderScreens(const QString &dir)
         if (e->text() == QStringLiteral("KC9OXP"))
             ++calls;
     std::printf("  My call fields showing KC9OXP: %d\n", calls);
-    CHECK(calls == 4); // RTTY, PSK, Hell, CW
+    CHECK(calls == 5); // RTTY, PSK, Hell, CW, Olivia
 }
 
 int main(int argc, char *argv[])
@@ -339,8 +588,14 @@ int main(int argc, char *argv[])
         return app.exec();
     }
 
-    runSession(false);
-    runSession(true);
+    const bool onlyNew = args.contains(QStringLiteral("--new"));
+    if (!onlyNew)
+    {
+        runSession(false);
+        runSession(true);
+    }
+    runNewModes();
+    runNewModesTx();
     const int screens = args.indexOf(QStringLiteral("--screens"));
     if (screens >= 0)
         renderScreens(args.value(screens + 1, QStringLiteral(".")));

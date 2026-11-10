@@ -1,4 +1,5 @@
-# wfview TCI Digi - stand-alone CW, RTTY, PSK and Feld Hell for wfview over TCI.
+# wfview TCI Digi - stand-alone digital modes for wfview over TCI: CW, RTTY, PSK,
+# Feld Hell, Olivia/Contestia, NAVTEX, SSTV and WEFAX.
 # Qt 6 (Widgets, WebSockets), C++17.
 
 TEMPLATE = app
@@ -7,13 +8,13 @@ QT += widgets websockets
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.3.0
+VERSION = 0.4.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
     QMAKE_TARGET_COMPANY = KC9oXP
     QMAKE_TARGET_PRODUCT = "wfview TCI Digi"
-    QMAKE_TARGET_DESCRIPTION = "CW, RTTY, PSK and Feld Hell for wfview over TCI"
+    QMAKE_TARGET_DESCRIPTION = "Digital modes for wfview over TCI"
     RC_ICONS = icons/wfview-tci-digi.ico
     msvc: QMAKE_CXXFLAGS += /utf-8
     DEFINES += _USE_MATH_DEFINES NOMINMAX
@@ -43,7 +44,30 @@ HEADERS += \
     src/TxPowerWatch.h \
     src/PskPanel.h \
     src/HellPanel.h \
+    src/AppPaths.h \
+    src/RxText.h \
+    src/AudioHub.h \
+    src/SessionLog.h \
+    src/QsoLog.h \
+    src/ImageView.h \
+    src/OliviaEngine.h \
+    src/OliviaPanel.h \
+    src/NavtexEngine.h \
+    src/NavtexPanel.h \
+    src/SstvEngine.h \
+    src/SstvPanel.h \
+    src/WefaxEngine.h \
+    src/WefaxPanel.h \
     src/MainWindow.h \
+    engine/audioresampler.h \
+    engine/fmdemod.h \
+    engine/sstvcore.h \
+    engine/wefaxcore.h \
+    engine/navtexcore.h \
+    engine/oliviacore.h \
+    engine/extratxsources.h \
+    engine/wavfile.h \
+    engine/jalocha/pj_mfsk.h \
     engine/cwdecodercore.h \
     engine/cwhandkeydecoder.h \
     engine/cwmultidecoder.h \
@@ -78,7 +102,26 @@ SOURCES += \
     src/TxPowerWatch.cpp \
     src/PskPanel.cpp \
     src/HellPanel.cpp \
+    src/AppPaths.cpp \
+    src/AudioHub.cpp \
+    src/SessionLog.cpp \
+    src/QsoLog.cpp \
+    src/ImageView.cpp \
+    src/OliviaEngine.cpp \
+    src/OliviaPanel.cpp \
+    src/NavtexEngine.cpp \
+    src/NavtexPanel.cpp \
+    src/SstvEngine.cpp \
+    src/SstvPanel.cpp \
+    src/WefaxEngine.cpp \
+    src/WefaxPanel.cpp \
+    src/RxText.cpp \
     src/MainWindow.cpp \
+    engine/sstvcore.cpp \
+    engine/wefaxcore.cpp \
+    engine/navtexcore.cpp \
+    engine/oliviacore.cpp \
+    engine/wavfile.cpp \
     engine/rttycore.cpp \
     engine/rttytxsource.cpp \
     engine/pskcore.cpp \

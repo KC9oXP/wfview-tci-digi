@@ -1,5 +1,9 @@
 #include "WaterfallWidget.h"
 
+#include <QContextMenuEvent>
+#include <QDateTime>
+#include <QKeyEvent>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QWheelEvent>
@@ -17,8 +21,12 @@ WaterfallWidget::WaterfallWidget(QWidget *parent)
 {
     setMouseTracking(true);
     setCursor(Qt::CrossCursor);
+    setFocusPolicy(Qt::ClickFocus);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    setToolTip(tr("Click a signal to tune to it. Mouse wheel: fine tune 1 Hz."));
+    setToolTip(tr("Click a signal to tune to it. Mouse wheel: fine tune 1 Hz.\n"
+                  "Shift+wheel or PgUp/PgDn: scroll back through the last few minutes; Esc: back to live.\n"
+                  "Right-click: save a picture of the waterfall."));
+    m_times.resize(kHistRows);
     // black -> blue -> cyan -> yellow -> red -> white
     const struct
     {
@@ -74,30 +82,52 @@ QRgb WaterfallWidget::colour(double v) const
     return m_palette[std::clamp(int(v * 255.0), 0, 255)];
 }
 
+int WaterfallWidget::visibleRows() const
+{
+    return std::max(1, height() - scaleHeight());
+}
+
 void WaterfallWidget::clearImage()
 {
-    const int h = std::max(1, height() - scaleHeight());
-    m_img = QImage(std::max(1, width()), h, QImage::Format_RGB32);
+    m_img = QImage(std::max(1, width()), kHistRows, QImage::Format_RGB32);
     m_img.fill(Qt::black);
+    m_head = 0;
+    m_count = 0;
+    m_offset = 0;
+    update();
+}
+
+void WaterfallWidget::goLive()
+{
+    if (m_offset == 0)
+        return;
+    m_offset = 0;
+    update();
+}
+
+void WaterfallWidget::scrollBy(int rows)
+{
+    const int maxOff = std::max(0, m_count - visibleRows());
+    m_offset = std::clamp(m_offset + rows, 0, maxOff);
     update();
 }
 
 void WaterfallWidget::resizeEvent(QResizeEvent *)
 {
-    // Keep what is there, stretched to the new size.
-    const int h = std::max(1, height() - scaleHeight());
+    // Keep the history, stretched to the new width.
     if (m_img.isNull())
         clearImage();
-    else
-        m_img = m_img.scaled(std::max(1, width()), h).convertToFormat(QImage::Format_RGB32);
+    else if (m_img.width() != std::max(1, width()))
+        m_img = m_img.scaled(std::max(1, width()), kHistRows).convertToFormat(QImage::Format_RGB32);
+    m_offset = std::clamp(m_offset, 0, std::max(0, m_count - visibleRows()));
 }
 
 void WaterfallWidget::addLine(const QVector<float> &db, double hzPerBin)
 {
     if (db.isEmpty() || hzPerBin <= 0.0)
         return;
-    if (m_img.isNull() || m_img.width() != width())
-        clearImage();
+    if (m_img.isNull() || m_img.width() != std::max(1, width()))
+        resizeEvent(nullptr);
     const int w = m_img.width();
 
     // Noise floor: the 20th percentile of this line, smoothed.
@@ -111,11 +141,11 @@ void WaterfallWidget::addLine(const QVector<float> &db, double hzPerBin)
     }
     m_floor += 0.05 * (p20 - m_floor);
 
-    // Scroll down one line and draw the new one at the top.
-    const int bpl = int(m_img.bytesPerLine());
-    uchar *bits = m_img.bits();
-    std::memmove(bits + bpl, bits, size_t(bpl) * size_t(m_img.height() - 1));
-    auto *row = reinterpret_cast<QRgb *>(m_img.scanLine(0));
+    // The ring grows downwards: the new line goes just above the previous newest.
+    m_head = (m_head + kHistRows - 1) % kHistRows;
+    m_count = std::min(kHistRows, m_count + 1);
+    m_times[m_head] = QDateTime::currentMSecsSinceEpoch();
+    auto *row = reinterpret_cast<QRgb *>(m_img.scanLine(m_head));
     for (int x = 0; x < w; ++x)
     {
         const double f0 = xToHz(x), f1 = xToHz(x + 1);
@@ -127,6 +157,8 @@ void WaterfallWidget::addLine(const QVector<float> &db, double hzPerBin)
             v = std::max(v, db[b]);
         row[x] = colour((v - m_floor + 3.0) / kRangeDb);
     }
+    if (m_offset > 0) // hold the view still while scrolled back
+        m_offset = std::min(m_offset + 1, std::max(0, m_count - visibleRows()));
     update();
 }
 
@@ -151,7 +183,22 @@ void WaterfallWidget::paintEvent(QPaintEvent *)
     const int sh = scaleHeight();
     p.fillRect(0, 0, width(), sh, palette().window());
     if (!m_img.isNull())
-        p.drawImage(0, sh, m_img);
+    {
+        // Newest-first from the ring, starting m_offset lines back, in up to two slices.
+        const int vis = visibleRows();
+        int y = 0;
+        int logical = m_offset;
+        while (y < vis && logical < m_count)
+        {
+            const int phys = (m_head + logical) % kHistRows;
+            const int n = std::min({vis - y, kHistRows - phys, m_count - logical});
+            p.drawImage(QRect(0, sh + y, m_img.width(), n), m_img, QRect(0, phys, m_img.width(), n));
+            y += n;
+            logical += n;
+        }
+        if (y < vis)
+            p.fillRect(0, sh + y, width(), vis - y, Qt::black);
+    }
 
     // scale
     p.setPen(palette().windowText().color());
@@ -181,6 +228,18 @@ void WaterfallWidget::paintEvent(QPaintEvent *)
     tri << QPoint(xm - 5, 0) << QPoint(xm + 5, 0) << QPoint(xm, 6);
     p.setBrush(mc);
     p.drawPolygon(tri);
+
+    if (m_offset > 0 && m_count > 0)
+    {
+        const qint64 newest = m_times[m_head];
+        const qint64 shown = m_times[(m_head + m_offset) % kHistRows];
+        const int sec = int((newest - shown) / 1000);
+        const QString t = tr("History  -%1:%2   (Esc: live)").arg(sec / 60).arg(sec % 60, 2, 10, QLatin1Char('0'));
+        const int tw = fontMetrics().horizontalAdvance(t);
+        p.fillRect(4, sh + 4, tw + 8, fontMetrics().height() + 2, QColor(120, 70, 0, 200));
+        p.setPen(Qt::white);
+        p.drawText(8, sh + 4 + fontMetrics().ascent() + 1, t);
+    }
 
     if (m_hoverX >= 0)
     {
@@ -215,8 +274,57 @@ void WaterfallWidget::leaveEvent(QEvent *)
 
 void WaterfallWidget::wheelEvent(QWheelEvent *e)
 {
-    const int steps = e->angleDelta().y() / 120;
+    // Some platforms turn Shift+wheel into a horizontal wheel.
+    const int dy = e->angleDelta().y() != 0 ? e->angleDelta().y() : e->angleDelta().x();
+    const int steps = dy / 120;
     if (steps != 0)
-        emit nudged(m_marker + steps);
+    {
+        if (e->modifiers() & Qt::ShiftModifier)
+            scrollBy(steps * 20); // up = back in time
+        else
+            emit nudged(m_marker + steps);
+    }
     e->accept();
+}
+
+void WaterfallWidget::keyPressEvent(QKeyEvent *e)
+{
+    switch (e->key())
+    {
+    case Qt::Key_PageUp:
+        scrollBy(visibleRows() * 3 / 4);
+        break;
+    case Qt::Key_PageDown:
+        scrollBy(-visibleRows() * 3 / 4);
+        break;
+    case Qt::Key_Escape:
+    case Qt::Key_End:
+        goLive();
+        break;
+    default:
+        QWidget::keyPressEvent(e);
+        return;
+    }
+    e->accept();
+}
+
+void WaterfallWidget::contextMenuEvent(QContextMenuEvent *e)
+{
+    QMenu menu(this);
+    QAction *live = menu.addAction(tr("Live"), this, &WaterfallWidget::goLive);
+    live->setEnabled(m_offset > 0);
+    menu.addAction(tr("Back 1 minute"),
+                   this,
+                   [this]()
+                   {
+                       // lines per second from the timestamps of the newest lines
+                       if (m_count < 20)
+                           return;
+                       const double dt = double(m_times[m_head] - m_times[(m_head + 19) % kHistRows]) / 19000.0;
+                       if (dt > 0)
+                           scrollBy(int(60.0 / dt));
+                   });
+    menu.addSeparator();
+    menu.addAction(tr("Save picture..."), this, &WaterfallWidget::saveRequested);
+    menu.exec(e->globalPos());
 }

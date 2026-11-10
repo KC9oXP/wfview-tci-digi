@@ -9,8 +9,8 @@
 
 ![PSK tab](docs/screenshots/psk.png)
 
-Stand-alone digital modes - CW, RTTY, PSK (BPSK31/63/125) and Feld Hell -
-that connect to **wfview** over **TCI**
+Stand-alone digital modes - CW, RTTY, PSK (BPSK31/63/125), Feld Hell,
+Olivia/Contestia, NAVTEX, SSTV and WEFAX - that connect to **wfview** over **TCI**
 (Transceiver Control Interface). wfview handles the radio; this program gets the
 receive audio, sends transmit audio, and keys PTT, all through wfview's TCI server.
 It works the same whether wfview reaches the radio over LAN or over USB, and it
@@ -80,6 +80,57 @@ it and wfview's TCI server gets a real client to test against.
   Zoom 1-4x, contrast, RX trim to straighten slanted text.
 - Waterfall with click-to-tune, macros (sent in capitals; the font has 59 characters),
   transmitted text shown in a strip below the picture.
+
+**Olivia and Contestia (receive and transmit)**
+- Olivia 4/125 to 64/2000 and Contestia 4/125 to 64/1000, using Pawel Jalocha's
+  MFSK library exactly as fldigi does, so the two interoperate.
+- The receiver finds signals a few tone spacings off the set frequency by itself
+  (no AFC needed); S/N squelch (noise otherwise prints as random characters).
+- Same macros, Call/My call, type-ahead, Hold TX and watchdogs as PSK.
+
+**NAVTEX / SITOR-B (receive)**
+- 100 baud, 170 Hz shift, CCIR 476 with the time-diversity FEC repair; bit sync,
+  phasing search and FEC after fldigi's NAVTEX decoder.
+- 518 kHz / 490 kHz (tune USB 1 kHz below) and SITOR-B on HF.
+
+**SSTV (receive and transmit)**
+- Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD50/90/120/160/180/240.
+- Pictures start by themselves on their VIS header, or by hand (*Start now*) when
+  the header was missed. Auto slant: the sync pulse of every line is found and a
+  straight line fitted through them, so a slanted or shifted picture is straightened
+  as it comes in; a ppm trim covers a known sound-card clock error.
+- Received pictures are saved as PNG (in 4:3) and shown in a strip to click through.
+- Transmit: open or paste a picture (or send back the one shown), pick the mode,
+  optional text overlay ({MYCALL} {CALL} {RST}), preview, progress, abort.
+
+**WEFAX (receive)**
+- HF weather fax, 60/90/120/240 LPM, IOC 576/288.
+- Starts on the APT start tone, aligns on the phasing lines (and takes the true line
+  period from them, so the picture comes out straight), ends on the stop tone, saves
+  a PNG. *Start now* for a picture joined late; *Align* then a click on the
+  picture's left edge moves it into place.
+
+**Logs, scrollback, screenshots, recordings**
+- *Session log*: everything decoded (and sent) goes to a text file per mode per UTC
+  day, with a header line for each change of frequency or settings.
+- *QSO log* (View > QSO log, Ctrl+Shift+Q): Call/RST/Name/QTH/Grid/Comment with
+  frequency, band, mode and times filled in; *Log QSO* (Ctrl+L) appends an ADIF
+  record (`wfview-tci-digi.adi`) for QRZ, LoTW (via TQSL) or any logger. The other
+  station's call follows whichever tab set it last.
+- Receive panes keep a long history: scroll back and the view stays put while new
+  text arrives (a *Live* button returns), Ctrl+F finds text, right-click saves it.
+- Waterfalls keep the last few minutes: Shift+wheel or PgUp/PgDn scrolls back,
+  Esc returns to live; right-click saves a picture.
+- File > *Save window screenshot* (F12) and *Save waterfall picture* (Ctrl+Shift+S),
+  stamped with call, UTC time, frequency and mode.
+- File > *Save the last 2 minutes of receive audio* (Ctrl+Shift+A): the receive audio
+  is always kept in memory, so a signal you only noticed half-way can be saved.
+  *Record receive audio* writes a WAV as long as you like.
+- File > *Play a WAV file into the decoders*: every tab decodes it as if it came from
+  the radio (real time or 4x), so recordings can be decoded again with other
+  settings, and the program can be tried without a radio.
+- Everything goes in one data folder (Options > Data folder; default
+  Documents/wfview TCI Digi) with logs, sstv, wefax, screenshots and recordings.
 
 Only one mode transmits at a time: starting a transmission in one tab stops any
 other. *My call* is shared by all tabs.
@@ -178,7 +229,14 @@ g++ -std=c++17 -O2 -Iengine tests/test_hell.cpp engine/hellcore.cpp -o test_hell
 # CW transmit (keyer timing, key clicks, prosigns, loopback through the CW decoder)
 g++ -std=c++17 -O2 -Isrc -Iengine -Iengine/ggmorse/include tests/test_cwtx.cpp engine/cwtxcore.cpp engine/modemtxsource.cpp engine/pskcore.cpp engine/hellcore.cpp engine/ggmorse/src/ggmorse.cpp engine/ggmorse/src/resampler.cpp -o test_cwtx
 
-# End to end against a mock of wfview's TCI server (~2 min)
+# SSTV, WEFAX, NAVTEX and Olivia/Contestia (encoder -> decoder with clock error, noise, offsets)
+g++ -std=c++17 -O2 -Iengine tests/test_sstv.cpp engine/sstvcore.cpp -o test_sstv
+g++ -std=c++17 -O2 -Iengine tests/test_wefax.cpp engine/wefaxcore.cpp -o test_wefax
+g++ -std=c++17 -O2 -Iengine tests/test_navtex.cpp engine/navtexcore.cpp -o test_navtex
+g++ -std=c++17 -O2 -Iengine tests/test_olivia.cpp engine/oliviacore.cpp -o test_olivia
+
+# End to end against a mock of wfview's TCI server (~3 min); --new runs only the
+# 0.4.0 parts (WAV playback into the new decoders, logs, Olivia and SSTV transmit)
 qmake ../tests/test_e2e.pro && make && QT_QPA_PLATFORM=offscreen ./test_e2e
 ```
 
@@ -217,8 +275,8 @@ Found while writing this client; the client works around each one.
 ## Future
 
 - CW with the radio's own keyer once wfview's TCI server supports `cw_macros`.
-- More modes (QPSK31, MFSK, Olivia are candidates), each as a Qt-free engine with
-  tests, the same way the CW, RTTY, PSK and Hell engines are written.
+- More modes (QPSK31/63, MFSK16/32, DominoEX/THOR, MT63 are candidates), each as a
+  Qt-free engine with tests, the same way the others are written. WEFAX transmit.
 - The goal is for this to become part of wfview if it fits the wfview team's plans:
   as a companion program in the wf-group organization, as a second program built
   from the wfview tree, or folded back into wfview itself after v3. The engines have
@@ -230,3 +288,7 @@ Found while writing this client; the client works around each one.
 GPLv3 (see LICENSE). The CW and RTTY engines come from the author's wfview work.
 The PSK and Feld Hell engines and the 5x7 Hell font were written for this program.
 `engine/ggmorse` is ggmorse by Georgi Gerganov, MIT license (see its LICENSE).
+`engine/jalocha` is Pawel Jalocha's Olivia/Contestia MFSK library as distributed with
+fldigi (GPL); the NAVTEX decoder follows fldigi's (GPL) - see
+`engine/jalocha/README-WFVIEW.txt`. The SSTV and WEFAX engines were written for this
+program, with mode timings from the published specifications and QSSTV's tables.

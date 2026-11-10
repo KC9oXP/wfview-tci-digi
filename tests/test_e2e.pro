@@ -34,6 +34,20 @@ HEADERS += \
     ../src/TxPowerWatch.h \
     ../src/PskPanel.h \
     ../src/HellPanel.h \
+    ../src/AppPaths.h \
+    ../src/RxText.h \
+    ../src/AudioHub.h \
+    ../src/SessionLog.h \
+    ../src/QsoLog.h \
+    ../src/ImageView.h \
+    ../src/OliviaEngine.h \
+    ../src/OliviaPanel.h \
+    ../src/NavtexEngine.h \
+    ../src/NavtexPanel.h \
+    ../src/SstvEngine.h \
+    ../src/SstvPanel.h \
+    ../src/WefaxEngine.h \
+    ../src/WefaxPanel.h \
     ../src/MainWindow.h
 
 SOURCES += \
@@ -58,7 +72,26 @@ SOURCES += \
     ../src/TxPowerWatch.cpp \
     ../src/PskPanel.cpp \
     ../src/HellPanel.cpp \
+    ../src/AppPaths.cpp \
+    ../src/AudioHub.cpp \
+    ../src/SessionLog.cpp \
+    ../src/QsoLog.cpp \
+    ../src/ImageView.cpp \
+    ../src/OliviaEngine.cpp \
+    ../src/OliviaPanel.cpp \
+    ../src/NavtexEngine.cpp \
+    ../src/NavtexPanel.cpp \
+    ../src/SstvEngine.cpp \
+    ../src/SstvPanel.cpp \
+    ../src/WefaxEngine.cpp \
+    ../src/WefaxPanel.cpp \
+    ../src/RxText.cpp \
     ../src/MainWindow.cpp \
+    ../engine/sstvcore.cpp \
+    ../engine/wefaxcore.cpp \
+    ../engine/navtexcore.cpp \
+    ../engine/oliviacore.cpp \
+    ../engine/wavfile.cpp \
     ../engine/rttycore.cpp \
     ../engine/rttytxsource.cpp \
     ../engine/pskcore.cpp \
