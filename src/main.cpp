@@ -1,3 +1,4 @@
+#include "ClockSet.h"
 #include "MainWindow.h"
 
 #include <QApplication>
@@ -12,6 +13,18 @@ int main(int argc, char *argv[])
     QApplication::setApplicationDisplayName(QStringLiteral("wfview TCI Digi"));
     QApplication::setApplicationVersion(QStringLiteral(APP_VERSION));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/wfview-tci-digi.png")));
+
+    // Elevated helper run of "Set PC clock" (see ClockSet.h): shift the clock and exit.
+    {
+        const QStringList args = QApplication::arguments();
+        const int i = args.indexOf(QStringLiteral("--adjust-clock-ms"));
+        if (i >= 0)
+        {
+            bool ok = false;
+            const qint64 ms = args.value(i + 1).toLongLong(&ok);
+            return ok && qAbs(ms) <= 24LL * 3600 * 1000 ? ClockSet::runAdjust(ms) : 4;
+        }
+    }
 
     QSettings settings(
         QSettings::IniFormat, QSettings::UserScope, QStringLiteral("KC9oXP"), QStringLiteral("wfview-tci-digi"));

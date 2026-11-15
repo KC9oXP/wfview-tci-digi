@@ -23,6 +23,7 @@
 #include "TxPowerWatch.h"
 #include "TxTools.h"
 #include "WefaxEngine.h"
+#include "WwvEngine.h"
 #include "modemtxsource.h"
 #include "navtexcore.h"
 #include "oliviacore.h"
@@ -30,6 +31,7 @@
 #include "sstvcore.h"
 #include "wavfile.h"
 #include "wefaxcore.h"
+#include "wwvcore.h"
 
 #include <QAction>
 #include <QApplication>
@@ -43,6 +45,7 @@
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <cmath>
 #include <cstdio>
 
 static int g_fail = 0;
@@ -430,6 +433,8 @@ static void runNewModes()
     }
     // Transmit tabs, then the "Read only" divider, then the receive-only tabs.
     CHECK(amtorIndex >= 0 && readOnlyDivider > amtorIndex && navtexIndex > readOnlyDivider);
+    CHECK(tabs->tabText(tabs->count() - 1) == QStringLiteral("WWV Time"));
+    CHECK(w.findChild<WwvEngine *>() != nullptr);
     const QString ol = paneText(oliviaTab), nav = paneText(navtexTab), am = paneText(amtorTab);
     std::printf("  Olivia pane: [%s]\n  NAVTEX pane: [%s]\n  AMTOR pane: [%s]\n",
                 qPrintable(ol.trimmed()),
@@ -586,6 +591,54 @@ static void runNewModesTx()
     CHECK(pttDrops == 1);
 }
 
+// WWV Time: 160 s of synthesized WWV straight into the engine (its own worker thread).
+static void runWwv()
+{
+    std::printf("\n=== 0.5.0: WWV Time engine decodes and verifies a time ===\n");
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    WwvEngine eng(&settings);
+    eng.setGrid(QStringLiteral("EN71ar"));
+    eng.setDecoding(true);
+    wwv::Time t;
+    t.year = 2026;
+    t.dayOfYear = 319;
+    t.hour = 22;
+    t.minute = 40;
+    t.dut1 = 0.1;
+    WwvEncoder enc;
+    enc.start(t, 30, false);
+    std::vector<float> b(960);
+    for (int i = 0; i < 50 * 160; ++i)
+    {
+        enc.render(b.data(), b.size(), 48000.0);
+        QVector<float> v(int(b.size()));
+        for (int k = 0; k < v.size(); ++k)
+            v[k] = 0.3f * b[size_t(k)];
+        eng.pushAudio(v, 48000.0f);
+        if (i % 500 == 499)
+            pump(5);
+    }
+    CHECK(waitFor([&] { return eng.snap().st.timeVerified; }, 60000));
+    pump(500);
+    const WwvSnapshot s = eng.snap();
+    std::printf("  ticks %d code %d verified %d: day %d %02d:%02d:%02d, clock %+.1f ppm\n",
+                s.st.ticks,
+                s.st.code,
+                s.st.timeVerified,
+                s.st.time.dayOfYear,
+                s.st.time.hour,
+                s.st.time.minute,
+                s.st.secondInMinute,
+                s.st.clockPpm);
+    CHECK(s.st.ticks && s.st.code);
+    CHECK(s.st.time.dayOfYear == 319 && s.st.time.hour == 22 && s.st.time.minute >= 42 && s.st.time.minute <= 43);
+    CHECK(std::fabs(s.st.clockPpm) < 3.0);
+    double ms = 0, km = 0;
+    CHECK(eng.pathDelay(ms, km) && km > 1500 && km < 1750);
+    CHECK(WwvEngine::nearestStandard(9999000) == 10000000 && WwvEngine::nearestStandard(14074000) == 0);
+}
+
 static void renderScreens(const QString &dir)
 {
     std::printf("\n=== window screenshots ===\n");
@@ -676,6 +729,7 @@ int main(int argc, char *argv[])
     }
     runNewModes();
     runNewModesTx();
+    runWwv();
     const int screens = args.indexOf(QStringLiteral("--screens"));
     if (screens >= 0)
         renderScreens(args.value(screens + 1, QStringLiteral(".")));

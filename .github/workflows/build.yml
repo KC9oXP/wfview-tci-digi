@@ -41,6 +41,8 @@ jobs:
           ./test_navtex
           g++ -std=c++17 -O2 -Iengine tests/test_olivia.cpp engine/oliviacore.cpp -o test_olivia
           ./test_olivia
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_wwv.cpp engine/wwvcore.cpp -o test_wwv
+          ./test_wwv
       - name: Build app
         run: |
           mkdir build && cd build

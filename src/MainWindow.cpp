@@ -29,6 +29,8 @@
 #include "WaterfallWidget.h"
 #include "WefaxEngine.h"
 #include "WefaxPanel.h"
+#include "WwvEngine.h"
+#include "WwvPanel.h"
 #include "modemtxsource.h"
 #include "rttytxsource.h"
 
@@ -135,6 +137,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_sstv->loadSettings(m_settings);
     m_navtex = new NavtexEngine(m_settings, this);
     m_wefax = new WefaxEngine(m_settings, this);
+    m_wwv = new WwvEngine(m_settings, this);
     m_spectrum = new SpectrumEngine(this);
     m_audio = new AudioHub(this);
     m_audio->setRingSeconds(m_settings->value(QStringLiteral("Audio/RingSeconds"), 120).toInt());
@@ -193,7 +196,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_tabs->addTab(m_sstvPanel, tr("SSTV"));
     m_tabs->addTab(m_amtorPanel, tr("AMTOR"));
     {
-        auto *divider = new QLabel(tr("NAVTEX and WEFAX (to the right) only receive."));
+        auto *divider = new QLabel(tr("NAVTEX, WEFAX and WWV Time (to the right) only receive."));
         divider->setAlignment(Qt::AlignCenter);
         const int i = m_tabs->addTab(divider, QStringLiteral("    %1 \u25B8").arg(tr("Read only")));
         m_tabs->setTabEnabled(i, false);
@@ -201,6 +204,8 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     }
     m_tabs->addTab(m_navtexPanel, tr("NAVTEX"));
     m_tabs->addTab(m_wefaxPanel, tr("WEFAX"));
+    m_wwvPanel = new WwvPanel(m_wwv);
+    m_tabs->addTab(m_wwvPanel, tr("WWV Time"));
     v->addWidget(m_tabs, 1);
     setCentralWidget(central);
 
@@ -234,8 +239,16 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_audio, &AudioHub::audio, m_amtor, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_navtex, &NavtexEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_wefax, &WefaxEngine::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_wwv, &WwvEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_spectrum, &SpectrumEngine::pushAudio);
-    connect(m_audio, &AudioHub::playbackChanged, this, [this](bool, double) { updateAudioStatus(); });
+    connect(m_audio,
+            &AudioHub::playbackChanged,
+            this,
+            [this](bool playing, double)
+            {
+                m_wwv->setLive(!playing); // a recording says nothing about the PC clock
+                updateAudioStatus();
+            });
     connect(m_audio, &AudioHub::recordingChanged, this, [this](bool, double) { updateAudioStatus(); });
     connect(m_spectrum, &SpectrumEngine::line, m_pskPanel, &ModemPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_hellPanel, &ModemPanel::addSpectrumLine);
@@ -244,6 +257,46 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_spectrum, &SpectrumEngine::line, m_navtexPanel, &NavtexPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_sstvPanel, &SstvPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_wefaxPanel, &WefaxPanel::addSpectrumLine);
+    connect(m_spectrum, &SpectrumEngine::line, m_wwvPanel, &WwvPanel::addSpectrumLine);
+    // WWV Time: the audio clock error goes to the SSTV and WEFAX trims; a carrier
+    // measurement borrows the radio for a few seconds.
+    connect(m_wwvPanel,
+            &WwvPanel::trimPpmChosen,
+            this,
+            [this](double ppm)
+            {
+                m_sstv->setSlantPpm(std::round(ppm));
+                m_wefax->setSlantPpm(std::round(ppm));
+                statusBar()->showMessage(tr("SSTV and WEFAX trim set to %1 ppm.").arg(qRound(ppm)), 6000);
+            });
+    connect(m_wwv,
+            &WwvEngine::tuneForCarrier,
+            this,
+            [this](qint64 dialHz)
+            {
+                // plain USB (not DIGU: wfview would change the radio's data mode)
+                QString usb = QStringLiteral("usb");
+                for (const QString &m : m_client->modulations())
+                    if (RadioModes::kind(m) == RadioModes::Kind::Voice && !RadioModes::isLsb(m))
+                    {
+                        usb = m;
+                        break;
+                    }
+                if (RadioModes::normalised(m_client->modulation()) != RadioModes::normalised(usb))
+                    m_client->setModulation(usb);
+                m_client->setFrequency(dialHz);
+                log(tr("WWV carrier measurement: %1 Hz %2").arg(formatFreq(dialHz), usb.toUpper()));
+            });
+    connect(m_wwv,
+            &WwvEngine::restoreRadio,
+            this,
+            [this](qint64 hz, const QString &mode)
+            {
+                m_client->setFrequency(hz);
+                if (!mode.isEmpty() && RadioModes::normalised(m_client->modulation()) != RadioModes::normalised(mode))
+                    m_client->setModulation(mode);
+                log(tr("WWV carrier measurement done: back to %1 Hz %2").arg(formatFreq(hz), mode));
+            });
     for (WaterfallWidget *wf : findChildren<WaterfallWidget *>())
         connect(wf, &WaterfallWidget::saveRequested, this, [this, wf]() { saveWaterfallShot(wf); });
     connect(m_client, &TciClient::diagnostics, m_diag, &QLabel::setText);
@@ -681,7 +734,8 @@ void MainWindow::buildMenus()
                                "NAVTEX / SITOR-B: receive (decoder after fldigi's).<br>"
                                "SSTV: Martin, Scottie, Robot, PD modes, VIS, auto slant; send pictures.<br>"
                                "WEFAX: HF weather fax receive with APT start/stop and phasing.<br>"
-                               "AMTOR: FEC (mode B) send and receive (receiver as NAVTEX).<br><br>"
+                               "AMTOR: FEC (mode B) send and receive (receiver as NAVTEX).<br>"
+                               "WWV Time: time code, clock comparison, audio clock and carrier calibration.<br><br>"
                                "License: GPLv3.")
                                 .arg(QStringLiteral(APP_VERSION)));
                     });
@@ -827,8 +881,14 @@ void MainWindow::onRadioInfo()
     updateRadioState();
 }
 
+void MainWindow::updateWwvRadio()
+{
+    m_wwv->setRadio(m_client->isReady(), m_client->frequencyHz(), m_client->modulation(), m_client->device());
+}
+
 void MainWindow::onFrequency(qint64 hz)
 {
+    updateWwvRadio();
     if (!m_freq->hasFocus())
         m_freq->setText(formatFreq(hz));
     m_session->setRadio(hz, m_client->modulation());
@@ -920,6 +980,7 @@ void MainWindow::updateRadioState()
     m_oliviaPanel->setRadioState(ready, canTx, m_client->modulation());
     m_sstvPanel->setRadioState(ready, canTx, m_client->modulation());
     m_amtorPanel->setRadioState(ready, canTx, m_client->modulation());
+    updateWwvRadio();
     m_freq->setEnabled(ready);
     m_mode->setEnabled(ready);
 }
@@ -950,6 +1011,7 @@ void MainWindow::saveAll()
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     abortAllTx(QString());
+    m_wwv->cancelCarrier(); // puts the radio back if a measurement was running
     m_wantConnected = false;
     m_audio->stopRecording();
     m_audio->stopPlayback();
@@ -1335,6 +1397,13 @@ QList<MainWindow::Preset> MainWindow::presets(const QString &tabKey) const
               QStringLiteral("NMG New Orleans 4317.9|4316000|USB"),
               QStringLiteral("NMG New Orleans 8503.9|8502000|USB"),
               QStringLiteral("NMG New Orleans 12789.9|12788000|USB")}},
+            {QStringLiteral("WWV Time"),
+             {QStringLiteral("2.5 MHz|2500000|AM"),
+              QStringLiteral("5 MHz|5000000|AM"),
+              QStringLiteral("10 MHz|10000000|AM"),
+              QStringLiteral("15 MHz|15000000|AM"),
+              QStringLiteral("20 MHz|20000000|AM"),
+              QStringLiteral("25 MHz (WWV)|25000000|AM")}},
         };
         lines = defaults.value(tabKey);
     }
@@ -1345,7 +1414,8 @@ QList<MainWindow::Preset> MainWindow::presets(const QString &tabKey) const
         p.name = f.value(0).trimmed();
         p.hz = f.value(1).trimmed().toLongLong();
         p.sideband = f.value(2).trimmed().toUpper();
-        if (p.sideband != QLatin1String("USB") && p.sideband != QLatin1String("LSB"))
+        if (p.sideband != QLatin1String("USB") && p.sideband != QLatin1String("LSB")
+            && p.sideband != QLatin1String("AM"))
             p.sideband.clear();
         if (!p.name.isEmpty() && p.hz > 0)
             out << p;
@@ -1394,7 +1464,19 @@ void MainWindow::applyPreset(const Preset &p)
     m_client->setFrequency(p.hz);
     QString note;
     const QString cur = m_client->modulation();
-    if (!p.sideband.isEmpty() && RadioModes::isLsb(cur) != (p.sideband == QLatin1String("LSB")))
+    if (p.sideband == QLatin1String("AM"))
+    {
+        if (RadioModes::normalised(cur) != QLatin1String("AM"))
+        {
+            QString am = QStringLiteral("am");
+            for (const QString &m : m_client->modulations())
+                if (RadioModes::normalised(m) == QLatin1String("AM"))
+                    am = m;
+            m_client->setModulation(am);
+            note = tr(", mode AM");
+        }
+    }
+    else if (!p.sideband.isEmpty() && RadioModes::isLsb(cur) != (p.sideband == QLatin1String("LSB")))
     {
         // Change the sideband but stay a data mode if the radio is in one. The mode
         // is only sent when the sideband differs: wfview puts an Icom on Data 1
@@ -1464,7 +1546,7 @@ void MainWindow::editPresets()
     QDialog dlg(this);
     dlg.setWindowTitle(tr("%1 presets").arg(currentTabKey()));
     auto *v = new QVBoxLayout(&dlg);
-    auto *help = new QLabel(tr("One per line:  name | dial frequency in Hz | USB, LSB or empty (keep the mode).\n"
+    auto *help = new QLabel(tr("One per line:  name | dial frequency in Hz | USB, LSB, AM or empty (keep the mode).\n"
                                "Delete everything to get the built-in list back."));
     help->setWordWrap(true);
     v->addWidget(help);
@@ -1501,7 +1583,8 @@ void MainWindow::editPresets()
         p.name = f.value(0).trimmed();
         p.hz = parseFreq(f.value(1));
         p.sideband = f.value(2).trimmed().toUpper();
-        if (p.sideband != QLatin1String("USB") && p.sideband != QLatin1String("LSB"))
+        if (p.sideband != QLatin1String("USB") && p.sideband != QLatin1String("LSB")
+            && p.sideband != QLatin1String("AM"))
             p.sideband.clear();
         if (!p.name.isEmpty() && p.hz > 0)
             list << p;

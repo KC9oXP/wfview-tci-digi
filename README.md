@@ -10,7 +10,7 @@
 ![PSK tab](docs/screenshots/psk.png)
 
 Stand-alone digital modes - CW, RTTY, PSK (BPSK31/63/125), Feld Hell,
-Olivia/Contestia, SSTV, AMTOR FEC, NAVTEX and WEFAX - that connect to **wfview** over **TCI**
+Olivia/Contestia, SSTV, AMTOR FEC, NAVTEX, WEFAX and WWV Time - that connect to **wfview** over **TCI**
 (Transceiver Control Interface). wfview handles the radio; this program gets the
 receive audio, sends transmit audio, and keys PTT, all through wfview's TCI server.
 It works the same whether wfview reaches the radio over LAN or over USB, and it
@@ -27,7 +27,7 @@ it and wfview's TCI server gets a real client to test against.
 ## Features
 
 The tabs that can transmit (CW, RTTY, PSK, Hell, Olivia, SSTV, AMTOR) come first; a
-*Read only* divider separates the receive-only tabs (NAVTEX, WEFAX). Every *Decode*
+*Read only* divider separates the receive-only tabs (NAVTEX, WEFAX, WWV Time). Every *Decode*
 button is dark red and reads "Push To Decode" when off, and green "Decode" when on.
 
 **CW (receive and transmit)**
@@ -141,6 +141,27 @@ button is dark red and reads "Push To Decode" when off, and green "Decode" when 
   period from them, so the picture comes out straight), ends on the stop tone, saves
   a PNG. *Start now* for a picture joined late; *Align* then a click on the
   picture's left edge moves it into place.
+
+**WWV Time (receive)**
+- WWV and WWVH on 2.5, 5, 10, 15, 20 (and 25) MHz, best in AM with a wide filter.
+- Lamps show what has been heard: second ticks, the 440/500/600 Hz tones, the 100 Hz
+  time code, a decoded time, a measured carrier. If *100 Hz code* stays grey while
+  *Ticks* is lit, the radio's audio does not pass 100 Hz.
+- Time: the 100 Hz code gives UTC, the date, UT1-UTC, and the daylight-time and
+  leap-second flags. It has no error check, so a time counts as verified when two
+  minutes in a row agree (two to three minutes after Decode).
+- PC clock: how far the computer's clock is from WWV, after taking off the signal's
+  travel time (from your grid square) and the audio delay through radio and wfview.
+  *Calibrate delay* measures that delay once while the PC clock is known to be right
+  (kept per radio); after that the comparison is good to a few hundredths of a second
+  without internet. *Set PC clock to WWV* shifts the clock (Windows, asks for
+  administrator rights).
+- Audio clock: the spacing of the ticks against the sample count gives the error of
+  the sound path in ppm; one button copies it to the SSTV and WEFAX trims.
+- Tones: how far the 440/500/600 Hz tone reads off.
+- *Measure carrier*: tunes 1 kHz below the WWV frequency in USB for about 15 s,
+  measures where the carrier lands, and puts the radio back: the radio's dial error in
+  Hz and ppm.
 
 **Logs, scrollback, screenshots, recordings**
 - *Session log*: everything decoded (and sent) goes to a text file per mode per UTC
@@ -284,11 +305,12 @@ g++ -std=c++17 -O2 -Iengine tests/test_hell.cpp engine/hellcore.cpp -o test_hell
 g++ -std=c++17 -O2 -Isrc -Iengine -Iengine/ggmorse/include tests/test_cwtx.cpp engine/cwtxcore.cpp engine/modemtxsource.cpp engine/pskcore.cpp engine/hellcore.cpp engine/ggmorse/src/ggmorse.cpp engine/ggmorse/src/resampler.cpp -o test_cwtx
 
 # SSTV (also the transmitted tones against the published timings, and starting without VIS),
-# WEFAX, NAVTEX / AMTOR FEC and Olivia/Contestia (encoder -> decoder with clock error, noise, offsets)
+# WEFAX, NAVTEX / AMTOR FEC, Olivia/Contestia and WWV (encoder -> decoder with clock error, noise, offsets)
 g++ -std=c++17 -O2 -Iengine tests/test_sstv.cpp engine/sstvcore.cpp -o test_sstv
 g++ -std=c++17 -O2 -Iengine tests/test_wefax.cpp engine/wefaxcore.cpp -o test_wefax
 g++ -std=c++17 -O2 -Iengine tests/test_navtex.cpp engine/navtexcore.cpp -o test_navtex
 g++ -std=c++17 -O2 -Iengine tests/test_olivia.cpp engine/oliviacore.cpp -o test_olivia
+g++ -std=c++17 -O2 -Iengine tests/test_wwv.cpp engine/wwvcore.cpp -o test_wwv
 
 # End to end against a mock of wfview's TCI server (~3 min); --new runs only the
 # 0.4.x parts (WAV playback into the new decoders, logs, Olivia / SSTV / AMTOR transmit,

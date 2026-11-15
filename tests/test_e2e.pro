@@ -8,6 +8,7 @@ DEFINES += APP_VERSION=\\\"test\\\"
 win32 {
     msvc: QMAKE_CXXFLAGS += /utf-8
     DEFINES += _USE_MATH_DEFINES NOMINMAX
+    LIBS += -lshell32
 }
 
 INCLUDEPATH += $$PWD $$PWD/../src $$PWD/../engine $$PWD/../engine/ggmorse/include
@@ -53,6 +54,9 @@ HEADERS += \
     ../src/TxTools.h \
     ../src/RadioModes.h \
     ../src/UiStyle.h \
+    ../src/WwvEngine.h \
+    ../src/WwvPanel.h \
+    ../src/ClockSet.h \
     ../src/MainWindow.h
 
 SOURCES += \
@@ -94,9 +98,13 @@ SOURCES += \
     ../src/AmtorEngine.cpp \
     ../src/AmtorPanel.cpp \
     ../src/TxTools.cpp \
+    ../src/WwvEngine.cpp \
+    ../src/WwvPanel.cpp \
+    ../src/ClockSet.cpp \
     ../src/MainWindow.cpp \
     ../engine/sstvcore.cpp \
     ../engine/wefaxcore.cpp \
+    ../engine/wwvcore.cpp \
     ../engine/navtexcore.cpp \
     ../engine/oliviacore.cpp \
     ../engine/wavfile.cpp \

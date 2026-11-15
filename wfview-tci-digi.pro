@@ -8,7 +8,7 @@ QT += widgets websockets
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.4.2
+VERSION = 0.5.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -18,6 +18,7 @@ win32 {
     RC_ICONS = icons/wfview-tci-digi.ico
     msvc: QMAKE_CXXFLAGS += /utf-8
     DEFINES += _USE_MATH_DEFINES NOMINMAX
+    LIBS += -lshell32
 }
 
 INCLUDEPATH += src engine engine/ggmorse/include
@@ -63,6 +64,9 @@ HEADERS += \
     src/TxTools.h \
     src/RadioModes.h \
     src/UiStyle.h \
+    src/WwvEngine.h \
+    src/WwvPanel.h \
+    src/ClockSet.h \
     src/MainWindow.h \
     engine/audioresampler.h \
     engine/fmdemod.h \
@@ -124,9 +128,13 @@ SOURCES += \
     src/AmtorEngine.cpp \
     src/AmtorPanel.cpp \
     src/TxTools.cpp \
+    src/WwvEngine.cpp \
+    src/WwvPanel.cpp \
+    src/ClockSet.cpp \
     src/MainWindow.cpp \
     engine/sstvcore.cpp \
     engine/wefaxcore.cpp \
+    engine/wwvcore.cpp \
     engine/navtexcore.cpp \
     engine/oliviacore.cpp \
     engine/wavfile.cpp \

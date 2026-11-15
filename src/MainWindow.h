@@ -20,6 +20,8 @@ class SstvPanel;
 class WaterfallWidget;
 class WefaxEngine;
 class WefaxPanel;
+class WwvEngine;
+class WwvPanel;
 class CwPanel;
 class CwTxEngine;
 class HellEngine;
@@ -120,6 +122,9 @@ private:
     SstvPanel *m_sstvPanel = nullptr;
     WefaxEngine *m_wefax = nullptr;
     WefaxPanel *m_wefaxPanel = nullptr;
+    WwvEngine *m_wwv = nullptr;
+    WwvPanel *m_wwvPanel = nullptr;
+    void updateWwvRadio();
     AmtorEngine *m_amtor = nullptr;
     AmtorPanel *m_amtorPanel = nullptr;
     TxTools *m_tools = nullptr;
