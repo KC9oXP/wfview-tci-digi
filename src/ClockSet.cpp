@@ -5,8 +5,11 @@
 #include <QObject>
 
 #ifdef Q_OS_WIN
-#include <shellapi.h>
+// windows.h must come first: shellapi.h needs its types.
+// clang-format off
 #include <windows.h>
+#include <shellapi.h>
+// clang-format on
 #endif
 
 namespace ClockSet
