@@ -32,6 +32,17 @@ public:
         return m_reports;
     }
 
+    // ALC above this (as the server reports it) for two reports in a row
+    // counts as too hot; 0 = no warning.
+    double alcLimit() const
+    {
+        return m_alcLimit;
+    }
+    void setAlcLimit(double v)
+    {
+        m_alcLimit = v;
+    }
+
 public slots:
     void setOurTransmit(bool on); // this program asked for TX
     void setRadioTransmitting(bool on); // the server reports TX
@@ -41,6 +52,9 @@ signals:
     // While transmitting, e.g. "Po 48.0  ALC 0.2  SWR 1.1"; empty when back on receive.
     void readout(QString text);
     void noPower();
+    void powerSeen(); // output power reported during this transmission
+    void alcHigh(double alc); // once per transmission of ours
+    void alcChanged(bool high); // for colouring the meter
 
 private:
     void check();
@@ -53,4 +67,9 @@ private:
     int m_reports = 0;
     double m_maxPower = 0.0;
     bool m_warned = false;
+    bool m_powerSeen = false;
+    double m_alcLimit = 1.0;
+    int m_alcRun = 0;
+    bool m_alcWarned = false;
+    bool m_alcHigh = false;
 };

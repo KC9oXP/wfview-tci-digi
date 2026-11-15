@@ -176,6 +176,7 @@ void OliviaEngine::setMode(bool contestia, int tones, int bandwidth)
     save("Contestia", m_contestia);
     save("Tones", m_tones);
     save("Bandwidth", m_bandwidth);
+    reloadTxLevel();
     applyConfig();
     emit settingsChanged();
 }

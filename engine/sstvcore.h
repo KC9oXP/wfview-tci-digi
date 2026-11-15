@@ -9,6 +9,12 @@
 // Receive:
 //   audio -> FmDemod (instantaneous frequency, 12 kHz) -> frequency track
 //   idle: VIS header detector (1900 leader, 1200 break/start/stop, 1100/1300 bits)
+//   and, for a picture joined late, a sync detector: when the 1200 Hz sync
+//   pulses repeat at one mode's line period the picture starts there
+//   ("no VIS"), as MMSSTV does.
+//   Tuning: a manual offset (the whole signal shifted by the radio's dial or
+//   passband tuning) plus an automatic one measured on the 1900 Hz VIS
+//   leader and on the 1200 Hz sync pulses.
 //   receiving: pixels sampled from the track at the mode's timing; the sync
 //   pulse of every line is located and a straight line fitted through them
 //   (start time and line period), so a slanted or shifted picture is
@@ -98,6 +104,7 @@ public:
         bool redraw = false; // timing corrected: every line so far changed
         int dirtyFrom = -1; // image lines [dirtyFrom, dirtyTo) changed
         int dirtyTo = -1;
+        bool noVis = false; // started by the sync detector (no VIS header)
     };
 
     SstvDecoder();
@@ -111,6 +118,32 @@ public:
     void setAutoSlant(bool on)
     {
         m_autoSlant = on;
+    }
+    // Signal offset: received tones are this many Hz above nominal (sync at
+    // 1200 + offset). The automatic part is added when autoOffset is on.
+    void setOffsetHz(double hz)
+    {
+        m_manualOff = hz;
+    }
+    void setAutoOffset(bool on)
+    {
+        m_autoOffOn = on;
+        if (!on)
+            m_autoOff = 0.0;
+    }
+    double offsetHz() const
+    {
+        return m_manualOff + m_autoOff;
+    }
+    double autoOffsetHz() const
+    {
+        return m_autoOff;
+    }
+    // Start pictures from their sync pulses when the VIS header was missed.
+    void setAutoStart(bool on)
+    {
+        m_autoStart = on;
+        m_pulses.clear();
     }
     void reset(); // back to Idle, picture dropped
 
@@ -154,7 +187,10 @@ public:
 
 private:
     void onBin(Events &ev);
-    void begin(int mode, double t0, Events &ev);
+    void begin(int mode, double t0, Events &ev, bool periodStart = false);
+    float val(double t) const; // offset-corrected frequency, clipped to 1000..2500
+    void detectPulse(float rawHz, Events &ev);
+    void trySyncStart(Events &ev);
     void renderPeriod(int p);
     void measureSync(int p);
     bool fitTiming();
@@ -196,6 +232,28 @@ private:
     double m_level = 0.0;
     double m_levelDb = -120.0;
     double m_lastHz = 0.0;
+
+    // tuning
+    double m_manualOff = 0.0;
+    double m_autoOff = 0.0;
+    bool m_autoOffOn = true;
+
+    // sync detector (Idle)
+    struct Pulse
+    {
+        double t; // absolute index of the start
+        double width; // samples
+        double hz; // mean raw frequency
+    };
+    bool m_autoStart = true;
+    std::vector<float> m_smooth; // ~1 ms box filter of the raw track
+    size_t m_smoothPos = 0;
+    double m_smoothSum = 0.0;
+    bool m_inPulse = false;
+    double m_pulseStart = 0.0;
+    double m_pulseHz = 0.0;
+    int m_pulseN = 0;
+    std::vector<Pulse> m_pulses;
 };
 
 class SstvEncoder
@@ -219,6 +277,11 @@ public:
     }
     // Renders mono samples (amplitude 1); silence when finished.
     void render(float *out, size_t n, double sampleRate);
+    // Shifts every tone (tests: a mistuned station).
+    void setOffsetHz(double hz)
+    {
+        m_offset = hz;
+    }
 
 private:
     struct Seg
@@ -239,4 +302,11 @@ private:
     double m_phase = 0.0;
     double m_total = 0.0;
     bool m_done = false;
+    double m_offset = 0.0;
 };
+
+namespace sstv
+{
+// Audio frequency for a pixel value 0..255 (1500 Hz black .. 2300 Hz white).
+double valueHz(double v);
+} // namespace sstv

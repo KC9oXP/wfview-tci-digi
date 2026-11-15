@@ -568,3 +568,153 @@ void NavtexEncoder::render(float *out, size_t n, double fs)
         }
     }
 }
+
+// ===========================================================================
+// AMTOR FEC transmitter
+// ===========================================================================
+
+void AmtorFecModulator::clear()
+{
+    m_running = false;
+    m_stopReq = false;
+    m_stopped = true;
+    m_figs = false;
+    m_phasingLeft = m_flushLeft = m_endLeft = 0;
+    m_q.clear();
+    m_qPos = 0;
+    m_queued = m_sent = 0;
+    m_bitPos = 14;
+    m_t = 0.0;
+}
+
+void AmtorFecModulator::preroll(double sec)
+{
+    clear();
+    m_running = true;
+    m_stopped = false;
+    // One pair (DX + RX) is 14 bits = 0.14 s.
+    m_phasingLeft = std::max(16, int(std::lround(std::max(2.0, sec) * kBaud / 14.0)));
+    m_hist[0] = m_hist[1] = uint8_t(kCodeAlpha);
+    // Start in letters: the receiver assumes nothing.
+    m_q.push_back({uint8_t(kCodeLtrs), false});
+}
+
+size_t AmtorFecModulator::queueChar(char c)
+{
+    if (!m_running || m_stopReq)
+        return 0;
+    const std::string codes = navtex::encode(std::string(1, c), m_figs);
+    if (codes.empty())
+        return 0;
+    for (size_t i = 0; i < codes.size(); ++i)
+        m_q.push_back({uint8_t(codes[i]), i + 1 == codes.size()});
+    return ++m_queued;
+}
+
+void AmtorFecModulator::tail(double)
+{
+    if (m_running)
+        m_stopReq = true;
+}
+
+bool AmtorFecModulator::idle() const
+{
+    if (!m_running)
+        return true;
+    if (m_stopReq)
+        return m_stopped;
+    return m_phasingLeft == 0 && m_qPos >= m_q.size();
+}
+
+void AmtorFecModulator::nextPair()
+{
+    int dx, rx;
+    bool data = true;
+    if (m_phasingLeft > 0)
+    {
+        --m_phasingLeft;
+        dx = kCodeRep;
+        rx = kCodeAlpha;
+        data = false;
+    }
+    else if (m_qPos < m_q.size())
+    {
+        const Unit u = m_q[m_qPos++];
+        dx = u.code;
+        if (u.last)
+            ++m_sent;
+        if (m_qPos == m_q.size() && m_q.size() > 4096)
+        {
+            m_q.clear();
+            m_qPos = 0;
+        }
+        rx = m_hist[0];
+    }
+    else if (m_stopReq)
+    {
+        if (m_flushLeft == 0 && m_endLeft == 0)
+        {
+            m_flushLeft = 2;
+            m_endLeft = 6;
+        }
+        if (m_flushLeft > 0)
+        {
+            --m_flushLeft;
+            dx = kCodeChar32;
+            rx = m_hist[0];
+        }
+        else
+        {
+            // end of emission: alphas
+            dx = rx = kCodeAlpha;
+            data = false;
+            if (--m_endLeft <= 0)
+                m_stopped = true;
+        }
+    }
+    else
+    {
+        dx = kCodeBeta; // idle
+        rx = m_hist[0];
+    }
+    if (data)
+    {
+        m_hist[0] = m_hist[1];
+        m_hist[1] = uint8_t(dx);
+    }
+    for (int j = 0; j < 7; ++j)
+    {
+        m_bits[j] = (dx >> j) & 1;
+        m_bits[7 + j] = (rx >> j) & 1;
+    }
+    m_bitPos = 0;
+}
+
+void AmtorFecModulator::render(float *out, size_t n, double fs)
+{
+    const double bitSec = 1.0 / kBaud;
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (!m_running || (m_stopped && m_bitPos >= 14))
+        {
+            out[i] = 0.0f;
+            continue;
+        }
+        if (m_bitPos >= 14)
+        {
+            nextPair();
+        }
+        const bool mark = m_bits[m_bitPos] != 0;
+        m_hz = m_centre + ((mark != m_reverse) ? kDeviation : -kDeviation);
+        m_phase += 2 * M_PI * m_hz / fs;
+        if (m_phase > 2 * M_PI)
+            m_phase -= 2 * M_PI;
+        out[i] = float(std::sin(m_phase));
+        m_t += 1.0 / fs;
+        if (m_t >= bitSec)
+        {
+            m_t -= bitSec;
+            ++m_bitPos;
+        }
+    }
+}

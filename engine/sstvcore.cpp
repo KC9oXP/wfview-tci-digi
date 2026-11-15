@@ -124,6 +124,11 @@ double imageSeconds(int mode)
     return m.periods() * m.lineMs / 1000.0 + (m.family == Family::Scottie ? kScottieStartSyncMs / 1000.0 : 0.0);
 }
 
+double valueHz(double v)
+{
+    return valueToHz(v);
+}
+
 double syncOffsetMs(int mode)
 {
     const ModeInfo &m = info(mode);
@@ -142,7 +147,9 @@ using namespace sstv;
 namespace
 {
 constexpr double kBinMs = 5.0;
-constexpr double kIdleKeepSec = 3.0;
+constexpr double kIdleKeepSec = 8.0; // the sync detector looks back this far
+constexpr int kSyncChain = 6; // sync pulses in a row at one mode's period
+constexpr double kMaxAutoOffHz = 300.0;
 constexpr int kFitEvery = 4;
 constexpr int kMaxNoSync = 16;
 } // namespace
@@ -173,6 +180,8 @@ void SstvDecoder::reset()
     m_img.clear();
     m_syncs.clear();
     m_periodsDone = 0;
+    m_pulses.clear();
+    m_inPulse = false;
 }
 
 int SstvDecoder::width() const
@@ -216,13 +225,20 @@ float SstvDecoder::trackAt(double t) const
     return float(m_track[k] + f * (m_track[k + 1] - m_track[k]));
 }
 
+float SstvDecoder::val(double t) const
+{
+    // Out-of-band readings (noise, no signal) are clipped so they cannot
+    // look like sync or white.
+    return std::clamp(float(trackAt(t) - offsetHz()), 1000.0f, 2500.0f);
+}
+
 float SstvDecoder::pixel(double t, double dur) const
 {
     // Mean frequency over [t, t + dur), sampled at about one point per input sample.
     const int n = std::max(1, int(std::ceil(dur)));
     double acc = 0.0;
     for (int i = 0; i < n; ++i)
-        acc += trackAt(t + dur * (i + 0.5) / n);
+        acc += val(t + dur * (i + 0.5) / n);
     return float(acc / n);
 }
 
@@ -252,11 +268,12 @@ SstvDecoder::Events SstvDecoder::process(const float *x, size_t n)
     double lvl = 0.0;
     for (const FmDemod::Out &o : m_tmp)
     {
-        // Out-of-band readings (noise, no signal) are clipped so they cannot
-        // look like sync or white.
-        const float hz = std::clamp(o.hz, 1000.0f, 2500.0f);
+        // Raw track (offset applied when read); wild noise readings clipped.
+        const float hz = std::clamp(o.hz, 700.0f, 2900.0f);
         m_track.push_back(hz);
         m_now += 1.0;
+        if (m_state == State::Idle && m_autoStart)
+            detectPulse(hz, ev);
         lvl += o.level;
         m_binAcc += hz;
         if (++m_binCount >= binLen)
@@ -335,18 +352,28 @@ void SstvDecoder::onBin(Events &ev)
             acc += m_bins[size_t(i)];
         return acc / (b - a + 1);
     };
-    if (std::fabs(avg(s + 1, s + 4) - 1200.0) > 70.0 || std::fabs(avg(s + 55, s + 58) - 1200.0) > 70.0)
+    // Offset: the manual one, or (auto) wherever the 1900 Hz leader really is.
+    double off = m_manualOff + m_autoOff;
+    if (m_autoOffOn)
+    {
+        std::vector<float> lead(m_bins.begin() + (s - 40), m_bins.begin() + s);
+        std::nth_element(lead.begin(), lead.begin() + 20, lead.end());
+        const double l = lead[20] - 1900.0;
+        if (std::fabs(l - m_manualOff) <= kMaxAutoOffHz)
+            off = l;
+    }
+    if (std::fabs(avg(s + 1, s + 4) - off - 1200.0) > 70.0 || std::fabs(avg(s + 55, s + 58) - off - 1200.0) > 70.0)
         return;
     int leader = 0;
     for (int i = s - 40; i < s; ++i)
-        if (std::fabs(m_bins[size_t(i)] - 1900.0) < 120.0)
+        if (std::fabs(m_bins[size_t(i)] - off - 1900.0) < 120.0)
             ++leader;
     if (leader < 32)
         return;
     int code = 0, ones = 0;
     for (int j = 0; j < 8; ++j)
     {
-        const double f = avg(s + 6 + 6 * j + 1, s + 6 + 6 * j + 4);
+        const double f = avg(s + 6 + 6 * j + 1, s + 6 + 6 * j + 4) - off;
         int bit;
         if (std::fabs(f - 1100.0) < 75.0)
             bit = 1;
@@ -385,6 +412,21 @@ void SstvDecoder::onBin(Events &ev)
         }
     }
     const double t0 = edge + 300.0 * m_rate / 1000.0;
+    if (m_autoOffOn)
+    {
+        // Refine on the whole leader (40 bins = 200 ms).
+        double acc = 0.0;
+        int nAcc = 0;
+        for (int i = s - 40; i < s; ++i)
+            if (std::fabs(m_bins[size_t(i)] - off - 1900.0) < 120.0)
+            {
+                acc += m_bins[size_t(i)];
+                ++nAcc;
+            }
+        if (nAcc > 0)
+            off = acc / nAcc - 1900.0;
+        m_autoOff = std::clamp(off - m_manualOff, -kMaxAutoOffHz, kMaxAutoOffHz);
+    }
     if (m_state == State::Receiving)
         ev.finished = true; // a new picture interrupts the old one
     m_bins.clear();
@@ -392,11 +434,13 @@ void SstvDecoder::onBin(Events &ev)
     begin(mode, t0, ev);
 }
 
-void SstvDecoder::begin(int mode, double t0, Events &ev)
+void SstvDecoder::begin(int mode, double t0, Events &ev, bool periodStart)
 {
     m_mode = mode;
     const ModeInfo &m = info(mode);
-    m_t0 = t0 + (m.family == Family::Scottie ? kScottieStartSyncMs * m_rate / 1000.0 : 0.0);
+    m_t0 = t0 + (m.family == Family::Scottie && !periodStart ? kScottieStartSyncMs * m_rate / 1000.0 : 0.0);
+    m_pulses.clear();
+    m_inPulse = false;
     m_period = nominalPeriod() * (1.0 + m_slantPpm * 1e-6);
     m_periodsDone = 0;
     m_noSyncRun = 0;
@@ -408,6 +452,129 @@ void SstvDecoder::begin(int mode, double t0, Events &ev)
     m_state = State::Receiving;
     ev.started = true;
     ev.redraw = true;
+}
+
+void SstvDecoder::detectPulse(float rawHz, Events &ev)
+{
+    // ~1 ms box average so noise does not split or fake a pulse.
+    const size_t len = size_t(std::max(3L, std::lround(0.001 * m_rate)));
+    if (m_smooth.size() != len)
+    {
+        m_smooth.assign(len, 1900.0f);
+        m_smoothSum = 1900.0 * double(len);
+        m_smoothPos = 0;
+    }
+    m_smoothSum += rawHz - m_smooth[m_smoothPos];
+    m_smooth[m_smoothPos] = rawHz;
+    m_smoothPos = (m_smoothPos + 1) % len;
+    const double hz = m_smoothSum / double(len) - offsetHz();
+    const double now = m_now - double(len) / 2.0; // centre of the box
+    if (hz < 1350.0)
+    {
+        if (!m_inPulse)
+        {
+            m_inPulse = true;
+            m_pulseStart = now;
+            m_pulseHz = 0.0;
+            m_pulseN = 0;
+        }
+        m_pulseHz += rawHz;
+        ++m_pulseN;
+        return;
+    }
+    if (!m_inPulse)
+        return;
+    m_inPulse = false;
+    const double width = now - m_pulseStart;
+    const double ms = width * 1000.0 / m_rate;
+    if (ms < 3.0 || ms > 26.0 || m_pulseN == 0)
+        return; // not a sync pulse (VIS bits and breaks are 30 ms)
+    const double meanHz = m_pulseHz / m_pulseN;
+    m_pulses.push_back({m_pulseStart, width, meanHz});
+    if (m_pulses.size() > 40)
+        m_pulses.erase(m_pulses.begin(), m_pulses.begin() + 20);
+    // Forget pulses older than the track kept in Idle.
+    const double keep = m_now - (kIdleKeepSec - 0.5) * m_rate;
+    while (!m_pulses.empty() && m_pulses.front().t < keep)
+        m_pulses.erase(m_pulses.begin());
+    trySyncStart(ev);
+}
+
+void SstvDecoder::trySyncStart(Events &ev)
+{
+    if (int(m_pulses.size()) < kSyncChain)
+        return;
+    int bestMode = -1;
+    double bestFirst = 0.0, bestResid = 1e9, bestHz = 0.0;
+    int bestChain = 0;
+    for (int mode = 0; mode < ModeCount; ++mode)
+    {
+        const ModeInfo &m = info(mode);
+        const double P = m.lineMs * m_rate / 1000.0 * (1.0 + m_slantPpm * 1e-6);
+        const double W = m.syncMs * m_rate / 1000.0;
+        const double tol = 1.5 * m_rate / 1000.0;
+        const Pulse &last = m_pulses.back();
+        if (std::fabs(last.width - W) > std::max(2.5 * m_rate / 1000.0, 0.45 * W))
+            continue;
+        // Walk back from the newest pulse along whole periods (a missed sync is allowed).
+        double cur = last.t;
+        int chain = 1, singles = 0;
+        double resid = 0.0, first = last.t, hzSum = last.hz;
+        for (int i = int(m_pulses.size()) - 2; i >= 0; --i)
+        {
+            const Pulse &q = m_pulses[size_t(i)];
+            const double d = cur - q.t;
+            if (d > 2.5 * P)
+                break;
+            const long k = std::lround(d / P);
+            if (k < 1 || k > 2 || std::fabs(d - double(k) * P) > tol * double(k)
+                || std::fabs(q.width - W) > std::max(2.5 * m_rate / 1000.0, 0.45 * W))
+                continue; // a stray dip: skip it
+            resid += std::fabs(d - double(k) * P);
+            if (k == 1)
+                ++singles;
+            ++chain;
+            hzSum += q.hz;
+            cur = q.t;
+            first = q.t;
+        }
+        // Only syncs dip to 1200 Hz in SSTV: other dips between them (another
+        // digital mode, PSK phase flips) mean this is not a picture.
+        int strays = 0;
+        for (const Pulse &q : m_pulses)
+            if (q.t > first + tol && q.t < last.t - tol)
+            {
+                bool inChain = false;
+                const long k = std::lround((last.t - q.t) / P);
+                inChain = std::fabs((last.t - q.t) - double(k) * P) <= tol * double(std::max(1L, k));
+                if (!inChain)
+                    ++strays;
+            }
+        double meanHz = hzSum / chain - offsetHz();
+        if (chain >= kSyncChain && singles >= kSyncChain - 2 && strays <= chain / 3 && meanHz < 1290.0)
+        {
+            const double r = resid / chain;
+            if (chain > bestChain || (chain == bestChain && r < bestResid))
+            {
+                bestMode = mode;
+                bestChain = chain;
+                bestResid = r;
+                bestFirst = first;
+                bestHz = hzSum / chain;
+            }
+        }
+    }
+    if (bestMode < 0)
+        return;
+    if (m_autoOffOn)
+        m_autoOff = std::clamp(bestHz - 1200.0 - m_manualOff, -kMaxAutoOffHz, kMaxAutoOffHz);
+    // The first pulse of the chain is the start of a sync; the picture starts
+    // there (line 0 = the first line seen).
+    const double t0 = bestFirst - syncOffsetMs(bestMode) * m_rate / 1000.0;
+    m_bins.clear();
+    m_binStarts.clear();
+    begin(bestMode, t0, ev, true);
+    ev.noVis = true;
 }
 
 void SstvDecoder::startManual(int mode)
@@ -435,7 +602,7 @@ void SstvDecoder::measureSync(int p)
     const long b = long(std::ceil(expect + w + 2 * L));
     std::vector<int> pre(size_t(b - a + 2), 0);
     for (long t = a; t <= b; ++t)
-        pre[size_t(t - a + 1)] = pre[size_t(t - a)] + (trackAt(double(t)) < 1350.0f ? 1 : 0);
+        pre[size_t(t - a + 1)] = pre[size_t(t - a)] + (val(double(t)) < 1350.0f ? 1 : 0);
     const auto count = [&](long from, long to) // [from, to)
     {
         from = std::clamp(from, a, b + 1);
@@ -467,6 +634,20 @@ void SstvDecoder::measureSync(int p)
         }
         m_syncs.emplace_back(p, double(bestT));
         m_noSyncRun = 0;
+        if (m_autoOffOn)
+        {
+            // The middle half of the pulse is 1200 Hz + offset.
+            double acc = 0.0;
+            int nAcc = 0;
+            for (long t = bestT + Li / 4; t < bestT + 3 * Li / 4; ++t, ++nAcc)
+                acc += trackAt(double(t));
+            if (nAcc > 0)
+            {
+                const double meas = acc / nAcc - 1200.0 - m_manualOff;
+                if (std::fabs(meas - m_autoOff) < 150.0)
+                    m_autoOff = std::clamp(m_autoOff + 0.15 * (meas - m_autoOff), -kMaxAutoOffHz, kMaxAutoOffHz);
+            }
+        }
     }
     else
     {
@@ -829,7 +1010,7 @@ void SstvEncoder::render(float *out, size_t n, double fs)
             out[i] = 0.0f;
             continue;
         }
-        m_phase += 2.0 * M_PI * m_segs[m_segIdx].hz * dt;
+        m_phase += 2.0 * M_PI * (m_segs[m_segIdx].hz + m_offset) * dt;
         if (m_phase > 2.0 * M_PI)
             m_phase -= 2.0 * M_PI;
         out[i] = float(std::sin(m_phase));

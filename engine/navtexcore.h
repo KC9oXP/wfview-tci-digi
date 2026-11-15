@@ -1,7 +1,8 @@
 #pragma once
 
 // NAVTEX / SITOR-B receive (100 baud FSK, 170 Hz shift, CCIR 476 code with
-// time-diversity FEC), plus an encoder for the tests. Qt-free.
+// time-diversity FEC), an encoder for the tests and the AMTOR FEC (mode B)
+// transmitter. Qt-free.
 //
 // The bit synchroniser (early / prompt / late), the W7AY optimal-ATC slicer,
 // the alpha / rep phasing search and the FEC repair follow fldigi's navtex.cxx
@@ -12,6 +13,7 @@
 
 #include <complex>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -117,4 +119,57 @@ private:
     std::vector<int> m_bitsOut;
     size_t m_bit = 0;
     double m_t = 0.0, m_phase = 0.0;
+};
+
+// AMTOR FEC (mode B) transmitter for live typing: phasing pairs first, then
+// each character as DX and again as RX five places later, idle beta while
+// nothing is queued, and at the end the last repeats plus end-of-emission
+// alphas. 100 baud, mark = centre + 85 Hz (as the decoder above expects;
+// Reverse swaps them). Not thread-safe (the TX source holds a mutex).
+class AmtorFecModulator
+{
+public:
+    void setCentreHz(double hz)
+    {
+        m_centre = hz;
+    }
+    void setReverse(bool on)
+    {
+        m_reverse = on;
+    }
+    void clear();
+    void preroll(double sec); // start: phasing signals for sec (at least 2 s)
+    // Counted characters queued so far after c, or 0 if c cannot be sent.
+    size_t queueChar(char c);
+    void tail(double sec); // send what is queued, then the end of emission
+    bool idle() const;
+    size_t unitsSent() const
+    {
+        return m_sent;
+    }
+    void render(float *out, size_t n, double sampleRate);
+
+private:
+    struct Unit
+    {
+        uint8_t code;
+        bool last; // last code of a counted character
+    };
+    void nextPair(); // fills m_bits with 14 bits
+    bool m_running = false;
+    bool m_stopReq = false;
+    bool m_stopped = true;
+    bool m_figs = false;
+    int m_phasingLeft = 0;
+    int m_flushLeft = 0;
+    int m_endLeft = 0;
+    std::vector<Unit> m_q;
+    size_t m_qPos = 0;
+    uint8_t m_hist[2] = {0, 0};
+    size_t m_queued = 0, m_sent = 0;
+    int m_bits[14] = {};
+    int m_bitPos = 14;
+    double m_centre = 1500.0;
+    bool m_reverse = false;
+    double m_t = 0.0, m_phase = 0.0, m_hz = 0.0;
 };

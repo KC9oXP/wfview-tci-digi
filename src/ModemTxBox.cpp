@@ -1,6 +1,8 @@
 #include "ModemTxBox.h"
 
 #include "ModemEngine.h"
+#include "RadioModes.h"
+#include "TxTools.h"
 
 #include <QCheckBox>
 #include <QDialog>
@@ -101,6 +103,8 @@ ModemTxBox::ModemTxBox(ModemEngine *engine, const QString &name, QWidget *parent
     btns->addWidget(m_rxBtn);
     btns->addWidget(m_abort);
     btns->addWidget(m_hold);
+    m_tools = new TxToolButtons([this]() { return m_engine->txLevel(); });
+    btns->addWidget(m_tools);
     btns->addStretch(1);
     btns->addWidget(new QLabel(tr("TX level")));
     m_txLevel = new QSlider(Qt::Horizontal);
@@ -108,7 +112,8 @@ ModemTxBox::ModemTxBox(ModemEngine *engine, const QString &name, QWidget *parent
     m_txLevel->setMinimumWidth(80);
     m_txLevel->setMaximumWidth(200);
     m_txLevel->setToolTip(tr("Audio level sent to wfview. Set the radio's ALC/power with this and wfview's TX gain "
-                             "(PSK needs a clean, ALC-free signal)."));
+                             "(PSK needs a clean, ALC-free signal). Kept for this mode (and sub-mode); "
+                             "Tune sends a steady tone at this level."));
     btns->addWidget(m_txLevel, 1);
     m_txLevelValue = new QLabel();
     m_txLevelValue->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("100%")) + 4);
@@ -175,6 +180,7 @@ void ModemTxBox::syncTransmitting(bool on)
     m_abort->setEnabled(on);
     for (QPushButton *b : m_macroButtons)
         b->setEnabled(m_canTx);
+    m_tools->setTransmitAllowed(m_canTx);
     m_txBtn->setStyleSheet(on ? QStringLiteral("background-color: #a02020; color: white;") : QString());
 }
 
@@ -206,18 +212,34 @@ bool ModemTxBox::eventFilter(QObject *obj, QEvent *event)
 
 void ModemTxBox::updateModeWarning()
 {
-    const QString m = m_mode.toUpper();
     QString warn;
-    if (m_ready && (m == QLatin1String("CW") || m == QLatin1String("CW-R")))
-        warn = tr("Radio is in %1. %2 transmit here sends audio, so it needs DIGU or DIGL (USB-D / LSB-D) "
-                  "or USB/LSB.")
-                   .arg(m, m_name);
-    else if (m_ready && !m.isEmpty() && m != QLatin1String("DIGU") && m != QLatin1String("DIGL")
-             && m != QLatin1String("USB") && m != QLatin1String("LSB"))
-        warn = tr("Radio is in %1. %2 needs an SSB or data mode (DIGU/DIGL = USB-D/LSB-D).").arg(m, m_name);
-    else if (m_ready && (m == QLatin1String("USB") || m == QLatin1String("LSB")))
-        warn = tr("Radio is in %1 (not data mode): transmit audio may come from the microphone path. Use %2.")
-                   .arg(m, m == QLatin1String("USB") ? QStringLiteral("DIGU") : QStringLiteral("DIGL"));
+    QString style = QStringLiteral("color: #e0a030;");
+    if (m_ready)
+    {
+        switch (RadioModes::kind(m_mode))
+        {
+        case RadioModes::Kind::Unknown:
+        case RadioModes::Kind::Data:
+            break;
+        case RadioModes::Kind::Cw:
+            warn = tr("Radio is in %1. %2 transmit here sends audio, so it needs a data mode (DIGU/DIGL, "
+                      "DATA-U/DATA-L, USB-D/LSB-D) or USB/LSB.")
+                       .arg(m_mode, m_name);
+            break;
+        case RadioModes::Kind::Voice:
+            // Fine on many radios; worth a quiet note since some take mic audio in plain SSB.
+            warn = tr("Radio is in %1 (not a data mode). That works if the radio takes the TCI audio in %1; "
+                      "if nothing goes out, use its data mode (on an IC-7610 over LAN: Data 2).")
+                       .arg(m_mode);
+            style = QStringLiteral("color: #9a9a9a;");
+            break;
+        case RadioModes::Kind::Other:
+            warn = tr("Radio is in %1. %2 needs a data mode (DIGU/DIGL, DATA-U/DATA-L, USB-D/LSB-D) or USB/LSB.")
+                       .arg(m_mode, m_name);
+            break;
+        }
+    }
+    m_modeWarning->setStyleSheet(style);
     m_modeWarning->setText(warn);
     m_modeWarning->setVisible(!warn.isEmpty());
 }
@@ -248,8 +270,11 @@ void ModemTxBox::editMacros()
     QDialog dlg(this);
     dlg.setWindowTitle(tr("%1 macros").arg(m_name));
     auto *outer = new QVBoxLayout(&dlg);
-    outer->addWidget(new QLabel(tr("{MYCALL} and {CALL} are replaced when the macro is sent. End a macro with a new "
-                                   "line to start the next one on a fresh line.")));
+    auto *help = new QLabel(tr("{MYCALL} and {CALL} are replaced when the macro is sent. End a macro with a new "
+                               "line to start the next one on a fresh line. {CWID} sends your CW ID after the "
+                               "transmission."));
+    help->setWordWrap(true);
+    outer->addWidget(help);
     auto *scroll = new QScrollArea();
     scroll->setWidgetResizable(true);
     auto *inner = new QWidget();

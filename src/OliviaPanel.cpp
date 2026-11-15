@@ -2,6 +2,7 @@
 
 #include "OliviaEngine.h"
 #include "RxText.h"
+#include "UiStyle.h"
 #include "WaterfallWidget.h"
 
 #include <QComboBox>
@@ -48,7 +49,7 @@ QWidget *OliviaPanel::buildTop()
 
     auto *r1 = new QHBoxLayout();
     m_decode = new QPushButton(tr("Decode"));
-    m_decode->setCheckable(true);
+    UiStyle::decodeButton(m_decode);
     r1->addWidget(m_decode);
     m_mode = new QComboBox();
     for (const OliviaEngine::Preset &p : OliviaEngine::presets())

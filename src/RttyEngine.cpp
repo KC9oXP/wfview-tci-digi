@@ -1,5 +1,6 @@
 #include "RttyEngine.h"
 
+#include "RadioModes.h"
 #include "rttytxsource.h"
 
 #include <QMetaType>
@@ -248,9 +249,8 @@ bool RttyEngine::usbEffective() const
         return true;
     if (m_sideband == SidebandLsb)
         return false;
-    // Auto: LSB and DIGL put the mark tone below space in the audio.
-    const QString m = m_radioMode.toUpper();
-    return !(m == QLatin1String("LSB") || m == QLatin1String("DIGL"));
+    // Auto: LSB and its data modes (DIGL, DATA-L, LSB-D...) put the mark tone below space in the audio.
+    return !RadioModes::isLsb(m_radioMode);
 }
 
 RttyConfig RttyEngine::config() const
@@ -576,6 +576,7 @@ void RttyEngine::keyUp()
     m_keyed = true;
     m_tailQueued = false;
     m_radioWasTx = false;
+    m_cwIdAfter = false;
     m_keyedTimer.start();
     emit transmittingChanged(true);
     emit transmitRequested(true);
@@ -594,6 +595,13 @@ void RttyEngine::release(const QString &why)
     m_txPoll.stop();
     m_keyed = false;
     m_autoRelease = false;
+    if (why.isEmpty() && m_cwIdAfter)
+    {
+        // Before letting go of PTT, so the radio stays keyed into the CW ID.
+        m_cwIdAfter = false;
+        emit cwIdRequested(m_txLevel);
+    }
+    m_cwIdAfter = false;
     emit transmitRequested(false);
     emit transmittingChanged(false);
     QString tail = QString::fromLatin1(sent.data(), static_cast<int>(sent.size()));
@@ -607,9 +615,23 @@ void RttyEngine::release(const QString &why)
 
 void RttyEngine::send(const QString &text)
 {
-    const QString t = expand(text);
-    if (t.isEmpty())
-        return;
+    QString raw = text;
+    const bool cwId = raw.contains(QStringLiteral("{CWID}"), Qt::CaseInsensitive);
+    raw.remove(QStringLiteral("{CWID}"), Qt::CaseInsensitive);
+    const QString t = expand(raw);
+    if (t.trimmed().isEmpty())
+    {
+        if (cwId)
+        {
+            if (m_keyed)
+                m_cwIdAfter = true;
+            else
+                emit cwIdRequested(m_txLevel);
+            return;
+        }
+        if (t.isEmpty())
+            return;
+    }
     if (!m_keyed)
     {
         keyUp();
@@ -617,6 +639,8 @@ void RttyEngine::send(const QString &text)
             return;
         m_autoRelease = !m_holdTx;
     }
+    if (cwId)
+        m_cwIdAfter = true;
     m_tx->queueText(t.toLatin1().toStdString());
     m_tailQueued = false;
 }

@@ -8,7 +8,9 @@
 
 class HellEngine;
 class HellWidget;
+class QCheckBox;
 class QComboBox;
+class QSpinBox;
 class QDoubleSpinBox;
 class QLabel;
 class QPlainTextEdit;
@@ -21,7 +23,10 @@ class HellPanel : public ModemPanel
 
 public:
     HellPanel(HellEngine *engine, QSettings *settings, QWidget *parent = nullptr);
-    void saveState() override;
+    void saveState() override; // also auto-saves the received picture
+    // Saves the received picture as PNG in the logs folder: everything kept,
+    // or (automatic) what came in since the last automatic save. Returns the path.
+    QString savePicture(bool sinceLastAuto);
 
 protected:
     void syncSettings() override;
@@ -32,6 +37,7 @@ protected:
 
 private:
     QWidget *buildTop();
+    void syncAlign();
 
     HellEngine *m_hell;
     QPushButton *m_decode = nullptr;
@@ -42,4 +48,10 @@ private:
     QLabel *m_level = nullptr;
     HellWidget *m_rx = nullptr;
     QPlainTextEdit *m_echo = nullptr;
+    QCheckBox *m_autoAlign = nullptr;
+    QSpinBox *m_shift = nullptr;
+    QLabel *m_shiftInfo = nullptr;
+    QCheckBox *m_autoSave = nullptr;
+    qint64 m_savedTo = 0; // last column auto-saved
+    bool m_wasDecoding = false;
 };

@@ -41,6 +41,11 @@ struct Config
 std::string name(const Config &c);
 // Characters per second for the configuration.
 double charsPerSecond(const Config &c);
+// One FEC block (64 symbols, Contestia 32), seconds.
+double blockSeconds(const Config &c);
+// Zero characters sent before the text so a receiver has found the signal
+// before the first letter: two FEC blocks, 1..4 s.
+double prerollSeconds(const Config &c);
 } // namespace olivia
 
 class OliviaDemodulator
@@ -52,7 +57,9 @@ public:
     void setSampleRate(double fs);
     void setConfig(const olivia::Config &c);
     // Minimum S/N (as the library reports it) for printing; 0 = print
-    // everything (noise prints as random characters). Default 5.
+    // everything (noise prints as random characters). Default 5. Above it,
+    // printing also stops when the S/N falls well below its best (the end of
+    // a transmission).
     void setSquelch(double snr)
     {
         m_squelch = snr;
@@ -81,6 +88,7 @@ private:
     double m_snr = 0.0;
     double m_offset = 0.0;
     bool m_escape = false;
+    double m_peakSnr = 0.0; // best S/N since the signal appeared
     AudioResampler m_rs;
     std::vector<float> m_buf8;
     std::vector<double> m_dbl;

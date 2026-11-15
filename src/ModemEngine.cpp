@@ -90,9 +90,35 @@ void ModemEngine::loadSettings(QSettings *settings)
 
     m_carrierHz = std::clamp(m_carrierHz, kMinHz, kMaxHz);
     m_txLevel = std::clamp(m_txLevel, 0.0, 1.0);
+    reloadTxLevel();
     applyConfig();
     emit settingsChanged();
     emit macrosChanged();
+}
+
+QString ModemEngine::levelSettingsKey() const
+{
+    QString k = levelKey();
+    if (k.isEmpty())
+        return QString();
+    k.replace(QLatin1Char('/'), QLatin1Char('-')).replace(QLatin1Char(' '), QLatin1Char('-'));
+    return QStringLiteral("TxLevel-") + k;
+}
+
+void ModemEngine::reloadTxLevel()
+{
+    const QString key = levelSettingsKey();
+    if (!m_settings || key.isEmpty())
+        return;
+    m_settings->beginGroup(m_group);
+    const double v = m_settings->value(key, m_txLevel).toDouble();
+    m_settings->endGroup();
+    const double level = std::clamp(v, 0.0, 1.0);
+    if (std::fabs(level - m_txLevel) < 1e-6)
+        return;
+    m_txLevel = level;
+    m_tx->setLevel(float(m_txLevel));
+    emit settingsChanged();
 }
 
 void ModemEngine::save(const char *key, const QVariant &value)
@@ -173,6 +199,9 @@ void ModemEngine::setTxLevel(double level)
         return;
     m_txLevel = level;
     save("TxLevel", m_txLevel);
+    const QString key = levelSettingsKey();
+    if (!key.isEmpty())
+        save(key.toLatin1().constData(), m_txLevel);
     m_tx->setLevel(float(m_txLevel));
     emit settingsChanged();
 }
@@ -274,6 +303,7 @@ void ModemEngine::keyUp()
     m_keyed = true;
     m_tailQueued = false;
     m_radioWasTx = false;
+    m_cwIdAfter = false;
     m_keyedTimer.start();
     emit transmittingChanged(true);
     emit transmitRequested(true);
@@ -292,6 +322,13 @@ void ModemEngine::release(const QString &why)
     m_txPoll.stop();
     m_keyed = false;
     m_autoRelease = false;
+    if (why.isEmpty() && m_cwIdAfter)
+    {
+        // Before letting go of PTT, so the radio stays keyed into the CW ID.
+        m_cwIdAfter = false;
+        emit cwIdRequested(m_txLevel);
+    }
+    m_cwIdAfter = false;
     emit transmitRequested(false);
     emit transmittingChanged(false);
     QString tail = QString::fromLatin1(sent.data(), static_cast<int>(sent.size()));
@@ -305,9 +342,24 @@ void ModemEngine::release(const QString &why)
 
 void ModemEngine::send(const QString &text)
 {
-    const QString t = expand(text);
-    if (t.isEmpty())
-        return;
+    // {CWID}: a CW ID after this transmission (sent by the CW ID engine).
+    QString raw = text;
+    const bool cwId = raw.contains(QStringLiteral("{CWID}"), Qt::CaseInsensitive);
+    raw.remove(QStringLiteral("{CWID}"), Qt::CaseInsensitive);
+    const QString t = expand(raw);
+    if (t.trimmed().isEmpty())
+    {
+        if (cwId)
+        {
+            if (m_keyed)
+                m_cwIdAfter = true;
+            else
+                emit cwIdRequested(m_txLevel); // a macro that is only {CWID}
+            return;
+        }
+        if (t.isEmpty())
+            return;
+    }
     if (!m_keyed)
     {
         keyUp();
@@ -315,8 +367,21 @@ void ModemEngine::send(const QString &text)
             return;
         m_autoRelease = !m_holdTx;
     }
+    if (cwId)
+        m_cwIdAfter = true;
     m_tx->queueText(t.toLatin1().toStdString());
     m_tailQueued = false;
+}
+
+void ModemEngine::stopNow()
+{
+    release(QString());
+}
+
+void ModemEngine::requestCwIdAfter()
+{
+    if (m_keyed)
+        m_cwIdAfter = true;
 }
 
 void ModemEngine::sendMacro(int index)

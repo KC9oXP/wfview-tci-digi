@@ -104,6 +104,47 @@ const char *const *glyph(char c)
     return it == m.end() ? nullptr : it->second->rows;
 }
 
+int bestRowShift(const float *px, size_t n, size_t maxColumns)
+{
+    constexpr int kSeamLag = 1;
+    const size_t cols = n / size_t(kRows);
+    if (cols < 30)
+        return -1;
+    const size_t use = std::min(cols, maxColumns);
+    const size_t start = (cols - use) * size_t(kRows); // on the column grid of px[0]
+    // Breaks between neighbouring half-pixels, by position in the column.
+    double brk[kRows] = {};
+    double ink = 0.0;
+    for (size_t j = 1; j < use; ++j)
+        for (int r = 0; r < kRows; ++r)
+        {
+            const size_t i = start + j * size_t(kRows) + size_t(r);
+            const double a = px[i - 1], b = px[i];
+            brk[r] += std::fabs(a - b);
+            ink += b;
+        }
+    if (ink / double(use * size_t(kRows)) < 0.03)
+        return -1; // blank
+    // A seam between columns breaks strokes; inside a letter, rows come in
+    // identical pairs and strokes run on. Smooth over the neighbours since the
+    // edge falls between samples.
+    int best = -1;
+    double bestV = -1.0;
+    for (int r = 0; r < kRows; ++r)
+    {
+        const double v = brk[r] + 0.5 * (brk[(r + kRows - 1) % kRows] + brk[(r + 1) % kRows]);
+        if (v > bestV)
+        {
+            bestV = v;
+            best = r;
+        }
+    }
+    // The demodulator's envelope filter smears each edge over the following
+    // half-pixels, so the strongest break shows up one to two half-pixels
+    // before the true column edge (measured in tests/test_hell.cpp).
+    return (best + kSeamLag) % kRows;
+}
+
 bool charColumns(char c, std::vector<uint8_t> &cols)
 {
     cols.assign(size_t(kCharCols * kRows), 0);

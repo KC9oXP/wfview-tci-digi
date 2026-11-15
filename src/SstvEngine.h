@@ -24,16 +24,16 @@ class SstvDecoderWorker : public QObject
 
 public slots:
     void pushAudio(QVector<float> mono, float sampleRate);
-    void setParams(bool autoSlant, double slantPpm);
+    void setParams(bool autoSlant, double slantPpm, double offsetHz, bool autoOffset, bool autoStart);
     void startManual(int mode);
     void stopImage();
     void resetDecoder();
 
 signals:
-    void imageStarted(int mode);
+    void imageStarted(int mode, bool noVis);
     void imageUpdated(QImage img, int linesDone, double slant);
     void imageFinished(QImage img, int mode, int linesDone);
-    void statsUpdated(double levelDb, double hz, bool receiving);
+    void statsUpdated(double levelDb, double hz, bool receiving, double offsetHz);
 
 private:
     QImage snapshot() const;
@@ -72,6 +72,28 @@ public:
     {
         return m_rxMode;
     }
+    // Tuning: manual offset (Hz the signal is above nominal) plus, when
+    // autoOffset is on, what the decoder measured on the VIS leader / syncs.
+    double offsetHz() const
+    {
+        return m_offsetHz;
+    }
+    bool autoOffset() const
+    {
+        return m_autoOffset;
+    }
+    double totalOffsetHz() const
+    {
+        return m_totalOffset;
+    }
+    bool autoStart() const
+    {
+        return m_autoStart;
+    }
+    bool cwIdAfter() const
+    {
+        return m_cwIdAfterPicture;
+    }
     QImage lastImage() const
     {
         return m_img;
@@ -95,6 +117,10 @@ public slots:
     void setAutoSlant(bool on);
     void setSlantPpm(double ppm);
     void setTxMode(int mode);
+    void setOffsetHz(double hz);
+    void setAutoOffset(bool on);
+    void setAutoStart(bool on);
+    void setCwIdAfter(bool on);
     void startManual(int mode);
     void stopImage();
     // img must already be the mode's size (fitToMode, overlay drawn).
@@ -102,7 +128,7 @@ public slots:
     QString saveImage(const QImage &img, int mode, const QString &note = QString());
 
 signals:
-    void imageStarted(int mode);
+    void imageStarted(int mode, bool noVis);
     void imageUpdated(QImage img, int linesDone);
     void imageSaved(QString path, QImage img);
     void logLine(QString text); // for the session log
@@ -124,6 +150,11 @@ private:
     SstvDecoderWorker *m_worker = nullptr;
     bool m_autoSlant = true;
     double m_slantPpm = 0.0;
+    double m_offsetHz = 0.0;
+    bool m_autoOffset = true;
+    double m_totalOffset = 0.0;
+    bool m_autoStart = true;
+    bool m_cwIdAfterPicture = false;
     int m_txMode = sstv::Martin1;
     bool m_receiving = false;
     int m_rxMode = -1;

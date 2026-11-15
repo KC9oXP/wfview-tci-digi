@@ -2,6 +2,7 @@
 
 #include "NavtexEngine.h"
 #include "RxText.h"
+#include "UiStyle.h"
 #include "WaterfallWidget.h"
 
 #include <QCheckBox>
@@ -21,7 +22,7 @@ NavtexPanel::NavtexPanel(NavtexEngine *engine, QWidget *parent)
     auto *root = new QVBoxLayout(this);
     auto *r1 = new QHBoxLayout();
     m_decode = new QPushButton(tr("Decode"));
-    m_decode->setCheckable(true);
+    UiStyle::decodeButton(m_decode);
     r1->addWidget(m_decode);
     r1->addWidget(new QLabel(tr("Centre")));
     m_freq = new QDoubleSpinBox();

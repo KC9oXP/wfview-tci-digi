@@ -231,6 +231,8 @@ signals:
     void textAppended(QString text);
     void scopePoints(QVector<float> xy);
     void transmitRequested(bool on);
+    // A transmission whose text had {CWID} ended: send the CW ID at this level.
+    void cwIdRequested(double txLevel);
 
 private slots:
     void onTextDecoded(const QString &text);
@@ -288,6 +290,7 @@ private:
     bool m_tailQueued = false;
     bool m_radioTx = false;
     bool m_radioWasTx = false;
+    bool m_cwIdAfter = false;
     QElapsedTimer m_keyedTimer;
     QTimer m_txPoll;
 };

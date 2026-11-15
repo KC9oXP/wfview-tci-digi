@@ -155,6 +155,7 @@ void PskEngine::setSpeed(int speed)
         return;
     m_speed = speed;
     save("Speed", m_speed);
+    reloadTxLevel();
     applyConfig();
     resetReceiver();
     emit settingsChanged();

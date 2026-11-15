@@ -32,6 +32,9 @@ void TxPowerWatch::setRadioTransmitting(bool on)
         m_reports = 0;
         m_maxPower = 0.0;
         m_warned = false;
+        m_powerSeen = false;
+        m_alcRun = 0;
+        m_alcWarned = false;
         m_since.start();
         m_checkTimer.start();
     }
@@ -41,6 +44,11 @@ void TxPowerWatch::setRadioTransmitting(bool on)
         if (m_since.isValid() && m_since.elapsed() >= kCheckAfterMs)
             check();
         m_ours = false;
+        if (m_alcHigh)
+        {
+            m_alcHigh = false;
+            emit alcChanged(false);
+        }
         emit readout(QString());
     }
 }
@@ -51,6 +59,24 @@ void TxPowerWatch::onSensors(double alc, double power, double swr)
         return;
     ++m_reports;
     m_maxPower = std::max(m_maxPower, power);
+    if (!m_powerSeen && power >= kNoPower)
+    {
+        m_powerSeen = true;
+        emit powerSeen();
+    }
+    const bool high = m_alcLimit > 0.0 && alc > m_alcLimit;
+    m_alcRun = high ? m_alcRun + 1 : 0;
+    const bool show = m_alcRun >= 2;
+    if (show != m_alcHigh)
+    {
+        m_alcHigh = show;
+        emit alcChanged(show);
+    }
+    if (show && !m_alcWarned && (m_ours || m_requested))
+    {
+        m_alcWarned = true;
+        emit alcHigh(alc);
+    }
     emit readout(tr("Po %1  ALC %2  SWR %3").arg(power, 0, 'f', 1).arg(alc, 0, 'f', 1).arg(swr, 0, 'f', 1));
 }
 

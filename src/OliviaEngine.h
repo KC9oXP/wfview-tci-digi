@@ -93,9 +93,15 @@ protected:
     {
         return m_contestia ? expanded.toUpper() : expanded;
     }
+    QString levelKey() const override
+    {
+        return modeName();
+    }
+    // Zero characters before the text, so the far end has found the signal
+    // before the first letter (fldigi and the app both lost it with none).
     double prerollSeconds() const override
     {
-        return 0.0;
+        return olivia::prerollSeconds(config());
     }
     double tailSeconds() const override
     {

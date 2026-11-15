@@ -28,6 +28,13 @@ const char *const *glyph(char c);
 // The 7 columns of a character, each 14 values (bottom first) of 0/1.
 // Returns false (and blanks) for characters not in the font.
 bool charColumns(char c, std::vector<uint8_t> &cols);
+// Column phase of a received half-pixel stream (kRows values per column,
+// bottom first): the receiver starts its columns at an arbitrary moment, so a
+// letter can be split across the column edge. Returns the shift 0..kRows-1
+// to start columns at for the letters to sit whole in each column (where
+// the vertical continuity of the strokes breaks), counted from px[0], or -1
+// if there is too little to judge. Looks at the last maxColumns columns.
+int bestRowShift(const float *px, size_t n, size_t maxColumns = 400);
 } // namespace hell
 
 class HellModulator

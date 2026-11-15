@@ -49,6 +49,8 @@ static std::vector<float> modulate(const std::string &text, double fs, double ca
     return out;
 }
 
+static int g_bestOff = -1;
+
 // Reads the half-pixel stream back as text: tries every alignment and picks
 // the one whose characters best match the font.
 static std::string readBack(const std::vector<float> &px)
@@ -92,6 +94,7 @@ static std::string readBack(const std::vector<float> &px)
         {
             bestScore = score;
             best = s;
+            g_bestOff = off;
         }
     }
     // trim the blank preroll/tail
@@ -204,6 +207,55 @@ int main()
             same += got[i] == text[i];
         std::printf("  read back: \"%s\" (%zu/%zu)\n", got.c_str(), same, text.size());
         CHECK(same >= text.size() * 8 / 10);
+    }
+
+    std::printf("\n=== column phase (auto alignment) ===\n");
+    {
+        const std::string longText = "CQ CQ DE KC9OXP KC9OXP THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG 0123456789 K";
+        int good = 0, runs = 0;
+        for (double startSec : {0.0, 0.006, 0.013, 0.021, 0.029, 0.035, 0.041, 0.05, 0.053})
+            for (double noise : {0.0, 0.08, 0.2})
+            {
+                HellModulator m;
+                m.setCarrier(1000.0);
+                m.preroll(0.5);
+                for (char c : longText)
+                    m.queueChar(c);
+                m.tail(0.3);
+                const double fs = noise > 0.1 ? 48000.0 : 8000.0;
+                std::vector<float> x(size_t((0.21 + startSec) * fs), 0.0f), block(1000);
+                while (!m.idle())
+                {
+                    m.render(block.data(), block.size(), fs);
+                    x.insert(x.end(), block.begin(), block.end());
+                }
+                std::mt19937 rng(11);
+                std::normal_distribution<double> nd(0.0, noise);
+                for (float &v : x)
+                    v = float(v * 0.3 + nd(rng));
+                HellDemodulator d;
+                d.setSampleRate(fs);
+                d.setCarrier(1000.0);
+                std::vector<float> px;
+                for (size_t i = 0; i < x.size(); i += 512)
+                    d.process(x.data() + i, std::min<size_t>(512, x.size() - i), px);
+                const int shift = hell::bestRowShift(px.data(), px.size());
+                readBack(px);
+                const int truth = g_bestOff % hell::kRows;
+                const int diff = (shift - truth + hell::kRows) % hell::kRows;
+                const bool ok = shift >= 0 && (diff == 0 || diff == 1 || diff == hell::kRows - 1);
+                std::printf("  start +%.3f s noise %.2f: shift %d, letters start at %d %s\n",
+                            startSec,
+                            noise,
+                            shift,
+                            truth,
+                            ok ? "ok" : "WRONG");
+                good += ok;
+                ++runs;
+            }
+        CHECK(good == runs);
+        std::vector<float> blank(14 * 100, 0.0f);
+        CHECK(hell::bestRowShift(blank.data(), blank.size()) == -1);
     }
 
     std::printf(g_fail ? "\nFAILED: %d\n" : "\nALL PASSED\n", g_fail);

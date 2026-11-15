@@ -93,6 +93,10 @@ public slots:
 protected:
     void applyConfig() override;
     void resetReceiver() override;
+    QString levelKey() const override
+    {
+        return QString::fromLatin1(psk::speedName(m_speed));
+    }
     double prerollSeconds() const override
     {
         return 32.0 / baud(); // 32 symbols of reversals

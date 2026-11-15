@@ -250,7 +250,8 @@ public:
     static constexpr float kMaxMachinePitchHz = 1900.0f;
     static constexpr float kNearHz = 30.0f; // within this: slew, no re-lock
     static constexpr int kMoveBlocks = 4; // new peak must persist (x 0.25 s)
-    static constexpr float kSquelchHoldSec = 2.0f; // keep squelch open after tone fades
+    static constexpr float kSquelchHoldSec = 1.0f; // keep squelch open after the tone stops
+    static constexpr int kOpenBlocks = 2; // the tone must be there this long (x 0.25 s) to open
 
 private:
     enum class Mode
@@ -312,26 +313,28 @@ private:
         m_candCount = 0;
         m_snrDb = 0.0f;
         m_secSinceTone = 1e9f;
+        m_toneRun = 0;
+        m_gate = false;
     }
 
-    // A steady tone is present (independent of the Squelch checkbox).
+    // A keyed tone is present now (independent of the Squelch checkbox): it
+    // opens after kOpenBlocks blocks with the tone and closes kSquelchHoldSec
+    // after the last one. The test is on each 0.25 s block at the decoding
+    // pitch (not the 1 s average the tracker uses), so it closes quickly when
+    // a signal ends and noise (AGC recovering after a transmission) does not
+    // keep it open.
     bool toneGate() const
     {
-        if (m_mode == Mode::Fixed)
-            return m_secSinceTone <= kSquelchHoldSec;
-        return m_trackHz > 0.0f && m_secSinceTone <= kSquelchHoldSec;
+        if (m_mode == Mode::Track && m_trackHz <= 0.0f)
+            return false;
+        return m_gate;
     }
 
     bool squelchOpen() const
     {
         if (!m_squelch)
             return true;
-        if (m_mode == Mode::Fixed)
-        {
-            // No tracking in Fixed mode: open on a strong tone near the fixed pitch.
-            return m_secSinceTone <= kSquelchHoldSec;
-        }
-        return m_trackHz > 0.0f && m_secSinceTone <= kSquelchHoldSec;
+        return toneGate();
     }
 
     void trackPitch(const float *s, int n)
@@ -427,7 +430,32 @@ private:
         }
 
         const bool tone = (m_snrDb >= kLockSnrDb);
-        m_secSinceTone = tone ? 0.0f : m_secSinceTone + kBlockSec;
+
+        // Squelch gate: this block's power at the pitch being decoded (or the
+        // averaged peak while nothing is tracked yet) against the noise median.
+        {
+            const float at = (m_mode == Mode::Fixed) ? m_fixedHz : (m_trackHz > 0.0f ? m_trackHz : fPeakAvg(lo, kPeak));
+            const int k0 = std::clamp(static_cast<int>(std::lround((at - lo) / kStepHz)), 0, nBins - 1);
+            float inst = 0.0f;
+            for (int k = std::max(0, k0 - 2); k <= std::min(nBins - 1, k0 + 2); ++k)
+                inst = std::max(inst, pow[k]);
+            // pow is one block; m_avgPow mixes 0.35 of it per block (steady state = 1 block).
+            const float instDb = 10.0f * std::log10(std::max(1e-12f, inst) / median);
+            const bool now = instDb >= kLockSnrDb;
+            if (now)
+            {
+                m_secSinceTone = 0.0f;
+                if (++m_toneRun >= kOpenBlocks)
+                    m_gate = true;
+            }
+            else
+            {
+                m_toneRun = 0;
+                m_secSinceTone += kBlockSec;
+                if (m_secSinceTone > kSquelchHoldSec)
+                    m_gate = false;
+            }
+        }
 
         if (m_mode == Mode::Fixed || !tone)
         {
@@ -510,4 +538,11 @@ private:
     int m_candCount = 0;
     float m_snrDb = 0.0f;
     float m_secSinceTone = 1e9f;
+    int m_toneRun = 0;
+    bool m_gate = false;
+
+    float fPeakAvg(float lo, int kPeak) const
+    {
+        return lo + static_cast<float>(kPeak) * kStepHz;
+    }
 };

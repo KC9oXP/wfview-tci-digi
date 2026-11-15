@@ -42,6 +42,16 @@ double charsPerSecond(const Config &c)
         return 1.0;
     return tx.CharactersPerSecond();
 }
+
+double blockSeconds(const Config &c)
+{
+    return (c.contestia ? 32.0 : 64.0) * c.tones / std::max(1, c.bandwidth);
+}
+
+double prerollSeconds(const Config &c)
+{
+    return std::clamp(2.0 * blockSeconds(c), 1.0, 4.0);
+}
 } // namespace olivia
 
 // ===========================================================================
@@ -110,6 +120,7 @@ void OliviaDemodulator::reset()
 {
     d->rx.Reset();
     m_escape = false;
+    m_peakSnr = 0.0;
 }
 
 std::string OliviaDemodulator::process(const float *x, size_t n)
@@ -125,6 +136,22 @@ std::string OliviaDemodulator::process(const float *x, size_t n)
     MFSK_Receiver<double> &rx = d->rx;
     rx.SyncThreshold = m_squelch;
     rx.Process(m_dbl.data(), m_dbl.size());
+    m_snr = rx.SignalToNoiseRatio();
+    m_offset = rx.FrequencyOffset();
+    // Squelch. The library keeps decoding after a signal ends (its own
+    // threshold does not stop that) while its S/N, averaged over several FEC
+    // blocks, is still falling: those are the junk characters seen after a
+    // transmission. So characters are printed only while the S/N is above the
+    // squelch and within 15 % of the best S/N since the signal appeared; the
+    // best is forgotten when the S/N drops below the squelch (and slowly, so a
+    // weaker station after a strong one still prints).
+    const double dt = double(n) / m_fs;
+    m_peakSnr *= std::exp(-dt / 30.0);
+    if (m_snr < m_squelch)
+        m_peakSnr = 0.0;
+    else
+        m_peakSnr = std::max(m_peakSnr, m_snr);
+    const bool open = m_squelch <= 0.0 || (m_snr >= m_squelch && m_snr >= 0.85 * m_peakSnr);
     uint8_t ch = 0;
     while (rx.GetChar(ch) > 0)
     {
@@ -139,11 +166,9 @@ std::string OliviaDemodulator::process(const float *x, size_t n)
             m_escape = true;
             continue;
         }
-        if (c == '\n' || (c >= 32 && c != 127))
+        if (open && (c == '\n' || (c >= 32 && c != 127)))
             out.push_back(char(c));
     }
-    m_snr = rx.SignalToNoiseRatio();
-    m_offset = rx.FrequencyOffset();
     return out;
 }
 

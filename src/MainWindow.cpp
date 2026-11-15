@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 
+#include "AmtorEngine.h"
+#include "AmtorPanel.h"
 #include "AppPaths.h"
 #include "AudioHub.h"
 #include "CwDecoder.h"
@@ -14,6 +16,7 @@
 #include "PskEngine.h"
 #include "PskPanel.h"
 #include "QsoLog.h"
+#include "RadioModes.h"
 #include "RttyEngine.h"
 #include "RttyPanel.h"
 #include "SessionLog.h"
@@ -21,6 +24,8 @@
 #include "SstvEngine.h"
 #include "SstvPanel.h"
 #include "TxPowerWatch.h"
+#include "TxTools.h"
+#include "UiStyle.h"
 #include "WaterfallWidget.h"
 #include "WefaxEngine.h"
 #include "WefaxPanel.h"
@@ -34,14 +39,17 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QDialog>
 #include <QDir>
 #include <QDockWidget>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMap>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPainter>
@@ -57,6 +65,8 @@
 #include <QTabWidget>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <algorithm>
+#include <cmath>
 
 #ifndef APP_VERSION
 #define APP_VERSION "0.0.0"
@@ -129,13 +139,22 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_audio = new AudioHub(this);
     m_audio->setRingSeconds(m_settings->value(QStringLiteral("Audio/RingSeconds"), 120).toInt());
     m_session = new SessionLog(m_settings, this);
-    m_modems = {m_psk, m_hell, m_cwTx, m_olivia, m_sstv};
+    m_amtor = new AmtorEngine(this);
+    m_amtor->loadSettings(m_settings);
+    m_modems = {m_psk, m_hell, m_cwTx, m_olivia, m_sstv, m_amtor};
+    // Tune tone and CW ID: created before the tabs, which put their buttons in.
+    m_tools = new TxTools(m_settings, this);
+    m_txEngines = m_modems;
+    m_txEngines << m_tools->tuneEngine() << m_tools->cwIdEngine();
+    m_txLimitMin = std::clamp(m_settings->value(QStringLiteral("Tx/LimitMinutes"), 5).toInt(), 0, 60);
+    m_powerWatch = new TxPowerWatch(this);
+    m_powerWatch->setAlcLimit(m_settings->value(QStringLiteral("Tx/AlcWarn"), 1.0).toDouble());
 
     // TX audio comes from whichever mode is transmitting (only one can: see
     // onTransmitRequested). RTTY renders silence when idle.
     std::shared_ptr<RttyTxSource> rttyTx = m_rtty->txSource();
     std::vector<std::shared_ptr<ModemTxSource>> modemTx;
-    for (ModemEngine *e : m_modems)
+    for (ModemEngine *e : m_txEngines)
         modemTx.push_back(e->txSource());
     m_client->setTxRender(
         [rttyTx, modemTx](float *out, size_t frames, int channels, float rate)
@@ -154,22 +173,33 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     v->addWidget(buildConnectionBar());
     v->addWidget(buildTxHint());
 
+    // Transmit-capable modes on the left, then a "Read only" divider and the
+    // receive-only modes, so it is clear which tabs can transmit.
     m_tabs = new QTabWidget();
     m_cwPanel = new CwPanel(m_cw, m_cwTx, m_settings);
     m_rttyPanel = new RttyPanel(m_rtty, m_settings);
     m_pskPanel = new PskPanel(m_psk, m_settings);
     m_hellPanel = new HellPanel(m_hell, m_settings);
+    m_oliviaPanel = new OliviaPanel(m_olivia, m_settings);
+    m_sstvPanel = new SstvPanel(m_sstv, m_settings);
+    m_amtorPanel = new AmtorPanel(m_amtor, m_settings);
+    m_navtexPanel = new NavtexPanel(m_navtex);
+    m_wefaxPanel = new WefaxPanel(m_wefax);
     m_tabs->addTab(m_cwPanel, tr("CW"));
     m_tabs->addTab(m_rttyPanel, tr("RTTY"));
     m_tabs->addTab(m_pskPanel, tr("PSK"));
     m_tabs->addTab(m_hellPanel, tr("Hell"));
-    m_oliviaPanel = new OliviaPanel(m_olivia, m_settings);
-    m_navtexPanel = new NavtexPanel(m_navtex);
-    m_sstvPanel = new SstvPanel(m_sstv, m_settings);
-    m_wefaxPanel = new WefaxPanel(m_wefax);
     m_tabs->addTab(m_oliviaPanel, tr("Olivia"));
-    m_tabs->addTab(m_navtexPanel, tr("NAVTEX"));
     m_tabs->addTab(m_sstvPanel, tr("SSTV"));
+    m_tabs->addTab(m_amtorPanel, tr("AMTOR"));
+    {
+        auto *divider = new QLabel(tr("NAVTEX and WEFAX (to the right) only receive."));
+        divider->setAlignment(Qt::AlignCenter);
+        const int i = m_tabs->addTab(divider, QStringLiteral("    %1 \u25B8").arg(tr("Read only")));
+        m_tabs->setTabEnabled(i, false);
+        m_tabs->setTabToolTip(i, tr("The tabs to the right of here only receive."));
+    }
+    m_tabs->addTab(m_navtexPanel, tr("NAVTEX"));
     m_tabs->addTab(m_wefaxPanel, tr("WEFAX"));
     v->addWidget(m_tabs, 1);
     setCentralWidget(central);
@@ -201,6 +231,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_audio, &AudioHub::audio, m_hell, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_olivia, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_sstv, &ModemEngine::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_amtor, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_navtex, &NavtexEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_wefax, &WefaxEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_spectrum, &SpectrumEngine::pushAudio);
@@ -209,13 +240,13 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_spectrum, &SpectrumEngine::line, m_pskPanel, &ModemPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_hellPanel, &ModemPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_oliviaPanel, &ModemPanel::addSpectrumLine);
+    connect(m_spectrum, &SpectrumEngine::line, m_amtorPanel, &ModemPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_navtexPanel, &NavtexPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_sstvPanel, &SstvPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_wefaxPanel, &WefaxPanel::addSpectrumLine);
     for (WaterfallWidget *wf : findChildren<WaterfallWidget *>())
         connect(wf, &WaterfallWidget::saveRequested, this, [this, wf]() { saveWaterfallShot(wf); });
     connect(m_client, &TciClient::diagnostics, m_diag, &QLabel::setText);
-    m_powerWatch = new TxPowerWatch(this);
     connect(m_client, &TciClient::txSensors, m_powerWatch, &TxPowerWatch::onSensors);
     connect(m_client, &TciClient::radioTransmitChanged, m_powerWatch, &TxPowerWatch::setRadioTransmitting);
     connect(m_powerWatch, &TxPowerWatch::readout, m_txMeter, &QLabel::setText);
@@ -224,13 +255,63 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
             this,
             [this]()
             {
-                m_txHint->show();
-                log(tr("Radio transmitted with no output power: check its data mode and DATA MOD input (LAN/USB)."));
+                log(tr("Radio reported no output power while transmitting (normal at very low power settings; "
+                       "otherwise check its data mode and DATA MOD input, LAN/USB)."));
+                if (!m_hintDismissed)
+                    m_txHint->show();
+            });
+    connect(m_powerWatch, &TxPowerWatch::powerSeen, m_txHint, &QWidget::hide);
+    connect(m_powerWatch,
+            &TxPowerWatch::alcHigh,
+            this,
+            [this](double alc)
+            {
+                const QString t = tr("ALC is high (%1): lower the TX level of this mode (or wfview's TX gain). "
+                                     "Data modes want little or no ALC.")
+                                      .arg(alc, 0, 'f', 1);
+                log(t);
+                statusBar()->showMessage(t, 10000);
+            });
+    connect(m_powerWatch,
+            &TxPowerWatch::alcChanged,
+            this,
+            [this](bool high)
+            {
+                m_txMeter->setStyleSheet(high ? QStringLiteral("background-color: #b03a10; color: white;"
+                                                               " font-weight: bold; padding: 0 4px;")
+                                              : QString());
+                m_txMeter->setToolTip(high ? tr("ALC high: lower the TX level.")
+                                           : tr("Output power, ALC and SWR as wfview reports them while "
+                                                "transmitting."));
             });
     connect(m_client, &TciClient::logLine, this, &MainWindow::log);
     connect(m_rtty, &RttyEngine::transmitRequested, this, [this](bool on) { onTransmitRequested(m_rtty, on); });
-    for (ModemEngine *e : m_modems)
+    for (ModemEngine *e : m_txEngines)
         connect(e, &ModemEngine::transmitRequested, this, [this, e](bool on) { onTransmitRequested(e, on); });
+    // CW ID after a transmission ({CWID}, SSTV picture): direct connection, so
+    // it keys up before the mode lets go of PTT.
+    connect(m_rtty, &RttyEngine::cwIdRequested, m_tools, &TxTools::sendCwId);
+    for (ModemEngine *e : m_modems)
+        connect(e, &ModemEngine::cwIdRequested, m_tools, &TxTools::sendCwId);
+    connect(m_tools, &TxTools::message, this, [this](const QString &t) { statusBar()->showMessage(t, 8000); });
+    connect(m_tools, &TxTools::message, this, &MainWindow::log);
+
+    // Transmit time limit: everything stops after this long keyed.
+    m_txLimit.setSingleShot(true);
+    connect(&m_txLimit,
+            &QTimer::timeout,
+            this,
+            [this]()
+            {
+                if (!anyTransmitting())
+                    return;
+                const QString t = tr("Transmit time limit (%1 min) reached: transmitter released. "
+                                     "Options > TX time limit.")
+                                      .arg(m_txLimitMin);
+                abortAllTx(t);
+                log(t);
+                statusBar()->showMessage(t, 15000);
+            });
 
     // One "My call" for every mode.
     const auto shareCall = [this](const QString &c)
@@ -238,6 +319,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
         m_rtty->setMyCall(c);
         for (ModemEngine *e : m_modems)
             e->setMyCall(c);
+        m_tools->cwIdEngine()->setMyCall(c);
     };
     // Start from the shared value (the new modes read Station/MyCall, falling back to 0.1.0's RTTY/MyCall).
     shareCall(m_psk->myCall().isEmpty() ? m_rtty->myCall() : m_psk->myCall());
@@ -262,10 +344,26 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_settings->beginGroup(QStringLiteral("Window"));
     restoreGeometry(m_settings->value(QStringLiteral("Geometry")).toByteArray());
     restoreState(m_settings->value(QStringLiteral("State")).toByteArray());
-    m_tabs->setCurrentIndex(m_settings->value(QStringLiteral("Tab"), 0).toInt());
+    {
+        // Saved by tab name since 0.4.1 (the order changed).
+        const QString name = m_settings->value(QStringLiteral("TabName")).toString();
+        int idx = 0;
+        for (int i = 0; i < m_tabs->count(); ++i)
+            if (m_tabs->isTabEnabled(i) && m_tabs->tabText(i) == name)
+                idx = i;
+        m_tabs->setCurrentIndex(idx);
+    }
     m_settings->endGroup();
-    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int) { updateQsoMode(); });
+    connect(m_tabs,
+            &QTabWidget::currentChanged,
+            this,
+            [this](int)
+            {
+                updateQsoMode();
+                fillPresetBox();
+            });
     updateQsoMode();
+    fillPresetBox();
     if (m_settings->value(QStringLiteral("TCI/ConnectOnStart"), false).toBool())
         QTimer::singleShot(0, this, &MainWindow::toggleConnection);
 
@@ -278,24 +376,36 @@ QWidget *MainWindow::buildTxHint()
 {
     m_txHint = new QWidget();
     m_txHint->setObjectName(QStringLiteral("txHint"));
-    m_txHint->setStyleSheet(QStringLiteral("#txHint { background-color: #5a4310; border-radius: 3px; }"));
+    m_txHint->setStyleSheet(QStringLiteral("#txHint { background-color: #3e3420; border-radius: 3px; }"));
     auto *h = new QHBoxLayout(m_txHint);
     h->setContentsMargins(8, 4, 4, 4);
     auto *text = new QLabel(
-        tr("<b>The radio keyed up but reported no output power.</b> The transmit audio reaches the radio, but "
-           "not through the input the radio is using. Check that the radio's <b>data mode</b> (Data 1/2/3 in "
-           "wfview) uses the <b>DATA MOD input</b> that matches how wfview connects to it, LAN or USB. For "
-           "example, on an IC-7610 with DATA1 = USB and DATA2 = LAN, use Data 2 when wfview connects over LAN. "
-           "Also check the TX level, and that the radio is in a data or SSB mode."));
+        tr("<b>Hint: the radio reported no output power while transmitting.</b> At very low power settings "
+           "this can be normal. Otherwise the transmit audio may not be reaching the input the radio uses: "
+           "check that its <b>data mode</b> (Data 1/2/3 in wfview) takes the <b>DATA MOD input</b> wfview feeds, "
+           "LAN or USB (IC-7610 with DATA1 = USB and DATA2 = LAN: use Data 2 over LAN), the TX level, and that "
+           "the radio is in a data or SSB mode."));
     text->setWordWrap(true);
-    text->setStyleSheet(QStringLiteral("color: #ffe7b0;"));
+    text->setStyleSheet(QStringLiteral("color: #e8dcc0;"));
     h->addWidget(text, 1);
     auto *close = new QPushButton(QStringLiteral("\u2715"));
     close->setFlat(true);
     close->setToolTip(tr("Hide"));
     close->setFixedWidth(close->sizeHint().height());
     h->addWidget(close, 0, Qt::AlignTop);
+    auto *never = new QPushButton(tr("Don't show again"));
+    never->setFlat(true);
+    never->setToolTip(tr("Hide this hint until the program is restarted."));
+    h->addWidget(never, 0, Qt::AlignTop);
     connect(close, &QPushButton::clicked, m_txHint, &QWidget::hide);
+    connect(never,
+            &QPushButton::clicked,
+            this,
+            [this]()
+            {
+                m_hintDismissed = true;
+                m_txHint->hide();
+            });
     m_txHint->hide();
     return m_txHint;
 }
@@ -327,6 +437,41 @@ QWidget *MainWindow::buildConnectionBar()
     // Long messages are clipped rather than widening the window; the tooltip has them in full.
     m_connState->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     h->addWidget(m_connState, 1);
+
+    m_logBtn = new QPushButton(tr("Log"));
+    UiStyle::greenWhenOn(m_logBtn);
+    m_logBtn->setToolTip(tr("Session log on (green) / off: what every mode decodes and sends goes to a text file "
+                            "per mode per day in the logs folder. One setting for all modes, kept across "
+                            "restarts."));
+    h->addWidget(m_logBtn);
+    m_presetBox = new QComboBox();
+    m_presetBox->setToolTip(tr("Frequency presets for this tab: sets the dial (and USB/LSB) over TCI."));
+    m_presetBox->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_presetBox->setMinimumContentsLength(8);
+    h->addWidget(m_presetBox);
+    connect(m_presetBox,
+            &QComboBox::activated,
+            this,
+            [this](int i)
+            {
+                const QVariant d = m_presetBox->itemData(i);
+                const QString kind = d.toString();
+                const int index = m_presetBox->itemData(i, Qt::UserRole + 1).toInt();
+                {
+                    const QSignalBlocker b(m_presetBox);
+                    m_presetBox->setCurrentIndex(0);
+                }
+                if (kind == QLatin1String("add"))
+                    addCurrentPreset();
+                else if (kind == QLatin1String("edit"))
+                    editPresets();
+                else if (kind == QLatin1String("preset"))
+                {
+                    const QList<Preset> list = presets(currentTabKey());
+                    if (index >= 0 && index < list.size())
+                        applyPreset(list.at(index));
+                }
+            });
 
     m_freq = new QLineEdit();
     m_freq->setAlignment(Qt::AlignRight);
@@ -436,7 +581,73 @@ void MainWindow::buildMenus()
     QAction *sess = opts->addAction(tr("Session log (decoded text to a daily file per mode)"));
     sess->setCheckable(true);
     sess->setChecked(m_session->enabled());
-    connect(sess, &QAction::toggled, m_session, &SessionLog::setEnabled);
+    m_sessionAct = sess;
+    m_logBtn->setChecked(m_session->enabled());
+    // The Log button and this menu item are the same setting.
+    connect(sess,
+            &QAction::toggled,
+            this,
+            [this](bool on)
+            {
+                m_session->setEnabled(on);
+                const QSignalBlocker b(m_logBtn);
+                m_logBtn->setChecked(on);
+            });
+    connect(m_logBtn,
+            &QPushButton::toggled,
+            this,
+            [this](bool on)
+            {
+                m_session->setEnabled(on);
+                const QSignalBlocker b(m_sessionAct);
+                m_sessionAct->setChecked(on);
+                statusBar()->showMessage(
+                    on ? tr("Session log on: %1").arg(QDir::toNativeSeparators(m_session->folder()))
+                       : tr("Session log off."),
+                    5000);
+            });
+    opts->addSeparator();
+    QMenu *limit = opts->addMenu(tr("TX time limit"));
+    limit->setToolTipsVisible(true);
+    for (int min : {0, 1, 2, 3, 5, 10})
+    {
+        QAction *a = limit->addAction(min == 0 ? tr("Off") : tr("%n minute(s)", nullptr, min));
+        a->setCheckable(true);
+        a->setChecked(m_txLimitMin == min);
+        a->setToolTip(tr("Release the transmitter after this long keyed (any mode, Tune too). The longest SSTV "
+                         "modes (PD240, Scottie DX) take about 4.5 minutes."));
+        connect(a,
+                &QAction::triggered,
+                this,
+                [this, limit, a, min]()
+                {
+                    for (QAction *o : limit->actions())
+                        o->setChecked(o == a);
+                    m_txLimitMin = min;
+                    m_settings->setValue(QStringLiteral("Tx/LimitMinutes"), min);
+                    if (m_txLimitMin == 0)
+                        m_txLimit.stop();
+                });
+    }
+    QMenu *alc = opts->addMenu(tr("ALC warning"));
+    for (double v : {0.0, 0.5, 1.0, 2.0, 5.0})
+    {
+        QAction *a = alc->addAction(v == 0.0 ? tr("Off") : tr("Above %1").arg(v, 0, 'f', 1));
+        a->setCheckable(true);
+        a->setChecked(std::fabs(m_powerWatch->alcLimit() - v) < 1e-6);
+        connect(a,
+                &QAction::triggered,
+                this,
+                [this, alc, a, v]()
+                {
+                    for (QAction *o : alc->actions())
+                        o->setChecked(o == a);
+                    m_powerWatch->setAlcLimit(v);
+                    m_settings->setValue(QStringLiteral("Tx/AlcWarn"), v);
+                });
+    }
+    opts->addAction(tr("Tune tone and CW ID..."), this, [this]() { m_tools->editSettings(this); });
+    opts->addSeparator();
     QMenu *ring = opts->addMenu(tr("Audio kept for \"Save last...\""));
     for (int sec : {60, 120, 300, 600})
     {
@@ -485,7 +696,8 @@ void MainWindow::buildMenus()
                                "Olivia / Contestia: Pawel Jalocha's MFSK library, as in fldigi.<br>"
                                "NAVTEX / SITOR-B: receive (decoder after fldigi's).<br>"
                                "SSTV: Martin, Scottie, Robot, PD modes, VIS, auto slant; send pictures.<br>"
-                               "WEFAX: HF weather fax receive with APT start/stop and phasing.<br><br>"
+                               "WEFAX: HF weather fax receive with APT start/stop and phasing.<br>"
+                               "AMTOR: FEC (mode B) send and receive (receiver as NAVTEX).<br><br>"
                                "License: GPLv3.")
                                 .arg(QStringLiteral(APP_VERSION)));
                     });
@@ -610,7 +822,7 @@ void MainWindow::onModulation(const QString &mode)
 void MainWindow::onRadioTransmit(bool on)
 {
     m_rtty->setRadioTransmitting(on);
-    for (ModemEngine *e : m_modems)
+    for (ModemEngine *e : m_txEngines)
         e->setRadioTransmitting(on);
     m_cw->setPaused(on); // do not decode our own sidetone / monitor
     m_txLamp->setText(on ? tr(" TX ") : tr(" RX "));
@@ -625,13 +837,19 @@ void MainWindow::onTransmitRequested(QObject *who, bool on)
         // Only one mode may transmit: stop any other first.
         if (who != m_rtty && m_rtty->transmitting())
             m_rtty->abortTx();
-        for (ModemEngine *e : m_modems)
+        for (ModemEngine *e : m_txEngines)
             if (who != e && e->transmitting())
                 e->abortTx();
+        if (m_txLimitMin > 0)
+            m_txLimit.start(m_txLimitMin * 60 * 1000); // (re)started by each mode keying
     }
     else if (anyTransmitting())
     {
         return; // another mode has taken over; keep PTT
+    }
+    else
+    {
+        m_txLimit.stop();
     }
     m_client->setTransmit(on);
     m_powerWatch->setOurTransmit(on);
@@ -644,10 +862,20 @@ bool MainWindow::anyTransmitting() const
 {
     if (m_rtty->transmitting())
         return true;
-    for (ModemEngine *e : m_modems)
+    for (ModemEngine *e : m_txEngines)
         if (e->transmitting())
             return true;
     return false;
+}
+
+void MainWindow::abortAllTx(const QString &why)
+{
+    Q_UNUSED(why);
+    if (m_rtty->transmitting())
+        m_rtty->abortTx();
+    for (ModemEngine *e : m_txEngines)
+        if (e->transmitting())
+            e->abortTx();
 }
 
 void MainWindow::updateRadioState()
@@ -656,13 +884,14 @@ void MainWindow::updateRadioState()
     const bool canTx = ready && !m_client->receiveOnly();
     m_rtty->setConnected(ready, canTx);
     m_rttyPanel->setRadioState(ready, canTx, m_client->modulation());
-    for (ModemEngine *e : m_modems)
+    for (ModemEngine *e : m_txEngines)
         e->setConnected(ready, canTx);
     m_cwPanel->setRadioState(ready, canTx, m_client->modulation());
     m_pskPanel->setRadioState(ready, canTx, m_client->modulation());
     m_hellPanel->setRadioState(ready, canTx, m_client->modulation());
     m_oliviaPanel->setRadioState(ready, canTx, m_client->modulation());
     m_sstvPanel->setRadioState(ready, canTx, m_client->modulation());
+    m_amtorPanel->setRadioState(ready, canTx, m_client->modulation());
     m_freq->setEnabled(ready);
     m_mode->setEnabled(ready);
 }
@@ -680,10 +909,11 @@ void MainWindow::saveAll()
     m_hellPanel->saveState();
     m_oliviaPanel->saveState();
     m_sstvPanel->saveState();
+    m_amtorPanel->saveState();
     m_settings->beginGroup(QStringLiteral("Window"));
     m_settings->setValue(QStringLiteral("Geometry"), saveGeometry());
     m_settings->setValue(QStringLiteral("State"), saveState());
-    m_settings->setValue(QStringLiteral("Tab"), m_tabs->currentIndex());
+    m_settings->setValue(QStringLiteral("TabName"), m_tabs->tabText(m_tabs->currentIndex()));
     m_settings->endGroup();
     m_settings->setValue(QStringLiteral("TCI/AutoReconnect"), m_autoReconnect->isChecked());
     m_settings->sync();
@@ -691,11 +921,7 @@ void MainWindow::saveAll()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    if (m_rtty->transmitting())
-        m_rtty->abortTx();
-    for (ModemEngine *e : m_modems)
-        if (e->transmitting())
-            e->abortTx();
+    abortAllTx(QString());
     m_wantConnected = false;
     m_audio->stopRecording();
     m_audio->stopPlayback();
@@ -723,11 +949,29 @@ void MainWindow::buildFileMenu()
         {
             QString err;
             const QString p = m_audio->saveLast(m_audio->ringSeconds(), &err);
+            const int sec = qRound(std::min<double>(m_audio->bufferedSeconds(), m_audio->ringSeconds()));
             log(p.isEmpty() ? tr("Audio not saved: %1").arg(err)
-                            : tr("Saved %1 s of receive audio to %2")
-                                  .arg(qRound(std::min<double>(m_audio->bufferedSeconds(), m_audio->ringSeconds())))
-                                  .arg(QDir::toNativeSeparators(p)));
+                            : tr("Saved %1 s of receive audio to %2").arg(sec).arg(QDir::toNativeSeparators(p)));
             statusBar()->showMessage(p.isEmpty() ? err : QDir::toNativeSeparators(p), 8000);
+            // A clear confirmation (the status bar alone was easy to miss).
+            auto *box = new QMessageBox(
+                p.isEmpty() ? QMessageBox::Warning : QMessageBox::Information,
+                tr("Receive audio"),
+                p.isEmpty() ? tr("The receive audio was not saved:\n%1").arg(err)
+                            : tr("Saved the last %1 s of receive audio:\n%2").arg(sec).arg(QDir::toNativeSeparators(p)),
+                QMessageBox::Ok,
+                this);
+            box->setAttribute(Qt::WA_DeleteOnClose);
+            box->setModal(false);
+            if (!p.isEmpty())
+            {
+                QPushButton *open = box->addButton(tr("Open folder"), QMessageBox::ActionRole);
+                connect(open,
+                        &QPushButton::clicked,
+                        this,
+                        [p]() { QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(p).absolutePath())); });
+            }
+            box->show();
         });
     last->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
     connect(file,
@@ -917,6 +1161,11 @@ void MainWindow::wireLogs()
                                tr("%1 @ %2 Hz").arg(m_olivia->modeName()).arg(qRound(m_olivia->carrierHz())),
                                t);
             });
+    connect(m_amtor,
+            &ModemEngine::textAppended,
+            this,
+            [this](const QString &t)
+            { m_session->add(QStringLiteral("AMTOR"), tr("AMTOR FEC @ %1 Hz").arg(qRound(m_amtor->carrierHz())), t); });
     connect(m_navtex,
             &NavtexEngine::textAppended,
             this,
@@ -989,6 +1238,246 @@ void MainWindow::updateQsoMode()
     }
     else if (w == m_sstvPanel)
         mode = QStringLiteral("SSTV");
+    else if (w == m_amtorPanel)
+    {
+        mode = QStringLiteral("TOR");
+        sub = QStringLiteral("AMTORFEC");
+    }
     // NAVTEX and WEFAX are receive-only: no QSO mode.
     m_qso->setMode(mode, sub, m_tabs->tabText(m_tabs->currentIndex()));
+}
+
+// ---------------------------------------------------------------------------
+// Frequency presets (per tab)
+// ---------------------------------------------------------------------------
+
+QString MainWindow::currentTabKey() const
+{
+    return m_tabs ? m_tabs->tabText(m_tabs->currentIndex()) : QString();
+}
+
+QList<MainWindow::Preset> MainWindow::presets(const QString &tabKey) const
+{
+    QList<Preset> out;
+    const QString key = QStringLiteral("Presets/") + AppPaths::safe(tabKey);
+    QStringList lines;
+    if (m_settings->contains(key))
+        lines = m_settings->value(key).toStringList();
+    else
+    {
+        // Defaults: dial frequency (Hz) and sideband.
+        static const QMap<QString, QStringList> defaults = {
+            {QStringLiteral("CW"),
+             {QStringLiteral("80 m|3550000|USB"),
+              QStringLiteral("40 m|7030000|USB"),
+              QStringLiteral("30 m|10120000|USB"),
+              QStringLiteral("20 m|14050000|USB")}},
+            {QStringLiteral("RTTY"),
+             {QStringLiteral("80 m|3580000|USB"),
+              QStringLiteral("40 m|7080000|USB"),
+              QStringLiteral("20 m|14080000|USB"),
+              QStringLiteral("15 m|21080000|USB")}},
+            {QStringLiteral("PSK"),
+             {QStringLiteral("80 m|3580000|USB"),
+              QStringLiteral("40 m|7070000|USB"),
+              QStringLiteral("30 m|10142000|USB"),
+              QStringLiteral("20 m|14070000|USB"),
+              QStringLiteral("15 m|21070000|USB"),
+              QStringLiteral("10 m|28120000|USB")}},
+            {QStringLiteral("Olivia"),
+             {QStringLiteral("80 m|3583000|USB"),
+              QStringLiteral("40 m|7072000|USB"),
+              QStringLiteral("20 m|14072000|USB")}},
+            {QStringLiteral("SSTV"),
+             {QStringLiteral("80 m 3.845 LSB|3845000|LSB"),
+              QStringLiteral("40 m 7.171 LSB|7171000|LSB"),
+              QStringLiteral("20 m 14.230|14230000|USB"),
+              QStringLiteral("20 m 14.233|14233000|USB"),
+              QStringLiteral("15 m 21.340|21340000|USB"),
+              QStringLiteral("10 m 28.680|28680000|USB")}},
+            {QStringLiteral("NAVTEX"),
+             {QStringLiteral("518 kHz (dial 517.0)|517000|USB"),
+              QStringLiteral("490 kHz (dial 489.0)|489000|USB"),
+              QStringLiteral("4209.5 kHz (dial 4208.5)|4208500|USB")}},
+            {QStringLiteral("WEFAX"),
+             {QStringLiteral("NMF Boston 4235|4233100|USB"),
+              QStringLiteral("NMF Boston 6340.5|6338600|USB"),
+              QStringLiteral("NMF Boston 9110|9108100|USB"),
+              QStringLiteral("NMF Boston 12750|12748100|USB"),
+              QStringLiteral("NMG New Orleans 4317.9|4316000|USB"),
+              QStringLiteral("NMG New Orleans 8503.9|8502000|USB"),
+              QStringLiteral("NMG New Orleans 12789.9|12788000|USB")}},
+        };
+        lines = defaults.value(tabKey);
+    }
+    for (const QString &l : lines)
+    {
+        const QStringList f = l.split(QLatin1Char('|'));
+        Preset p;
+        p.name = f.value(0).trimmed();
+        p.hz = f.value(1).trimmed().toLongLong();
+        p.sideband = f.value(2).trimmed().toUpper();
+        if (p.sideband != QLatin1String("USB") && p.sideband != QLatin1String("LSB"))
+            p.sideband.clear();
+        if (!p.name.isEmpty() && p.hz > 0)
+            out << p;
+    }
+    return out;
+}
+
+void MainWindow::savePresets(const QString &tabKey, const QList<Preset> &list)
+{
+    QStringList lines;
+    for (const Preset &p : list)
+        lines << QStringLiteral("%1|%2|%3").arg(QString(p.name).remove(QLatin1Char('|'))).arg(p.hz).arg(p.sideband);
+    m_settings->setValue(QStringLiteral("Presets/") + AppPaths::safe(tabKey), lines);
+}
+
+void MainWindow::fillPresetBox()
+{
+    if (!m_presetBox || !m_tabs)
+        return;
+    const QSignalBlocker b(m_presetBox);
+    m_presetBox->clear();
+    const QString key = currentTabKey();
+    const QList<Preset> list = presets(key);
+    m_presetBox->addItem(tr("Presets"), QString());
+    for (int i = 0; i < list.size(); ++i)
+    {
+        const Preset &p = list.at(i);
+        m_presetBox->addItem(QStringLiteral("%1   %2 %3").arg(p.name, formatFreq(p.hz), p.sideband),
+                             QStringLiteral("preset"));
+        m_presetBox->setItemData(m_presetBox->count() - 1, i, Qt::UserRole + 1);
+    }
+    m_presetBox->insertSeparator(m_presetBox->count());
+    m_presetBox->addItem(tr("Add the current frequency..."), QStringLiteral("add"));
+    m_presetBox->addItem(tr("Edit presets..."), QStringLiteral("edit"));
+    m_presetBox->setCurrentIndex(0);
+    m_presetBox->setToolTip(tr("Frequency presets for the %1 tab: set the dial (and USB/LSB) over TCI.").arg(key));
+}
+
+void MainWindow::applyPreset(const Preset &p)
+{
+    if (!m_client->isReady())
+    {
+        statusBar()->showMessage(tr("Connect to wfview first."), 5000);
+        return;
+    }
+    m_client->setFrequency(p.hz);
+    QString note;
+    const QString cur = m_client->modulation();
+    if (!p.sideband.isEmpty() && RadioModes::isLsb(cur) != (p.sideband == QLatin1String("LSB")))
+    {
+        // Change the sideband but stay a data mode if the radio is in one. The mode
+        // is only sent when the sideband differs: wfview puts an Icom on Data 1
+        // whenever DIGU/DIGL is set over TCI.
+        const bool wantLsb = p.sideband == QLatin1String("LSB");
+        QString pick;
+        const QStringList mods = m_client->modulations();
+        if (RadioModes::isData(cur))
+            for (const QString &m : mods)
+                if (RadioModes::isData(m) && RadioModes::isLsb(m) == wantLsb)
+                {
+                    pick = m;
+                    break;
+                }
+        if (pick.isEmpty())
+            for (const QString &m : mods)
+                if (RadioModes::kind(m) == RadioModes::Kind::Voice && RadioModes::isLsb(m) == wantLsb)
+                {
+                    pick = m;
+                    break;
+                }
+        if (pick.isEmpty())
+            pick = wantLsb ? QStringLiteral("lsb") : QStringLiteral("usb");
+        m_client->setModulation(pick);
+        note = tr(", mode %1").arg(pick.toUpper());
+        if (RadioModes::isData(pick))
+            note += tr(" (check wfview's data mode: Data 1 is set this way)");
+    }
+    const QString t = tr("Preset %1: %2 Hz%3").arg(p.name, formatFreq(p.hz), note);
+    log(t);
+    statusBar()->showMessage(t, 6000);
+}
+
+void MainWindow::addCurrentPreset()
+{
+    const qint64 hz = m_client->frequencyHz();
+    if (hz <= 0)
+    {
+        statusBar()->showMessage(tr("No frequency yet: connect to wfview first."), 5000);
+        return;
+    }
+    bool ok = false;
+    const QString name = QInputDialog::getText(this,
+                                               tr("Add preset"),
+                                               tr("Name for %1 Hz on the %2 tab:").arg(formatFreq(hz), currentTabKey()),
+                                               QLineEdit::Normal,
+                                               QString(),
+                                               &ok)
+                             .trimmed();
+    if (!ok || name.isEmpty())
+        return;
+    QList<Preset> list = presets(currentTabKey());
+    Preset p;
+    p.name = name;
+    p.hz = hz;
+    const QString mode = m_client->modulation();
+    p.sideband = RadioModes::carriesAudio(mode)
+        ? (RadioModes::isLsb(mode) ? QStringLiteral("LSB") : QStringLiteral("USB"))
+        : QString();
+    list << p;
+    savePresets(currentTabKey(), list);
+    fillPresetBox();
+}
+
+void MainWindow::editPresets()
+{
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("%1 presets").arg(currentTabKey()));
+    auto *v = new QVBoxLayout(&dlg);
+    auto *help = new QLabel(tr("One per line:  name | dial frequency in Hz | USB, LSB or empty (keep the mode).\n"
+                               "Delete everything to get the built-in list back."));
+    help->setWordWrap(true);
+    v->addWidget(help);
+    auto *edit = new QPlainTextEdit();
+    QStringList lines;
+    for (const Preset &p : presets(currentTabKey()))
+        lines << QStringLiteral("%1 | %2 | %3").arg(p.name).arg(p.hz).arg(p.sideband);
+    edit->setPlainText(lines.join(QLatin1Char('\n')));
+    v->addWidget(edit, 1);
+    auto *row = new QHBoxLayout();
+    auto *okBtn = new QPushButton(tr("OK"));
+    auto *cancel = new QPushButton(tr("Cancel"));
+    row->addStretch(1);
+    row->addWidget(okBtn);
+    row->addWidget(cancel);
+    v->addLayout(row);
+    connect(okBtn, &QPushButton::clicked, &dlg, &QDialog::accept);
+    connect(cancel, &QPushButton::clicked, &dlg, &QDialog::reject);
+    dlg.resize(560, 360);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+    const QString text = edit->toPlainText().trimmed();
+    if (text.isEmpty())
+    {
+        m_settings->remove(QStringLiteral("Presets/") + AppPaths::safe(currentTabKey()));
+        fillPresetBox();
+        return;
+    }
+    QList<Preset> list;
+    for (const QString &l : text.split(QLatin1Char('\n')))
+    {
+        const QStringList f = l.split(QLatin1Char('|'));
+        Preset p;
+        p.name = f.value(0).trimmed();
+        p.hz = parseFreq(f.value(1));
+        p.sideband = f.value(2).trimmed().toUpper();
+        if (p.sideband != QLatin1String("USB") && p.sideband != QLatin1String("LSB"))
+            p.sideband.clear();
+        if (!p.name.isEmpty() && p.hz > 0)
+            list << p;
+    }
+    savePresets(currentTabKey(), list);
+    fillPresetBox();
 }

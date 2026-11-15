@@ -5,6 +5,7 @@
 // modemtxsource.h so the PSK / Hell / CW tests do not need these modems.
 
 #include "modemtxsource.h"
+#include "navtexcore.h"
 #include "oliviacore.h"
 #include "sstvcore.h"
 
@@ -56,6 +57,54 @@ protected:
 
 private:
     OliviaModulator m_mod;
+};
+
+// AMTOR FEC (mode B): typed text, phasing first, idle beta between words.
+class AmtorTxSource : public ModemTxSource
+{
+public:
+    void setReverse(bool on)
+    {
+        std::lock_guard<std::mutex> lock(mutex());
+        m_mod.setReverse(on);
+    }
+
+protected:
+    void modClear() override
+    {
+        m_mod.clear();
+    }
+    void modPreroll(double sec) override
+    {
+        m_mod.preroll(sec);
+    }
+    size_t modQueueChar(char c) override
+    {
+        return m_mod.queueChar(c);
+    }
+    void modTail(double sec) override
+    {
+        m_mod.tail(sec);
+    }
+    bool modIdle() const override
+    {
+        return m_mod.idle();
+    }
+    size_t modUnitsSent() const override
+    {
+        return m_mod.unitsSent();
+    }
+    void modSetCarrier(double hz) override
+    {
+        m_mod.setCentreHz(hz);
+    }
+    void modRender(float *mono, size_t n, double fs) override
+    {
+        m_mod.render(mono, n, fs);
+    }
+
+private:
+    AmtorFecModulator m_mod;
 };
 
 // SSTV: setImage() before keying; start() sends the VIS header and the

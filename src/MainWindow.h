@@ -5,6 +5,8 @@
 #include <QMainWindow>
 #include <QTimer>
 
+class AmtorEngine;
+class AmtorPanel;
 class AudioHub;
 class CwDecoder;
 class NavtexEngine;
@@ -39,6 +41,7 @@ class RttyEngine;
 class RttyPanel;
 class SpectrumEngine;
 class TxPowerWatch;
+class TxTools;
 
 class MainWindow : public QMainWindow
 {
@@ -63,6 +66,21 @@ private slots:
 private:
     QWidget *buildConnectionBar();
     QWidget *buildTxHint();
+    // Frequency presets for the tab showing (connection bar combo).
+    struct Preset
+    {
+        QString name;
+        qint64 hz = 0;
+        QString sideband; // "USB", "LSB" or empty (keep the mode)
+    };
+    QString currentTabKey() const;
+    QList<Preset> presets(const QString &tabKey) const;
+    void savePresets(const QString &tabKey, const QList<Preset> &list);
+    void fillPresetBox();
+    void applyPreset(const Preset &p);
+    void addCurrentPreset();
+    void editPresets();
+    void abortAllTx(const QString &why);
     void buildLogDock();
     void buildMenus();
     void buildFileMenu();
@@ -99,13 +117,17 @@ private:
     SstvPanel *m_sstvPanel = nullptr;
     WefaxEngine *m_wefax = nullptr;
     WefaxPanel *m_wefaxPanel = nullptr;
+    AmtorEngine *m_amtor = nullptr;
+    AmtorPanel *m_amtorPanel = nullptr;
+    TxTools *m_tools = nullptr;
+    QList<ModemEngine *> m_txEngines; // m_modems + tune tone + CW ID
     AudioHub *m_audio = nullptr;
     SessionLog *m_session = nullptr;
     QsoLogDock *m_qso = nullptr;
     QLabel *m_audioState = nullptr;
     QAction *m_recordAct = nullptr;
     QAction *m_stopPlayAct = nullptr;
-    QList<ModemEngine *> m_modems; // PSK, Hell, CW transmit, Olivia, SSTV
+    QList<ModemEngine *> m_modems; // PSK, Hell, CW transmit, Olivia, SSTV, AMTOR
 
     QLineEdit *m_host = nullptr;
     QSpinBox *m_port = nullptr;
@@ -117,6 +139,12 @@ private:
     QLabel *m_txLamp = nullptr;
     QLabel *m_txMeter = nullptr;
     QWidget *m_txHint = nullptr;
+    bool m_hintDismissed = false;
+    QPushButton *m_logBtn = nullptr;
+    QAction *m_sessionAct = nullptr;
+    QComboBox *m_presetBox = nullptr;
+    QTimer m_txLimit;
+    int m_txLimitMin = 5;
     TxPowerWatch *m_powerWatch = nullptr;
     QTabWidget *m_tabs = nullptr;
     QLabel *m_diag = nullptr;

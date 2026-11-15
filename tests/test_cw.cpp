@@ -5,6 +5,7 @@
 #include "cwdecodercore.h"
 #include "tciprotocol.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -97,6 +98,47 @@ static bool run(CwDecoderCore::Engine engine, double noise)
     return got.find("KC9OXP") != std::string::npos;
 }
 
+// Squelch: band noise before the signal and a burst of louder noise right
+// after it (AGC recovering after a transmission) must not print junk.
+static bool runSquelch(CwDecoderCore::Engine engine)
+{
+    const double rate = 48000.0;
+    const std::string sent = "CQ CQ DE KC9OXP KC9OXP K";
+    std::vector<float> cw = keyCw(sent, 22.0, 700.0, rate, 0.0);
+    std::mt19937 rng(21);
+    std::normal_distribution<float> nd(0.0f, 1.0f);
+    std::vector<float> mono;
+    for (int i = 0; i < int(4.0 * rate); ++i)
+        mono.push_back(0.06f * nd(rng));
+    for (float v : cw)
+        mono.push_back(v + 0.06f * nd(rng));
+    for (int i = 0; i < int(5.0 * rate); ++i)
+        mono.push_back((i < int(1.5 * rate) ? 0.2f : 0.06f) * nd(rng));
+    CwDecoderCore core;
+    core.setEngine(engine);
+    core.setTrackRange(200.0f, 1200.0f, -1.0f);
+    core.setSquelch(true);
+    std::string got;
+    for (size_t pos = 0; pos + 2048 <= mono.size(); pos += 2048)
+    {
+        std::string out;
+        core.feed(mono.data() + pos, 2048, float(rate), out);
+        got += out;
+    }
+    std::string t = got;
+    t.erase(std::remove_if(t.begin(), t.end(), [](char c) { return c == ' ' || c == '\n'; }), t.end());
+    const size_t a = t.find("CQ");
+    const size_t b = t.rfind("KC9OXP");
+    const size_t before = a == std::string::npos ? 99 : a;
+    const size_t after = b == std::string::npos ? 99 : t.size() - (b + 6) - 1; // the final K
+    std::printf("  squelch, %s: [%s] junk before %zu, after %zu\n",
+                engine == CwDecoderCore::Engine::Hand ? "Hand key" : "Machine",
+                got.c_str(),
+                before,
+                after);
+    return got.find("KC9OXP") != std::string::npos && before <= 1 && after <= 1;
+}
+
 int main()
 {
     int fail = 0;
@@ -105,6 +147,8 @@ int main()
     fail += !run(CwDecoderCore::Engine::Hand, 0.0);
     fail += !run(CwDecoderCore::Engine::Machine, 0.05);
     fail += !run(CwDecoderCore::Engine::Hand, 0.05);
+    fail += !runSquelch(CwDecoderCore::Engine::Machine);
+    fail += !runSquelch(CwDecoderCore::Engine::Hand);
     std::printf(fail ? "FAILED: %d\n" : "ALL PASSED\n", fail);
     return fail ? 1 : 0;
 }

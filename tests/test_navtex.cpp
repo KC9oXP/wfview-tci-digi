@@ -70,6 +70,58 @@ int main()
         const std::string codes = navtex::encode(all, figs);
         CHECK(codes.size() >= all.size());
     }
+    std::printf("AMTOR FEC transmitter (typed text, idle, end of emission) -> decoder\n");
+    {
+        AmtorFecModulator mod;
+        mod.setCentreHz(1500);
+        mod.preroll(3.0);
+        const double fs = 48000.0;
+        std::vector<float> audio(size_t(0.5 * fs), 0.0f), block(480);
+        const std::string first = "CQ CQ DE KC9OXP ";
+        size_t lastCount = 0;
+        for (char c : first)
+            lastCount = mod.queueChar(c);
+        CHECK(lastCount == first.size());
+        CHECK(!mod.idle());
+        int blocks = 0;
+        while (!mod.idle() && blocks < 4000)
+        {
+            mod.render(block.data(), block.size(), fs);
+            audio.insert(audio.end(), block.begin(), block.end());
+            ++blocks;
+        }
+        CHECK(mod.unitsSent() == first.size());
+        // 1.5 s of idle (beta) between words, as when typing
+        for (int i = 0; i < 150; ++i)
+        {
+            mod.render(block.data(), block.size(), fs);
+            audio.insert(audio.end(), block.begin(), block.end());
+        }
+        for (char c : std::string("AMTOR FEC TEST 73 (1/2).\n"))
+            mod.queueChar(c);
+        mod.tail(0.0);
+        blocks = 0;
+        while (!mod.idle() && blocks < 6000)
+        {
+            mod.render(block.data(), block.size(), fs);
+            audio.insert(audio.end(), block.begin(), block.end());
+            ++blocks;
+        }
+        CHECK(mod.idle());
+        audio.insert(audio.end(), size_t(0.5 * fs), 0.0f);
+        std::mt19937 rng(7);
+        std::normal_distribution<float> nd(0.0f, 0.15f);
+        for (float &v : audio)
+            v = 0.3f * v + nd(rng);
+        NavtexDecoder dec;
+        dec.setSampleRate(fs);
+        dec.setCentreHz(1500);
+        std::string out;
+        for (size_t p = 0; p < audio.size(); p += 960)
+            out += dec.process(audio.data() + p, std::min<size_t>(960, audio.size() - p));
+        std::printf("  [%s]\n", out.c_str());
+        CHECK(out.find("CQ CQ DE KC9OXP AMTOR FEC TEST 73 (1/2).") != std::string::npos);
+    }
     std::printf(g_fail ? "\n%d FAILED\n" : "\nALL PASSED\n", g_fail);
     return g_fail ? 1 : 0;
 }

@@ -46,7 +46,7 @@ void SstvDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
     if (ev.started)
     {
         // A VIS can end the previous picture and begin a new one at once.
-        emit imageStarted(m_dec.mode());
+        emit imageStarted(m_dec.mode(), ev.noVis);
         m_pending = true;
     }
     if (ev.dirtyTo > 0 || ev.redraw)
@@ -60,20 +60,24 @@ void SstvDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
     if (!m_statsTimer.isValid() || m_statsTimer.elapsed() > 200)
     {
         m_statsTimer.restart();
-        emit statsUpdated(m_dec.levelDb(), m_dec.lastHz(), m_dec.state() == SstvDecoder::State::Receiving);
+        emit statsUpdated(
+            m_dec.levelDb(), m_dec.lastHz(), m_dec.state() == SstvDecoder::State::Receiving, m_dec.offsetHz());
     }
 }
 
-void SstvDecoderWorker::setParams(bool autoSlant, double slantPpm)
+void SstvDecoderWorker::setParams(bool autoSlant, double slantPpm, double offsetHz, bool autoOffset, bool autoStart)
 {
     m_dec.setAutoSlant(autoSlant);
     m_dec.setSlantPpm(slantPpm);
+    m_dec.setOffsetHz(offsetHz);
+    m_dec.setAutoOffset(autoOffset);
+    m_dec.setAutoStart(autoStart);
 }
 
 void SstvDecoderWorker::startManual(int mode)
 {
     m_dec.startManual(mode);
-    emit imageStarted(mode);
+    emit imageStarted(mode, false);
 }
 
 void SstvDecoderWorker::stopImage()
@@ -106,12 +110,17 @@ SstvEngine::SstvEngine(QObject *parent)
     connect(m_worker,
             &SstvDecoderWorker::imageStarted,
             this,
-            [this](int mode)
+            [this](int mode, bool noVis)
             {
                 m_receiving = true;
                 m_rxMode = mode;
-                setStatus(tr("Receiving %1...").arg(QLatin1String(sstv::info(mode).name)));
-                emit imageStarted(mode);
+                setStatus(noVis ? tr("Receiving %1 (started from its sync pulses, no VIS)...")
+                                      .arg(QLatin1String(sstv::info(mode).name))
+                                : tr("Receiving %1...").arg(QLatin1String(sstv::info(mode).name)));
+                if (noVis)
+                    emit logLine(tr("[SSTV] %1 found from its sync timing (no VIS), receiving from here\n")
+                                     .arg(QLatin1String(sstv::info(mode).name)));
+                emit imageStarted(mode, noVis);
             });
     connect(m_worker,
             &SstvDecoderWorker::imageUpdated,
@@ -160,10 +169,11 @@ SstvEngine::SstvEngine(QObject *parent)
     connect(m_worker,
             &SstvDecoderWorker::statsUpdated,
             this,
-            [this](double db, double hz, bool receiving)
+            [this](double db, double hz, bool receiving, double offset)
             {
                 m_levelDb = db;
                 m_hz = hz;
+                m_totalOffset = offset;
                 if (!receiving && m_receiving)
                     m_receiving = false;
                 emit statsChanged();
@@ -186,6 +196,10 @@ void SstvEngine::loadSettings(QSettings *s)
         m_autoSlant = s->value(QStringLiteral("AutoSlant"), m_autoSlant).toBool();
         m_slantPpm = std::clamp(s->value(QStringLiteral("SlantPpm"), m_slantPpm).toDouble(), -5000.0, 5000.0);
         m_txMode = std::clamp(s->value(QStringLiteral("TxMode"), m_txMode).toInt(), 0, int(sstv::ModeCount) - 1);
+        m_offsetHz = std::clamp(s->value(QStringLiteral("OffsetHz"), m_offsetHz).toDouble(), -300.0, 300.0);
+        m_autoOffset = s->value(QStringLiteral("AutoOffset"), m_autoOffset).toBool();
+        m_autoStart = s->value(QStringLiteral("AutoStart"), m_autoStart).toBool();
+        m_cwIdAfterPicture = s->value(QStringLiteral("CwIdAfter"), m_cwIdAfterPicture).toBool();
         s->endGroup();
     }
     ModemEngine::loadSettings(s);
@@ -193,9 +207,55 @@ void SstvEngine::loadSettings(QSettings *s)
 
 void SstvEngine::applyConfig()
 {
-    QMetaObject::invokeMethod(
-        m_worker, "setParams", Qt::QueuedConnection, Q_ARG(bool, m_autoSlant), Q_ARG(double, m_slantPpm));
+    QMetaObject::invokeMethod(m_worker,
+                              "setParams",
+                              Qt::QueuedConnection,
+                              Q_ARG(bool, m_autoSlant),
+                              Q_ARG(double, m_slantPpm),
+                              Q_ARG(double, m_offsetHz),
+                              Q_ARG(bool, m_autoOffset),
+                              Q_ARG(bool, m_autoStart));
     txSource()->setLevel(float(txLevel()));
+}
+
+void SstvEngine::setOffsetHz(double hz)
+{
+    hz = std::clamp(std::round(hz), -300.0, 300.0);
+    if (hz == m_offsetHz)
+        return;
+    m_offsetHz = hz;
+    save("OffsetHz", hz);
+    applyConfig();
+    emit settingsChanged();
+}
+
+void SstvEngine::setAutoOffset(bool on)
+{
+    if (on == m_autoOffset)
+        return;
+    m_autoOffset = on;
+    save("AutoOffset", on);
+    applyConfig();
+    emit settingsChanged();
+}
+
+void SstvEngine::setAutoStart(bool on)
+{
+    if (on == m_autoStart)
+        return;
+    m_autoStart = on;
+    save("AutoStart", on);
+    applyConfig();
+    emit settingsChanged();
+}
+
+void SstvEngine::setCwIdAfter(bool on)
+{
+    if (on == m_cwIdAfterPicture)
+        return;
+    m_cwIdAfterPicture = on;
+    save("CwIdAfter", on);
+    emit settingsChanged();
 }
 
 void SstvEngine::resetReceiver()
@@ -299,6 +359,8 @@ void SstvEngine::sendImage(const QImage &img)
     if (transmitting())
     {
         finishTx(); // release when the picture is out
+        if (m_cwIdAfterPicture)
+            requestCwIdAfter();
         setStatus(tr("Sending %1 (%2 s)").arg(QLatin1String(m.name)).arg(qRound(sstv::imageSeconds(m_txMode) + 0.9)));
         emit logLine(tr("[SSTV] sending %1\n").arg(QLatin1String(m.name)));
     }

@@ -2,6 +2,7 @@
 
 #include "PskEngine.h"
 #include "RxText.h"
+#include "UiStyle.h"
 #include "WaterfallWidget.h"
 
 #include <QCheckBox>
@@ -57,7 +58,7 @@ QWidget *PskPanel::buildTop()
 
     auto *r1 = new QHBoxLayout();
     m_decode = new QPushButton(tr("Decode"));
-    m_decode->setCheckable(true);
+    UiStyle::decodeButton(m_decode);
     r1->addWidget(m_decode);
     m_speed = new QComboBox();
     for (int s = psk::Bpsk31; s <= psk::Bpsk125; ++s)

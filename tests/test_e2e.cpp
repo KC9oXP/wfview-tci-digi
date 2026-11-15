@@ -3,9 +3,10 @@
 //
 //   test_e2e            run the tests (about 40 s, real time)
 //   test_e2e --serve N  only run the mock server on port N (to try the app without a radio)
-//   test_e2e --new      only the tests of the 0.4.0 additions
+//   test_e2e --new      only the tests of the 0.4.0 / 0.4.1 additions
 //   test_e2e --screens DIR  also render the main window at several sizes to PNGs in DIR
 
+#include "AmtorEngine.h"
 #include "AudioHub.h"
 #include "CwDecoder.h"
 #include "CwTxEngine.h"
@@ -20,6 +21,7 @@
 #include "SstvEngine.h"
 #include "TciClient.h"
 #include "TxPowerWatch.h"
+#include "TxTools.h"
 #include "WefaxEngine.h"
 #include "modemtxsource.h"
 #include "navtexcore.h"
@@ -280,8 +282,8 @@ static void runSession(bool stopRxWhileTx)
     CHECK(!rtty.transmitting());
 }
 
-// A WAV with Olivia 8/500, NAVTEX, an SSTV Robot 36 picture and a short
-// weather fax, played through AudioHub into the app's decoders.
+// A WAV with Olivia 8/500, NAVTEX, AMTOR FEC, an SSTV Robot 36 picture and a
+// short weather fax, played through AudioHub into the app's decoders.
 static QString makeTestWav(const QString &dir)
 {
     const double fs = 48000.0;
@@ -317,6 +319,21 @@ static QString makeTestWav(const QString &dir)
         while (!n.done())
         {
             n.render(b.data(), b.size(), fs);
+            for (float v : b)
+                a.push_back(0.3f * v);
+        }
+        gap(1.0);
+    }
+    {
+        AmtorFecModulator m;
+        m.setCentreHz(1500);
+        m.preroll(3.0);
+        for (char ch : std::string("CQ AMTOR E2E DE KC9OXP 73\n"))
+            m.queueChar(ch);
+        m.tail(0.0);
+        for (int g = 0; g < 100000 && !m.idle(); ++g)
+        {
+            m.render(b.data(), b.size(), fs);
             for (float v : b)
                 a.push_back(0.3f * v);
         }
@@ -392,18 +409,35 @@ static void runNewModes()
     CHECK(waitFor([&] { return !hub->playing(); }, 60000));
     pump(4000);
 
-    QWidget *oliviaTab = nullptr, *navtexTab = nullptr;
+    QWidget *oliviaTab = nullptr, *navtexTab = nullptr, *amtorTab = nullptr;
+    int readOnlyDivider = -1, amtorIndex = -1, navtexIndex = -1;
     for (int i = 0; i < tabs->count(); ++i)
     {
         if (tabs->tabText(i) == QStringLiteral("Olivia"))
             oliviaTab = tabs->widget(i);
         if (tabs->tabText(i) == QStringLiteral("NAVTEX"))
+        {
             navtexTab = tabs->widget(i);
+            navtexIndex = i;
+        }
+        if (tabs->tabText(i) == QStringLiteral("AMTOR"))
+        {
+            amtorTab = tabs->widget(i);
+            amtorIndex = i;
+        }
+        if (!tabs->isTabEnabled(i))
+            readOnlyDivider = i;
     }
-    const QString ol = paneText(oliviaTab), nav = paneText(navtexTab);
-    std::printf("  Olivia pane: [%s]\n  NAVTEX pane: [%s]\n", qPrintable(ol.trimmed()), qPrintable(nav.trimmed()));
+    // Transmit tabs, then the "Read only" divider, then the receive-only tabs.
+    CHECK(amtorIndex >= 0 && readOnlyDivider > amtorIndex && navtexIndex > readOnlyDivider);
+    const QString ol = paneText(oliviaTab), nav = paneText(navtexTab), am = paneText(amtorTab);
+    std::printf("  Olivia pane: [%s]\n  NAVTEX pane: [%s]\n  AMTOR pane: [%s]\n",
+                qPrintable(ol.trimmed()),
+                qPrintable(nav.trimmed()),
+                qPrintable(am.trimmed()));
     CHECK(ol.contains(QStringLiteral("OLIVIA TEST de KC9OXP")));
     CHECK(nav.contains(QStringLiteral("NAVTEX TEST MESSAGE 42")));
+    CHECK(am.contains(QStringLiteral("CQ AMTOR E2E DE KC9OXP 73")));
     const QDir data(tmp.filePath(QStringLiteral("data")));
     const QStringList sstvFiles = QDir(data.filePath(QStringLiteral("sstv"))).entryList({QStringLiteral("*.png")});
     const QStringList faxFiles = QDir(data.filePath(QStringLiteral("wefax"))).entryList({QStringLiteral("*.png")});
@@ -430,6 +464,7 @@ static void runNewModes()
     CHECK(olLog.contains(QStringLiteral("--- ")) && olLog.contains(QStringLiteral("Olivia 8/500 @ 1500 Hz")));
     CHECK(olLog.contains(QStringLiteral("OLIVIA TEST de KC9OXP")));
     CHECK(readLog(QStringLiteral("NAVTEX")).contains(QStringLiteral("NAVTEX TEST MESSAGE 42")));
+    CHECK(readLog(QStringLiteral("AMTOR")).contains(QStringLiteral("AMTOR E2E")));
     CHECK(readLog(QStringLiteral("SSTV")).contains(QStringLiteral("[SSTV] received Robot 36")));
     CHECK(readLog(QStringLiteral("WEFAX")).contains(QStringLiteral("[WEFAX]")));
 
@@ -507,6 +542,48 @@ static void runNewModesTx()
     sstvEng->abortTx();
     CHECK(!sstvEng->transmitting());
     CHECK(waitFor([&] { return !client->radioTransmitting(); }, 2000));
+
+    std::printf("\n=== 0.4.1: AMTOR transmit, Tune tone, CW ID ({CWID}) ===\n");
+    auto *amtor = w.findChild<AmtorEngine *>();
+    CHECK(amtor != nullptr);
+    const quint64 before3 = server.txFramesReceived;
+    amtor->send(QStringLiteral("CQ CQ DE KC9OXP"));
+    CHECK(amtor->transmitting());
+    CHECK(waitFor([&] { return !amtor->transmitting(); }, 30000)); // phasing, text, end of emission
+    std::printf("  AMTOR TX frames %llu\n", (unsigned long long)(server.txFramesReceived - before3));
+    CHECK(server.txFramesReceived - before3 > 48000 * 3);
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 2000));
+
+    TxTools *tools = TxTools::instance();
+    CHECK(tools != nullptr);
+    tools->startTune(0.2);
+    CHECK(tools->tuning());
+    CHECK(waitFor([&] { return client->radioTransmitting(); }, 3000));
+    pump(800);
+    tools->stopTune();
+    CHECK(waitFor([&] { return !tools->tuning(); }, 2000));
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 2000));
+
+    // {CWID}: the PSK text, then the CW ID without dropping PTT, then release.
+    auto *psk = w.findChild<PskEngine *>();
+    int pttDrops = 0;
+    bool wasTx = false;
+    QMetaObject::Connection c = QObject::connect(client,
+                                                 &TciClient::radioTransmitChanged,
+                                                 [&](bool on)
+                                                 {
+                                                     if (wasTx && !on)
+                                                         ++pttDrops;
+                                                     wasTx = on;
+                                                 });
+    psk->send(QStringLiteral("TEST {CWID}"));
+    CHECK(psk->transmitting());
+    CHECK(waitFor([&] { return tools->cwIdEngine()->transmitting(); }, 20000));
+    CHECK(waitFor([&] { return !tools->cwIdEngine()->transmitting(); }, 20000));
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 2000));
+    QObject::disconnect(c);
+    std::printf("  PTT drops during PSK + CW ID: %d\n", pttDrops);
+    CHECK(pttDrops == 1);
 }
 
 static void renderScreens(const QString &dir)
@@ -531,9 +608,12 @@ static void renderScreens(const QString &dir)
             b->click();
     pump(12000); // enough for a few Hell words
     const QList<QSize> sizes = {QSize(1100, 760), QSize(640, 520), QSize(1600, 1000)};
-    static const char *const names[] = {"cw", "rtty", "psk", "hell", "olivia", "navtex", "sstv", "wefax"};
-    for (int tab = 0; tab < tabs->count() && tab < 8; ++tab)
+    static const char *const names[]
+        = {"cw", "rtty", "psk", "hell", "olivia", "sstv", "amtor", "divider", "navtex", "wefax"};
+    for (int tab = 0; tab < tabs->count() && tab < 10; ++tab)
     {
+        if (!tabs->isTabEnabled(tab))
+            continue;
         tabs->setCurrentIndex(tab);
         std::printf("  tab %s minimum %dx%d\n",
                     names[tab],
@@ -567,7 +647,7 @@ static void renderScreens(const QString &dir)
         if (e->text() == QStringLiteral("KC9OXP"))
             ++calls;
     std::printf("  My call fields showing KC9OXP: %d\n", calls);
-    CHECK(calls == 5); // RTTY, PSK, Hell, CW, Olivia
+    CHECK(calls == 6); // RTTY, PSK, Hell, CW, Olivia, AMTOR
 }
 
 int main(int argc, char *argv[])

@@ -171,6 +171,15 @@ void WaterfallWidget::setMarker(double hz, double bandwidthHz)
     update();
 }
 
+void WaterfallWidget::setGuides(const QVector<double> &hz, const QStringList &labels)
+{
+    if (hz == m_guides && labels == m_guideLabels)
+        return;
+    m_guides = hz;
+    m_guideLabels = labels;
+    update();
+}
+
 void WaterfallWidget::setTransmitting(bool on)
 {
     m_tx = on;
@@ -212,6 +221,26 @@ void WaterfallWidget::paintEvent(QPaintEvent *)
             const QString t = QString::number(hz);
             const int tw = fontMetrics().horizontalAdvance(t);
             p.drawText(x - tw / 2, fontMetrics().ascent() + 1, t);
+        }
+    }
+
+    // guides
+    for (int i = 0; i < m_guides.size(); ++i)
+    {
+        const int xg = int(hzToX(m_guides[i]));
+        if (xg < 0 || xg >= width())
+            continue;
+        p.setPen(QPen(QColor(90, 200, 255, 170), 1, Qt::DashLine));
+        p.drawLine(xg, sh, xg, height());
+        const QString t = m_guideLabels.value(i);
+        if (!t.isEmpty())
+        {
+            const int tw = fontMetrics().horizontalAdvance(t);
+            const int tx = std::clamp(xg - tw / 2, 0, std::max(0, width() - tw));
+            p.fillRect(
+                tx - 1, height() - fontMetrics().height() - 1, tw + 2, fontMetrics().height(), QColor(0, 0, 0, 150));
+            p.setPen(QColor(150, 220, 255));
+            p.drawText(tx, height() - fontMetrics().descent() - 2, t);
         }
     }
 

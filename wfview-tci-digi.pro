@@ -1,5 +1,5 @@
 # wfview TCI Digi - stand-alone digital modes for wfview over TCI: CW, RTTY, PSK,
-# Feld Hell, Olivia/Contestia, NAVTEX, SSTV and WEFAX.
+# Feld Hell, Olivia/Contestia, SSTV, AMTOR FEC, NAVTEX and WEFAX.
 # Qt 6 (Widgets, WebSockets), C++17.
 
 TEMPLATE = app
@@ -8,7 +8,7 @@ QT += widgets websockets
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.4.0
+VERSION = 0.4.1
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -58,6 +58,11 @@ HEADERS += \
     src/SstvPanel.h \
     src/WefaxEngine.h \
     src/WefaxPanel.h \
+    src/AmtorEngine.h \
+    src/AmtorPanel.h \
+    src/TxTools.h \
+    src/RadioModes.h \
+    src/UiStyle.h \
     src/MainWindow.h \
     engine/audioresampler.h \
     engine/fmdemod.h \
@@ -116,6 +121,9 @@ SOURCES += \
     src/WefaxEngine.cpp \
     src/WefaxPanel.cpp \
     src/RxText.cpp \
+    src/AmtorEngine.cpp \
+    src/AmtorPanel.cpp \
+    src/TxTools.cpp \
     src/MainWindow.cpp \
     engine/sstvcore.cpp \
     engine/wefaxcore.cpp \

@@ -19,6 +19,7 @@ class QSpinBox;
 class QSplitter;
 class RttyEngine;
 class ScopeWidget;
+class TxToolButtons;
 
 class RttyPanel : public QWidget
 {
@@ -68,6 +69,8 @@ private:
     QComboBox *m_stopBits = nullptr;
     QCheckBox *m_usos = nullptr;
     QComboBox *m_figures = nullptr;
+    QComboBox *m_tones = nullptr;
+    TxToolButtons *m_tools = nullptr;
     QLineEdit *m_myCall = nullptr;
     QProgressBar *m_markBar = nullptr;
     QProgressBar *m_spaceBar = nullptr;

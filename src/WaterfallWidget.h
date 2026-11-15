@@ -9,6 +9,7 @@
 // returns to the newest line.
 
 #include <QImage>
+#include <QStringList>
 #include <QVector>
 #include <QWidget>
 
@@ -35,6 +36,8 @@ public slots:
     void addLine(const QVector<float> &db, double hzPerBin);
     // Carrier and the signal width drawn around it.
     void setMarker(double hz, double bandwidthHz);
+    // Thin labelled lines at these frequencies (e.g. SSTV 1200/1500/1900/2300 Hz).
+    void setGuides(const QVector<double> &hz, const QStringList &labels = QStringList());
     void setTransmitting(bool on);
     void clearImage();
     void goLive();
@@ -78,6 +81,8 @@ private:
     double m_maxHz = 3000.0;
     double m_marker = 1000.0;
     double m_bw = 31.25;
+    QVector<double> m_guides;
+    QStringList m_guideLabels;
     bool m_tx = false;
     double m_floor = -100.0; // slowly tracked noise floor, dB
     bool m_floorSet = false;

@@ -21,6 +21,7 @@ class QSettings;
 class QSlider;
 class QSpinBox;
 class SstvEngine;
+class TxToolButtons;
 class WaterfallWidget;
 
 class SstvPanel : public QWidget
@@ -48,6 +49,7 @@ private:
     void updatePreview();
     QImage composeTx() const;
     void addThumb(const QString &path, const QImage &img);
+    void updateMarkers();
 
     SstvEngine *m_sstv;
     QSettings *m_settings;
@@ -57,6 +59,10 @@ private:
     QCheckBox *m_autoSlant = nullptr;
     QSpinBox *m_trim = nullptr;
     QComboBox *m_manualMode = nullptr;
+    QCheckBox *m_autoStart = nullptr;
+    QSpinBox *m_offset = nullptr;
+    QCheckBox *m_autoOffset = nullptr;
+    QLabel *m_offsetInfo = nullptr;
     QPushButton *m_startNow = nullptr;
     QPushButton *m_stop = nullptr;
     QPushButton *m_save = nullptr;
@@ -76,4 +82,6 @@ private:
     QSlider *m_txLevel = nullptr;
     QProgressBar *m_progress = nullptr;
     QLabel *m_txWarn = nullptr;
+    QCheckBox *m_cwIdAfter = nullptr;
+    TxToolButtons *m_tools = nullptr;
 };

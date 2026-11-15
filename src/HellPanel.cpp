@@ -1,10 +1,14 @@
 #include "HellPanel.h"
 
+#include "AppPaths.h"
 #include "HellEngine.h"
 #include "HellWidget.h"
+#include "UiStyle.h"
 #include "WaterfallWidget.h"
 
+#include <QCheckBox>
 #include <QComboBox>
+#include <QDir>
 #include <QDoubleSpinBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -13,9 +17,12 @@
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QTextCursor>
+#include <QTimer>
 #include <QVBoxLayout>
+#include <algorithm>
 
 HellPanel::HellPanel(HellEngine *engine, QSettings *settings, QWidget *parent)
     : ModemPanel(engine, settings, QStringLiteral("Hell"), parent)
@@ -29,8 +36,34 @@ HellPanel::HellPanel(HellEngine *engine, QSettings *settings, QWidget *parent)
     rv->setContentsMargins(0, 0, 0, 0);
     m_rx = new HellWidget();
     m_rx->setToolTip(tr("Received Feld Hell, each column drawn twice so drifting text stays readable. "
-                        "Slanted text: adjust RX trim."));
+                        "Slanted text: adjust RX trim. Letters cut in half: Align (Auto, or Shift).\n"
+                        "Mouse wheel / PgUp: back through the last 30 minutes; Live or End: newest."));
     rv->addWidget(m_rx, 1);
+
+    // alignment, picture saving
+    auto *r2 = new QHBoxLayout();
+    m_autoAlign = new QCheckBox(tr("Auto align"));
+    m_autoAlign->setToolTip(tr("Find where the columns of the letters begin, so each letter sits whole in its "
+                               "column instead of being split top/bottom (the receiver starts its columns at an "
+                               "arbitrary moment; fldigi shows the same split). Applies to everything kept."));
+    r2->addWidget(m_autoAlign);
+    r2->addWidget(new QLabel(tr("Shift")));
+    m_shift = new QSpinBox();
+    m_shift->setRange(-7, 7);
+    m_shift->setToolTip(tr("Move the letters up or down by half-pixels, on top of the automatic alignment."));
+    r2->addWidget(m_shift);
+    m_shiftInfo = new QLabel();
+    r2->addWidget(m_shiftInfo);
+    r2->addStretch(1);
+    auto *save = new QPushButton(tr("Save picture"));
+    save->setToolTip(tr("Save everything received (up to 30 minutes) as a PNG in the logs folder."));
+    r2->addWidget(save);
+    m_autoSave = new QCheckBox(tr("Auto-save"));
+    m_autoSave->setToolTip(tr("Save what was received as a PNG in the logs folder every 30 minutes while decoding, "
+                              "when Decode is switched off, on Clear and when the program closes (at least 20 s "
+                              "of reception)."));
+    r2->addWidget(m_autoSave);
+    rv->addLayout(r2);
     m_echo = new QPlainTextEdit();
     m_echo->setReadOnly(true);
     m_echo->setMaximumBlockCount(200);
@@ -45,6 +78,73 @@ HellPanel::HellPanel(HellEngine *engine, QSettings *settings, QWidget *parent)
     }
     m_zoom->setCurrentIndex(m_zoom->findData(m_rx->zoom()));
     m_contrast->setValue(qRound(m_rx->gain() * 10));
+    if (m_settings)
+    {
+        m_rx->setAutoAlign(m_settings->value(QStringLiteral("Hell/AutoAlign"), true).toBool());
+        m_rx->setManualShift(m_settings->value(QStringLiteral("Hell/Shift"), 0).toInt());
+        m_autoSave->setChecked(m_settings->value(QStringLiteral("Hell/AutoSave"), true).toBool());
+    }
+    else
+        m_autoSave->setChecked(true);
+    syncAlign();
+
+    connect(m_autoAlign,
+            &QCheckBox::toggled,
+            this,
+            [this](bool on)
+            {
+                m_rx->setAutoAlign(on);
+                if (m_settings)
+                    m_settings->setValue(QStringLiteral("Hell/AutoAlign"), on);
+            });
+    connect(m_shift,
+            &QSpinBox::valueChanged,
+            this,
+            [this](int v)
+            {
+                m_rx->setManualShift(v);
+                if (m_settings)
+                    m_settings->setValue(QStringLiteral("Hell/Shift"), v);
+            });
+    connect(m_rx, &HellWidget::alignmentChanged, this, &HellPanel::syncAlign);
+    connect(m_autoSave,
+            &QCheckBox::toggled,
+            this,
+            [this](bool on)
+            {
+                if (m_settings)
+                    m_settings->setValue(QStringLiteral("Hell/AutoSave"), on);
+            });
+    connect(save,
+            &QPushButton::clicked,
+            this,
+            [this]()
+            {
+                const QString p = savePicture(false);
+                statusLabel()->setText(p.isEmpty() ? tr("Nothing received to save.")
+                                                   : tr("Saved %1").arg(QDir::toNativeSeparators(p)));
+            });
+    // Auto-save every 30 minutes while decoding, and when Decode goes off.
+    auto *autoTimer = new QTimer(this);
+    autoTimer->setInterval(30 * 60 * 1000);
+    connect(autoTimer,
+            &QTimer::timeout,
+            this,
+            [this]()
+            {
+                if (m_hell->decoding())
+                    savePicture(true);
+            });
+    autoTimer->start();
+    connect(m_hell,
+            &ModemEngine::settingsChanged,
+            this,
+            [this]()
+            {
+                if (m_wasDecoding && !m_hell->decoding())
+                    savePicture(true);
+                m_wasDecoding = m_hell->decoding();
+            });
 
     connect(m_hell, &HellEngine::columns, m_rx, &HellWidget::addColumns);
     connect(m_hell,
@@ -73,7 +173,7 @@ QWidget *HellPanel::buildTop()
 
     auto *r1 = new QHBoxLayout();
     m_decode = new QPushButton(tr("Decode"));
-    m_decode->setCheckable(true);
+    UiStyle::decodeButton(m_decode);
     r1->addWidget(m_decode);
     r1->addWidget(new QLabel(tr("Freq")));
     m_freq = new QDoubleSpinBox();
@@ -138,7 +238,9 @@ QWidget *HellPanel::buildTop()
             this,
             [this]()
             {
+                savePicture(true);
                 m_rx->clear();
+                m_savedTo = m_rx->endColumn();
                 m_echo->clear();
             });
     return top;
@@ -147,6 +249,39 @@ QWidget *HellPanel::buildTop()
 void HellPanel::saveState()
 {
     ModemPanel::saveState();
+    savePicture(true);
+}
+
+QString HellPanel::savePicture(bool sinceLastAuto)
+{
+    if (sinceLastAuto && !m_autoSave->isChecked())
+        return QString();
+    const qint64 from = sinceLastAuto ? std::max(m_savedTo, m_rx->firstColumn()) : m_rx->firstColumn();
+    const qint64 to = m_rx->endColumn();
+    // 17.5 columns a second: at least 20 s for an automatic save.
+    if (to <= from || (sinceLastAuto && to - from < 350))
+        return QString();
+    // 300 columns (about 43 letters) a line, 2x: readable at full size.
+    const QImage img = m_rx->render(from, to, 300, 2);
+    if (img.isNull())
+        return QString();
+    const QString path
+        = QDir(AppPaths::logs())
+              .filePath(QStringLiteral("%1 Hell%2.png")
+                            .arg(AppPaths::stamp(), sinceLastAuto ? QStringLiteral(" auto") : QString()));
+    if (!img.save(path))
+        return QString();
+    if (sinceLastAuto)
+        m_savedTo = to;
+    return path;
+}
+
+void HellPanel::syncAlign()
+{
+    const QSignalBlocker b1(m_autoAlign), b2(m_shift);
+    m_autoAlign->setChecked(m_rx->autoAlign());
+    m_shift->setValue(m_rx->manualShift());
+    m_shiftInfo->setText(tr("(in use: %1)").arg(m_rx->rowShift()));
 }
 
 void HellPanel::syncSettings()

@@ -2,7 +2,10 @@
 
 #include "AppPaths.h"
 #include "ImageView.h"
+#include "RadioModes.h"
 #include "SstvEngine.h"
+#include "TxTools.h"
+#include "UiStyle.h"
 #include "WaterfallWidget.h"
 #include "sstvcore.h"
 
@@ -59,6 +62,17 @@ SstvPanel::SstvPanel(SstvEngine *engine, QSettings *settings, QWidget *parent)
                                      ? tr("%1 Hz  %2 dB").arg(qRound(m_sstv->toneHz())).arg(qRound(m_sstv->levelDb()))
                                      : QString());
                 m_stop->setEnabled(m_sstv->receiving());
+                updateMarkers();
+            });
+    // The mode list follows whatever was decoded (VIS or sync timing).
+    connect(m_sstv,
+            &SstvEngine::imageStarted,
+            this,
+            [this](int mode, bool)
+            {
+                const int i = m_manualMode->findData(mode);
+                if (i >= 0)
+                    m_manualMode->setCurrentIndex(i);
             });
 
     // previously received pictures
@@ -101,7 +115,7 @@ QWidget *SstvPanel::buildRx()
 
     auto *r1 = new QHBoxLayout();
     m_decode = new QPushButton(tr("Decode"));
-    m_decode->setCheckable(true);
+    UiStyle::decodeButton(m_decode);
     m_decode->setToolTip(tr("Listen for SSTV: pictures start by themselves on their VIS header."));
     r1->addWidget(m_decode);
     m_autoSlant = new QCheckBox(tr("Auto slant"));
@@ -120,10 +134,13 @@ QWidget *SstvPanel::buildRx()
     r1->addWidget(m_level);
     v->addLayout(r1);
     r1 = new QHBoxLayout();
+    auto *modeLabel = new QLabel(tr("Mode if VIS missed"));
+    r1->addWidget(modeLabel);
     m_manualMode = new QComboBox();
     for (int i = 0; i < sstv::ModeCount; ++i)
         m_manualMode->addItem(QLatin1String(sstv::info(i).name), i);
-    m_manualMode->setToolTip(tr("Mode for Start now (when the VIS header was missed)."));
+    m_manualMode->setToolTip(tr("Mode for Start now, when the VIS header was missed. It changes by itself to the "
+                                "mode of each picture received."));
     r1->addWidget(m_manualMode);
     m_startNow = new QPushButton(tr("Start now"));
     m_startNow->setToolTip(tr("Start a picture now in the chosen mode, without waiting for a VIS header."));
@@ -134,6 +151,30 @@ QWidget *SstvPanel::buildRx()
     m_save = new QPushButton(tr("Save"));
     m_save->setToolTip(tr("Save the picture shown now."));
     r1->addWidget(m_save);
+    m_autoStart = new QCheckBox(tr("Start without VIS"));
+    m_autoStart->setToolTip(tr("Start a picture by itself when its sync pulses repeat at one mode's line timing "
+                               "(you joined after the VIS header), as MMSSTV does. The picture starts at the line "
+                               "where it was found."));
+    r1->addWidget(m_autoStart);
+    r1->addStretch(1);
+    v->addLayout(r1);
+
+    r1 = new QHBoxLayout();
+    r1->addWidget(new QLabel(tr("Offset")));
+    m_offset = new QSpinBox();
+    m_offset->setRange(-300, 300);
+    m_offset->setSuffix(tr(" Hz"));
+    m_offset->setToolTip(tr("How far the received tones are above (+) or below (-) where they should be (sync "
+                            "1200, black 1500, white 2300 Hz). Click the small waterfall at the middle of the "
+                            "signal (1900 Hz) or use the mouse wheel there for small steps."));
+    r1->addWidget(m_offset);
+    m_autoOffset = new QCheckBox(tr("Auto"));
+    m_autoOffset->setToolTip(tr("Correct the offset by itself from the 1900 Hz VIS leader and the 1200 Hz sync "
+                                "pulses (added to the offset set here)."));
+    r1->addWidget(m_autoOffset);
+    m_offsetInfo = new QLabel();
+    m_offsetInfo->setToolTip(tr("Offset in use: the one set here plus the automatic correction."));
+    r1->addWidget(m_offsetInfo);
     r1->addStretch(1);
     v->addLayout(r1);
 
@@ -156,8 +197,9 @@ QWidget *SstvPanel::buildRx()
     v->addWidget(mid, 1);
 
     m_wf = new WaterfallWidget();
-    m_wf->setMaximumHeight(90);
-    m_wf->setMarker(1700, 1200);
+    m_wf->setMaximumHeight(110);
+    m_wf->setToolTip(tr("Lines: sync 1200, black 1500, centre 1900, white 2300 Hz, moved by the offset. Click the "
+                        "middle of the signal to set the offset; mouse wheel = 1 Hz steps."));
     v->addWidget(m_wf);
     auto *r3 = new QHBoxLayout();
     m_status = new QLabel();
@@ -171,6 +213,17 @@ QWidget *SstvPanel::buildRx()
 
     connect(m_decode, &QPushButton::toggled, m_sstv, &ModemEngine::setDecoding);
     connect(m_autoSlant, &QCheckBox::toggled, m_sstv, &SstvEngine::setAutoSlant);
+    connect(m_autoStart, &QCheckBox::toggled, m_sstv, &SstvEngine::setAutoStart);
+    connect(m_autoOffset, &QCheckBox::toggled, m_sstv, &SstvEngine::setAutoOffset);
+    connect(m_offset, &QSpinBox::valueChanged, m_sstv, [this](int v) { m_sstv->setOffsetHz(v); });
+    // Clicking / wheeling the waterfall: that is where the middle (1900 Hz) of the signal is.
+    const auto tuneTo = [this](double hz)
+    {
+        const double autoPart = m_sstv->autoOffset() ? m_sstv->totalOffsetHz() - m_sstv->offsetHz() : 0.0;
+        m_sstv->setOffsetHz(hz - 1900.0 - autoPart);
+    };
+    connect(m_wf, &WaterfallWidget::clicked, this, tuneTo);
+    connect(m_wf, &WaterfallWidget::nudged, this, tuneTo);
     connect(m_trim, &QSpinBox::valueChanged, m_sstv, [this](int v) { m_sstv->setSlantPpm(v); });
     connect(m_startNow,
             &QPushButton::clicked,
@@ -272,8 +325,18 @@ QWidget *SstvPanel::buildTx()
     m_txLevel->setRange(1, 100);
     r6->addWidget(m_txLevel, 1);
     v->addLayout(r6);
+    auto *r7 = new QHBoxLayout();
+    m_tools = new TxToolButtons([this]() { return m_sstv->txLevel(); });
+    r7->addWidget(m_tools);
+    m_cwIdAfter = new QCheckBox(tr("CW ID after picture"));
+    m_cwIdAfter->setToolTip(tr("Send your CW ID right after each picture, without dropping PTT (like MMSSTV). "
+                               "Text, speed and pitch: Options > Tune tone and CW ID."));
+    r7->addWidget(m_cwIdAfter);
+    r7->addStretch(1);
+    v->addLayout(r7);
     auto *note = new QLabel(tr("A picture keeps the transmitter on for up to several minutes: "
-                               "consider lower power for the long modes."));
+                               "consider lower power for the long modes. Tune sends a steady 1750 Hz tone "
+                               "to set the level."));
     note->setWordWrap(true);
     note->setEnabled(false);
     v->addWidget(note);
@@ -329,6 +392,7 @@ QWidget *SstvPanel::buildTx()
     connect(m_send, &QPushButton::clicked, this, [this]() { m_sstv->sendImage(composeTx()); });
     connect(m_abort, &QPushButton::clicked, m_sstv, &ModemEngine::abortTx);
     connect(m_txLevel, &QSlider::valueChanged, this, [this](int v) { m_sstv->setTxLevel(v / 100.0); });
+    connect(m_cwIdAfter, &QCheckBox::toggled, m_sstv, &SstvEngine::setCwIdAfter);
     return box;
 }
 
@@ -396,11 +460,29 @@ void SstvPanel::addThumb(const QString &path, const QImage &img)
         delete m_gallery->takeItem(m_gallery->count() - 1);
 }
 
+void SstvPanel::updateMarkers()
+{
+    const double off = m_sstv->autoOffset() ? m_sstv->totalOffsetHz() : m_sstv->offsetHz();
+    m_wf->setMarker(1900.0 + off, 800.0);
+    m_wf->setGuides({1200.0 + off, 1500.0 + off, 2300.0 + off}, {tr("sync"), tr("black"), tr("white")});
+    if (m_sstv->autoOffset())
+        m_offsetInfo->setText(tr("in use %1%2 Hz").arg(off >= 0 ? QStringLiteral("+") : QString()).arg(qRound(off)));
+    else
+        m_offsetInfo->clear();
+}
+
 void SstvPanel::sync()
 {
-    const QSignalBlocker b1(m_decode), b2(m_autoSlant), b3(m_trim), b4(m_txMode), b5(m_txLevel);
+    const QSignalBlocker b1(m_decode), b2(m_autoSlant), b3(m_trim), b4(m_txMode), b5(m_txLevel), b7(m_autoStart),
+        b8(m_offset), b9(m_autoOffset), b10(m_cwIdAfter);
     m_decode->setChecked(m_sstv->decoding());
     m_autoSlant->setChecked(m_sstv->autoSlant());
+    m_autoStart->setChecked(m_sstv->autoStart());
+    m_autoOffset->setChecked(m_sstv->autoOffset());
+    if (!m_offset->hasFocus())
+        m_offset->setValue(qRound(m_sstv->offsetHz()));
+    m_cwIdAfter->setChecked(m_sstv->cwIdAfter());
+    updateMarkers();
     m_trim->setValue(qRound(m_sstv->slantPpm()));
     m_txMode->setCurrentIndex(m_txMode->findData(m_sstv->txMode()));
     m_txLevel->setValue(qRound(m_sstv->txLevel() * 100));
@@ -415,6 +497,7 @@ void SstvPanel::sync()
 void SstvPanel::syncTx(bool on)
 {
     m_send->setEnabled(!on && m_ready && m_canTx);
+    m_tools->setTransmitAllowed(m_ready && m_canTx);
     m_abort->setEnabled(on);
     m_txMode->setEnabled(!on);
     if (!on)
@@ -429,15 +512,15 @@ void SstvPanel::setRadioState(bool ready, bool canTransmit, const QString &mode)
 {
     m_ready = ready;
     m_canTx = canTransmit;
-    const QString m = mode.toUpper();
-    const bool audioMode = m.isEmpty() || m.startsWith(QLatin1String("DIG")) || m == QLatin1String("USB")
-        || m == QLatin1String("LSB") || m.contains(QLatin1String("FM"));
+    const bool audioMode = RadioModes::kind(mode) == RadioModes::Kind::Unknown || RadioModes::carriesAudio(mode)
+        || mode.toUpper().contains(QLatin1String("FM"));
     if (!ready)
         m_txWarn->setText(tr("Not connected."));
     else if (!canTransmit)
         m_txWarn->setText(tr("The server reports this radio as receive only."));
     else if (!audioMode)
-        m_txWarn->setText(tr("The radio is in %1: SSTV needs USB/LSB, a data mode (DIGU/DIGL) or FM.").arg(mode));
+        m_txWarn->setText(
+            tr("The radio is in %1: SSTV needs USB/LSB, a data mode (DIGU/DIGL, DATA-U/DATA-L) or FM.").arg(mode));
     else
         m_txWarn->clear();
     m_txWarn->setVisible(!m_txWarn->text().isEmpty());

@@ -108,6 +108,11 @@ public slots:
     void startTx();
     void finishTx();
     void abortTx();
+    // Stop now as if the text had all been sent (no "aborted" status).
+    void stopNow();
+    // Send a CW ID (MainWindow's CW ID engine) when this transmission ends
+    // normally. Also set by {CWID} in the text.
+    void requestCwIdAfter();
 
 signals:
     void settingsChanged();
@@ -117,6 +122,8 @@ signals:
     void transmittingChanged(bool on);
     void textAppended(QString text);
     void transmitRequested(bool on);
+    // A transmission that asked for it ended: send the CW ID now, at this level.
+    void cwIdRequested(double txLevel);
 
 protected:
     // Hooks for the mode.
@@ -137,6 +144,14 @@ protected:
     }
     virtual QStringList defaultMacroNames() const;
     virtual QStringList defaultMacroTexts() const;
+    // TX level per sub-mode (PSK31/63/125, each Olivia/Contestia setting):
+    // a name, or empty for one level for the whole tab.
+    virtual QString levelKey() const
+    {
+        return QString();
+    }
+    // After the sub-mode changed: take its saved TX level (if any).
+    void reloadTxLevel();
 
     void save(const char *key, const QVariant &value);
     void setStatus(const QString &s);
@@ -160,6 +175,7 @@ private slots:
 
 private:
     QString expand(const QString &text) const;
+    QString levelSettingsKey() const;
     void keyUp();
     void release(const QString &why);
     void saveMacros();
@@ -186,6 +202,7 @@ private:
     bool m_tailQueued = false;
     bool m_radioTx = false;
     bool m_radioWasTx = false;
+    bool m_cwIdAfter = false;
     QElapsedTimer m_keyedTimer;
     QTimer m_txPoll;
 };

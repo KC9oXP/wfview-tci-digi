@@ -48,6 +48,11 @@ HEADERS += \
     ../src/SstvPanel.h \
     ../src/WefaxEngine.h \
     ../src/WefaxPanel.h \
+    ../src/AmtorEngine.h \
+    ../src/AmtorPanel.h \
+    ../src/TxTools.h \
+    ../src/RadioModes.h \
+    ../src/UiStyle.h \
     ../src/MainWindow.h
 
 SOURCES += \
@@ -86,6 +91,9 @@ SOURCES += \
     ../src/WefaxEngine.cpp \
     ../src/WefaxPanel.cpp \
     ../src/RxText.cpp \
+    ../src/AmtorEngine.cpp \
+    ../src/AmtorPanel.cpp \
+    ../src/TxTools.cpp \
     ../src/MainWindow.cpp \
     ../engine/sstvcore.cpp \
     ../engine/wefaxcore.cpp \

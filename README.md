@@ -10,7 +10,7 @@
 ![PSK tab](docs/screenshots/psk.png)
 
 Stand-alone digital modes - CW, RTTY, PSK (BPSK31/63/125), Feld Hell,
-Olivia/Contestia, NAVTEX, SSTV and WEFAX - that connect to **wfview** over **TCI**
+Olivia/Contestia, SSTV, AMTOR FEC, NAVTEX and WEFAX - that connect to **wfview** over **TCI**
 (Transceiver Control Interface). wfview handles the radio; this program gets the
 receive audio, sends transmit audio, and keys PTT, all through wfview's TCI server.
 It works the same whether wfview reaches the radio over LAN or over USB, and it
@@ -26,12 +26,18 @@ it and wfview's TCI server gets a real client to test against.
 
 ## Features
 
+The tabs that can transmit (CW, RTTY, PSK, Hell, Olivia, SSTV, AMTOR) come first; a
+*Read only* divider separates the receive-only tabs (NAVTEX, WEFAX). Every *Decode*
+button is dark red when off and green when on.
+
 **CW (receive and transmit)**
 - Two decoders: *Machine* (ggmorse, for keyers and computer-sent CW) and *Hand key*
   (learns each sender's timing).
 - Pitch: Auto (strongest steady tone, 200-1200 Hz) or Fixed (200-3000 Hz; Hand key is
   used above 1900 Hz).
-- Auto or fixed speed, squelch, re-sync.
+- Auto or fixed speed, squelch, re-sync. The squelch opens only after the tone has been
+  there for half a second and closes a second after it stops, so noise before a signal
+  and after a transmission (AGC recovering) does not print.
 - Multi-signal list: every CW signal from 200 to 2000 Hz with its pitch, speed, SNR and
   text. Double-click a row to decode that station.
 - Transmit as **audio CW**: a keyed tone sent as TX audio with the radio in DIGU/USB, the
@@ -46,6 +52,8 @@ it and wfview's TCI server gets a real client to test against.
 - Any baud/shift (45.45/50/75/100 bd, 170/200/425/850 Hz presets), 1/1.5/2 stop bits,
   USOS, US TTY or ITA2 figures, Reverse.
 - Mark/space filter demodulator with W7AY optimal ATC and a tone-contrast squelch.
+- *Tones*: the classic high pair (2125/2295 Hz) or centred on 1500 Hz (1415/1585 Hz,
+  as fldigi), so RTTY sits in the middle of a narrow data passband.
 - Crossed-ellipse tuning scope, mark/space/quality bars, Auto-tune (finds the tone
   pair in the last few seconds and sets Mark).
 - Sideband **Auto**: follows the radio's mode (USB/DIGU or LSB/DIGL), so mark lands on
@@ -78,6 +86,11 @@ it and wfview's TCI server gets a real client to test against.
 - Receive is painted, not decoded, like every Hell program: each column is drawn
   twice, one copy above the other, so text that drifts up or down stays readable.
   Zoom 1-4x, contrast, RX trim to straighten slanted text.
+- *Auto align*: the receiver starts its columns at an arbitrary moment, so letters can
+  come out split top/bottom (fldigi shows the same). The display finds where the
+  columns of the letters begin and re-cuts them, plus a manual *Shift*.
+- The last 30 minutes are kept: mouse wheel or PgUp scrolls back (*Live* returns),
+  *Save picture* writes a PNG, *Auto-save* keeps a PNG in the logs folder.
 - Waterfall with click-to-tune, macros (sent in capitals; the font has 59 characters),
   transmitted text shown in a strip below the picture.
 
@@ -85,8 +98,18 @@ it and wfview's TCI server gets a real client to test against.
 - Olivia 4/125 to 64/2000 and Contestia 4/125 to 64/1000, using Pawel Jalocha's
   MFSK library exactly as fldigi does, so the two interoperate.
 - The receiver finds signals a few tone spacings off the set frequency by itself
-  (no AFC needed); S/N squelch (noise otherwise prints as random characters).
+  (no AFC needed); S/N squelch (noise otherwise prints as random characters), which
+  also stops the junk the library prints for a few seconds after a signal ends.
+- Transmit starts with two FEC blocks of idle (1-4 s) so the far end has found the
+  signal before the first letter.
 - Same macros, Call/My call, type-ahead, Hold TX and watchdogs as PSK.
+
+**AMTOR FEC (receive and transmit)**
+- AMTOR mode B (FEC, as SITOR-B): 100 baud, 170 Hz shift, CCIR 476 code, every
+  character sent twice (time diversity), phasing signals first and the end-of-emission
+  signal last. Typing as you go is fine: idle signals fill the gaps.
+- Receives with the same decoder as NAVTEX; Reverse for LSB or inverted stations.
+- On the amateur bands AMTOR belongs in the RTTY/data segments.
 
 **NAVTEX / SITOR-B (receive)**
 - 100 baud, 170 Hz shift, CCIR 476 with the time-diversity FEC repair; bit sync,
@@ -95,13 +118,19 @@ it and wfview's TCI server gets a real client to test against.
 
 **SSTV (receive and transmit)**
 - Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD50/90/120/160/180/240.
-- Pictures start by themselves on their VIS header, or by hand (*Start now*) when
-  the header was missed. Auto slant: the sync pulse of every line is found and a
+- Pictures start by themselves on their VIS header. Joined late (no VIS): *Start
+  without VIS* starts the picture when the sync pulses repeat at one mode's line
+  timing, as MMSSTV does; or pick the mode and *Start now*. The mode list follows
+  each picture received.
+- Tuning: *Offset* (click the middle of the signal on the small waterfall, or the
+  wheel for 1 Hz steps) with markers for sync, black, centre and white, and *Auto*
+  offset from the 1900 Hz VIS leader and the 1200 Hz sync pulses. Auto slant: the sync pulse of every line is found and a
   straight line fitted through them, so a slanted or shifted picture is straightened
   as it comes in; a ppm trim covers a known sound-card clock error.
 - Received pictures are saved as PNG (in 4:3) and shown in a strip to click through.
 - Transmit: open or paste a picture (or send back the one shown), pick the mode,
-  optional text overlay ({MYCALL} {CALL} {RST}), preview, progress, abort.
+  optional text overlay ({MYCALL} {CALL} {RST}), preview, progress, abort, and *CW ID
+  after picture*.
 
 **WEFAX (receive)**
 - HF weather fax, 60/90/120/240 LPM, IOC 576/288.
@@ -135,9 +164,32 @@ it and wfview's TCI server gets a real client to test against.
 Only one mode transmits at a time: starting a transmission in one tab stops any
 other. *My call* is shared by all tabs.
 
-While transmitting, the top bar shows the output power, ALC and SWR wfview reports. If
-the radio keys up but reports no output power, a hint explains what to check (see
-*Radio data mode and modulation input* below).
+**In every transmit tab**
+- *Tune*: a steady 1750 Hz tone (like MMSSTV's) at the tab's TX level, to set the level
+  and ALC; click again to stop.
+- *CW ID*: "DE <your call>" as keyed audio CW at the tab's TX level. `{CWID}` at the end
+  of a macro sends it after the text without dropping PTT. Text, speed and pitch:
+  Options > Tune tone and CW ID.
+- The TX level is kept per mode, and per sub-mode for PSK31/63/125 and each Olivia /
+  Contestia setting.
+- The mode check accepts every data-mode name servers use (DIGU/DIGL, DATA-U/DATA-L,
+  USB-D/LSB-D, PKTUSB...) and plain USB/LSB.
+
+**Top bar**
+- *Log*: the session log on (green) or off, for all modes.
+- *Presets*: frequency presets for the tab showing (SSTV 3.845 LSB / 14.230 ..., WEFAX
+  NMF / NMG with the 1.9 kHz offset, NAVTEX 518 kHz ...); set the dial and USB/LSB over
+  TCI. Add the current frequency or edit the list.
+
+**Transmit safety**
+- Options > *TX time limit* (default 5 minutes; off, 1-10): the transmitter is
+  released after this long keyed, whatever the mode.
+- While transmitting, the top bar shows the output power, ALC and SWR wfview reports.
+  Options > *ALC warning*: the meter turns red and the status bar says so when ALC
+  stays above the limit.
+- If the radio keys up but reports no output power, a hint explains what to check (see
+  *Radio data mode and modulation input* below). At very low power settings that can be
+  normal: the hint goes away once any output is seen, and can be turned off.
 
 **TCI**
 - Frequency and mode shown and settable from the top bar.
@@ -229,14 +281,16 @@ g++ -std=c++17 -O2 -Iengine tests/test_hell.cpp engine/hellcore.cpp -o test_hell
 # CW transmit (keyer timing, key clicks, prosigns, loopback through the CW decoder)
 g++ -std=c++17 -O2 -Isrc -Iengine -Iengine/ggmorse/include tests/test_cwtx.cpp engine/cwtxcore.cpp engine/modemtxsource.cpp engine/pskcore.cpp engine/hellcore.cpp engine/ggmorse/src/ggmorse.cpp engine/ggmorse/src/resampler.cpp -o test_cwtx
 
-# SSTV, WEFAX, NAVTEX and Olivia/Contestia (encoder -> decoder with clock error, noise, offsets)
+# SSTV (also the transmitted tones against the published timings, and starting without VIS),
+# WEFAX, NAVTEX / AMTOR FEC and Olivia/Contestia (encoder -> decoder with clock error, noise, offsets)
 g++ -std=c++17 -O2 -Iengine tests/test_sstv.cpp engine/sstvcore.cpp -o test_sstv
 g++ -std=c++17 -O2 -Iengine tests/test_wefax.cpp engine/wefaxcore.cpp -o test_wefax
 g++ -std=c++17 -O2 -Iengine tests/test_navtex.cpp engine/navtexcore.cpp -o test_navtex
 g++ -std=c++17 -O2 -Iengine tests/test_olivia.cpp engine/oliviacore.cpp -o test_olivia
 
 # End to end against a mock of wfview's TCI server (~3 min); --new runs only the
-# 0.4.0 parts (WAV playback into the new decoders, logs, Olivia and SSTV transmit)
+# 0.4.x parts (WAV playback into the new decoders, logs, Olivia / SSTV / AMTOR transmit,
+# Tune and CW ID)
 qmake ../tests/test_e2e.pro && make && QT_QPA_PLATFORM=offscreen ./test_e2e
 ```
 

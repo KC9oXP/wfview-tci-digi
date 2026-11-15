@@ -1,8 +1,11 @@
 #include "RttyPanel.h"
 
+#include "RadioModes.h"
 #include "RttyEngine.h"
 #include "RxText.h"
 #include "ScopeWidget.h"
+#include "TxTools.h"
+#include "UiStyle.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -129,7 +132,7 @@ QWidget *RttyPanel::buildTop()
     // row: decode controls
     auto *r1 = new QHBoxLayout();
     m_decode = new QPushButton(tr("Decode"));
-    m_decode->setCheckable(true);
+    UiStyle::decodeButton(m_decode);
     r1->addWidget(m_decode);
     r1->addWidget(new QLabel(tr("Squelch")));
     m_squelch = new QSlider(Qt::Horizontal);
@@ -201,6 +204,30 @@ QWidget *RttyPanel::buildTop()
     g->addWidget(m_usos, row, 0, 1, 2);
     g->addWidget(new QLabel(tr("Figures")), row, 2);
     g->addWidget(m_figures, row, 3);
+    ++row;
+    m_tones = new QComboBox();
+    m_tones->addItem(tr("High: 2125 / 2295 Hz"), 2210.0);
+    m_tones->addItem(tr("Centred on 1500 Hz (fldigi)"), 1500.0);
+    m_tones->addItem(tr("Custom (Mark above)"), 0.0);
+    m_tones->setToolTip(tr("Where the mark/space pair sits in the audio. The high tones are the classic AFSK pair; "
+                           "centred on 1500 Hz (1415 / 1585 at 170 Hz shift) keeps RTTY in the middle of a narrow "
+                           "data passband, as fldigi does. Both stations only need to be on the same RF "
+                           "frequencies; the receiving end tunes to you."));
+    g->addWidget(new QLabel(tr("Tones")), row, 0);
+    g->addWidget(m_tones, row, 1, 1, 3);
+    connect(m_tones,
+            &QComboBox::activated,
+            this,
+            [this](int i)
+            {
+                const double centre = m_tones->itemData(i).toDouble();
+                if (centre <= 0.0)
+                    return;
+                // Keep mark on the side it is on now (USB: mark above space).
+                const bool markHigh = m_rtty->spaceHz() < m_rtty->markHz();
+                const double half = m_rtty->shift() / 2.0;
+                m_rtty->setMarkHz(int(std::lround(centre + (markHigh ? half : -half))));
+            });
     ++row;
     {
         // Common settings in one pick; each field can still be changed after.
@@ -381,6 +408,8 @@ QWidget *RttyPanel::buildTx()
     btns->addWidget(m_abort);
     btns->addWidget(m_hold);
     btns->addWidget(m_diddle);
+    m_tools = new TxToolButtons([this]() { return m_rtty->txLevel(); });
+    btns->addWidget(m_tools);
     btns->addStretch(1);
     btns->addWidget(new QLabel(tr("TX level")));
     m_txLevel = new QSlider(Qt::Horizontal);
@@ -424,15 +453,29 @@ void RttyPanel::setRadioState(bool ready, bool canTransmit, const QString &mode)
 
 void RttyPanel::updateModeWarning()
 {
-    const QString m = m_mode.toUpper();
     QString warn;
-    if (m_ready && !m.isEmpty() && m != QLatin1String("DIGU") && m != QLatin1String("DIGL") && m != QLatin1String("USB")
-        && m != QLatin1String("LSB"))
-        warn = tr("Radio is in %1. RTTY needs an SSB or data mode (DIGU/DIGL = USB-D/LSB-D).").arg(m);
-    else if (m_ready && (m == QLatin1String("USB") || m == QLatin1String("LSB")))
-        warn = tr("Radio is in %1 (not data mode): transmit audio may come from the microphone path. "
-                  "Use %2 for AFSK.")
-                   .arg(m, m == QLatin1String("USB") ? QStringLiteral("DIGU") : QStringLiteral("DIGL"));
+    QString style = QStringLiteral("color: #e0a030;");
+    if (m_ready)
+    {
+        switch (RadioModes::kind(m_mode))
+        {
+        case RadioModes::Kind::Unknown:
+        case RadioModes::Kind::Data:
+            break;
+        case RadioModes::Kind::Voice:
+            warn = tr("Radio is in %1 (not a data mode). AFSK works if the radio takes the TCI audio in %1; "
+                      "if nothing goes out, use its data mode (on an IC-7610 over LAN: Data 2).")
+                       .arg(m_mode);
+            style = QStringLiteral("color: #9a9a9a;");
+            break;
+        default:
+            warn = tr("Radio is in %1. RTTY here is AFSK (audio): it needs a data mode (DIGU/DIGL, DATA-U/DATA-L, "
+                      "USB-D/LSB-D) or USB/LSB.")
+                       .arg(m_mode);
+            break;
+        }
+    }
+    m_modeWarning->setStyleSheet(style);
     m_modeWarning->setText(warn);
     m_modeWarning->setVisible(!warn.isEmpty());
 }
@@ -458,6 +501,11 @@ void RttyPanel::syncSettings()
     m_stopBits->setCurrentIndex(m_stopBits->findData(m_rtty->stopBits()));
     m_usos->setChecked(m_rtty->usos());
     m_figures->setCurrentIndex(m_rtty->ita2() ? 1 : 0);
+    {
+        const QSignalBlocker bt(m_tones);
+        const double centre = (m_rtty->markHz() + m_rtty->spaceHz()) / 2.0;
+        m_tones->setCurrentIndex(std::fabs(centre - 2210.0) < 1.0 ? 0 : std::fabs(centre - 1500.0) < 1.0 ? 1 : 2);
+    }
     if (!m_myCall->hasFocus())
         m_myCall->setText(m_rtty->myCall());
     if (!m_call->hasFocus())
@@ -500,6 +548,7 @@ void RttyPanel::syncTransmitting(bool on)
     m_abort->setEnabled(on);
     for (QPushButton *b : m_macroButtons)
         b->setEnabled(m_canTx);
+    m_tools->setTransmitAllowed(m_canTx);
     m_txBtn->setStyleSheet(on ? QStringLiteral("background-color: #a02020; color: white;") : QString());
     updateScopeIdle();
 }
@@ -568,8 +617,11 @@ void RttyPanel::editMacros()
     QDialog dlg(this);
     dlg.setWindowTitle(tr("RTTY macros"));
     auto *outer = new QVBoxLayout(&dlg);
-    outer->addWidget(new QLabel(tr("{MYCALL} and {CALL} are replaced when the macro is sent. End a macro with a new "
-                                   "line to start the next one on a fresh line.")));
+    auto *help = new QLabel(tr("{MYCALL} and {CALL} are replaced when the macro is sent. End a macro with a new "
+                               "line to start the next one on a fresh line. {CWID} sends your CW ID after the "
+                               "transmission."));
+    help->setWordWrap(true);
+    outer->addWidget(help);
     auto *scroll = new QScrollArea();
     scroll->setWidgetResizable(true);
     auto *inner = new QWidget();
