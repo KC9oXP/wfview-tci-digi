@@ -16,6 +16,7 @@
 #include "wwvcore.h"
 
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QMetaType>
 #include <QObject>
 #include <QTimer>
@@ -55,7 +56,7 @@ private:
     std::deque<std::pair<qint64, double>> m_arrivals; // arrival ms, arrival - sample time
     std::deque<double> m_raw;
     double m_lastTick = -1.0;
-    qint64 m_lastEmit = 0;
+    QElapsedTimer m_emitTimer;
 };
 
 class WwvEngine : public QObject

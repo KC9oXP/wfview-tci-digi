@@ -84,10 +84,11 @@ void WwvWorker::pushAudio(QVector<float> mono, float sampleRate, double arrivalE
     }
     if (s.st.timeValid)
         s.utcTickMs = epochMs(s.st.time, s.st.secondInMinute);
-    // about five a second
-    if (arrivalMs - m_lastEmit >= 200 || arrivalMs < m_lastEmit)
+    // About five a second, by this thread's own clock: blocks can arrive in a
+    // burst (a recording played fast, a backlog) with nearly the same arrival time.
+    if (!m_emitTimer.isValid() || m_emitTimer.elapsed() >= 200)
     {
-        m_lastEmit = arrivalMs;
+        m_emitTimer.restart();
         emit snapshot(s);
     }
 }
