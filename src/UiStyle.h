@@ -22,6 +22,8 @@ public:
         setText(QObject::tr("Push To Decode"));
         setMinimumWidth(sizeHint().width() + 14); // + the style sheet's padding
         updateText();
+        // A mouse click does not go through checkStateSet(); toggled covers it.
+        QObject::connect(this, &QPushButton::toggled, this, [this](bool) { updateText(); });
     }
 
 protected:
