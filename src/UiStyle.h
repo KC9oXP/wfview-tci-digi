@@ -8,6 +8,36 @@
 
 namespace UiStyle
 {
+// Reads "Push To Decode" while off (dark red) and "Decode" while on (green).
+// The text follows the checked state however it is set (click, or a panel
+// syncing it with signals blocked).
+class DecodeButton : public QPushButton
+{
+public:
+    explicit DecodeButton(QWidget *parent = nullptr)
+        : QPushButton(parent)
+    {
+        setCheckable(true);
+        // Wide enough for the longer text, so the row does not shift on a click.
+        setText(QObject::tr("Push To Decode"));
+        setMinimumWidth(sizeHint().width() + 14); // + the style sheet's padding
+        updateText();
+    }
+
+protected:
+    void checkStateSet() override
+    {
+        QPushButton::checkStateSet();
+        updateText();
+    }
+
+private:
+    void updateText()
+    {
+        setText(isChecked() ? QObject::tr("Decode") : QObject::tr("Push To Decode"));
+    }
+};
+
 inline void decodeButton(QPushButton *b)
 {
     b->setObjectName(QStringLiteral("decodeButton"));
@@ -19,8 +49,6 @@ inline void decodeButton(QPushButton *b)
                        "QPushButton:checked { background-color: #1d6a33; color: #eaffea; border: 1px solid #2f9a4c;"
                        " font-weight: bold; }"
                        "QPushButton:checked:hover { border-color: #5fd07c; }"));
-    b->setToolTip(b->toolTip().isEmpty() ? QObject::tr("Decode on (green) / off (dark red).")
-                                         : b->toolTip() + QObject::tr("\nGreen = decoding, dark red = off."));
 }
 
 // Normal look when off, dark green when on.

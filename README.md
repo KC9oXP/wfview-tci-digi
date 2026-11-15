@@ -28,7 +28,7 @@ it and wfview's TCI server gets a real client to test against.
 
 The tabs that can transmit (CW, RTTY, PSK, Hell, Olivia, SSTV, AMTOR) come first; a
 *Read only* divider separates the receive-only tabs (NAVTEX, WEFAX). Every *Decode*
-button is dark red when off and green when on.
+button is dark red and reads "Push To Decode" when off, and green "Decode" when on.
 
 **CW (receive and transmit)**
 - Two decoders: *Machine* (ggmorse, for keyers and computer-sent CW) and *Hand key*

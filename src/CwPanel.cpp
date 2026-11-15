@@ -37,7 +37,7 @@ CwPanel::CwPanel(CwDecoder *decoder, CwTxEngine *tx, QSettings *settings, QWidge
 
     // ---- controls: a wrapping two-row grid keeps every control reachable when narrow
     auto *row1 = new QHBoxLayout();
-    m_decode = new QPushButton(tr("Decode"));
+    m_decode = new UiStyle::DecodeButton();
     UiStyle::decodeButton(m_decode);
     m_decode->setToolTip(tr("Decode CW from the receive audio wfview sends over TCI."));
     row1->addWidget(m_decode);

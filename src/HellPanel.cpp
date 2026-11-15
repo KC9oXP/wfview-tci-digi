@@ -172,7 +172,7 @@ QWidget *HellPanel::buildTop()
     v->setContentsMargins(0, 0, 0, 0);
 
     auto *r1 = new QHBoxLayout();
-    m_decode = new QPushButton(tr("Decode"));
+    m_decode = new UiStyle::DecodeButton();
     UiStyle::decodeButton(m_decode);
     r1->addWidget(m_decode);
     r1->addWidget(new QLabel(tr("Freq")));

@@ -114,7 +114,7 @@ QWidget *SstvPanel::buildRx()
     v->setContentsMargins(0, 0, 0, 0);
 
     auto *r1 = new QHBoxLayout();
-    m_decode = new QPushButton(tr("Decode"));
+    m_decode = new UiStyle::DecodeButton();
     UiStyle::decodeButton(m_decode);
     m_decode->setToolTip(tr("Listen for SSTV: pictures start by themselves on their VIS header."));
     r1->addWidget(m_decode);

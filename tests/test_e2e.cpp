@@ -399,7 +399,7 @@ static void runNewModes()
     pump(300);
     auto *tabs = w.findChild<QTabWidget *>();
     for (QPushButton *b : w.findChildren<QPushButton *>())
-        if (b->text() == QStringLiteral("Decode") && !b->isChecked())
+        if (b->objectName() == QStringLiteral("decodeButton") && !b->isChecked())
             b->click();
     auto *hub = w.findChild<AudioHub *>();
     CHECK(hub != nullptr);
@@ -604,7 +604,7 @@ static void renderScreens(const QString &dir)
     auto *tabs = w.findChild<QTabWidget *>();
     // Switch Decode on in every tab so the scope, waterfall and decode panes are live.
     for (QPushButton *b : w.findChildren<QPushButton *>())
-        if (b->text() == QStringLiteral("Decode") && !b->isChecked())
+        if (b->objectName() == QStringLiteral("decodeButton") && !b->isChecked())
             b->click();
     pump(12000); // enough for a few Hell words
     const QList<QSize> sizes = {QSize(1100, 760), QSize(640, 520), QSize(1600, 1000)};
