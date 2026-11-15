@@ -81,6 +81,9 @@ private:
     void addCurrentPreset();
     void editPresets();
     void abortAllTx(const QString &why);
+    QString alcKey() const;
+    void loadAlcLimit();
+    void editAlcLimit();
     void buildLogDock();
     void buildMenus();
     void buildFileMenu();

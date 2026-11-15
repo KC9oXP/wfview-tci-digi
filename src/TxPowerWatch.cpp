@@ -35,6 +35,7 @@ void TxPowerWatch::setRadioTransmitting(bool on)
         m_powerSeen = false;
         m_alcRun = 0;
         m_alcWarned = false;
+        m_peakAlc = 0.0;
         m_since.start();
         m_checkTimer.start();
     }
@@ -64,6 +65,7 @@ void TxPowerWatch::onSensors(double alc, double power, double swr)
         m_powerSeen = true;
         emit powerSeen();
     }
+    m_peakAlc = std::max(m_peakAlc, alc);
     const bool high = m_alcLimit > 0.0 && alc > m_alcLimit;
     m_alcRun = high ? m_alcRun + 1 : 0;
     const bool show = m_alcRun >= 2;

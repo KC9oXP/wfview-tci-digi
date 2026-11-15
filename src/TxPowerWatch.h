@@ -42,6 +42,11 @@ public:
     {
         m_alcLimit = v;
     }
+    // Highest ALC reported in the last (or current) transmission.
+    double lastPeakAlc() const
+    {
+        return m_peakAlc;
+    }
 
 public slots:
     void setOurTransmit(bool on); // this program asked for TX
@@ -72,4 +77,5 @@ private:
     int m_alcRun = 0;
     bool m_alcWarned = false;
     bool m_alcHigh = false;
+    double m_peakAlc = 0.0;
 };

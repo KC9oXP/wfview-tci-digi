@@ -121,6 +121,7 @@ void OliviaDemodulator::reset()
     d->rx.Reset();
     m_escape = false;
     m_peakSnr = 0.0;
+    m_openSec = 0.0;
 }
 
 std::string OliviaDemodulator::process(const float *x, size_t n)
@@ -142,16 +143,28 @@ std::string OliviaDemodulator::process(const float *x, size_t n)
     // threshold does not stop that) while its S/N, averaged over several FEC
     // blocks, is still falling: those are the junk characters seen after a
     // transmission. So characters are printed only while the S/N is above the
-    // squelch and within 15 % of the best S/N since the signal appeared; the
+    // squelch (and has been for a moment) and within 15 % of the best S/N since the signal appeared; the
     // best is forgotten when the S/N drops below the squelch (and slowly, so a
     // weaker station after a strong one still prints).
     const double dt = double(n) / m_fs;
     m_peakSnr *= std::exp(-dt / 30.0);
     if (m_snr < m_squelch)
+    {
         m_peakSnr = 0.0;
+        m_openSec = 0.0;
+    }
     else
         m_peakSnr = std::max(m_peakSnr, m_snr);
-    const bool open = m_squelch <= 0.0 || (m_snr >= m_squelch && m_snr >= 0.85 * m_peakSnr);
+    // The block decoded as the S/N first crosses the squelch is only partly
+    // signal and prints a character or two of junk just before the text, so
+    // nothing is printed for the first quarter block after opening (the text
+    // itself follows two blocks later).
+    // Olivia only: Contestia's shorter blocks showed no such junk in the tests,
+    // and its text follows within a block, so a hold-off would cost a letter.
+    const bool settled = m_cfg.contestia || m_openSec >= 0.25 * olivia::blockSeconds(m_cfg);
+    if (m_snr >= m_squelch)
+        m_openSec += dt;
+    const bool open = m_squelch <= 0.0 || (settled && m_snr >= m_squelch && m_snr >= 0.85 * m_peakSnr);
     uint8_t ch = 0;
     while (rx.GetChar(ch) > 0)
     {

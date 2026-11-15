@@ -1,9 +1,10 @@
 #pragma once
 
-// Transmit helpers shared by every transmit tab:
+// Transmit helpers:
 //
 //   Tune  - a steady tone (1750 Hz by default, like MMSSTV's tune tone) at the
 //           tab's TX level, to set the TX level / ALC. Click again to stop.
+//           The button is in the SSTV tab only.
 //   CW ID - "DE {MYCALL}" (or your text) as keyed audio CW; also sent after a
 //           transmission whose text ends in {CWID}, and after each SSTV
 //           picture when that is ticked.
@@ -142,14 +143,15 @@ private:
     double m_cwIdPitch = 800.0;
 };
 
-// "Tune" and "CW ID" buttons for a tab's transmit row. level() gives the
-// tab's TX level when pressed.
+// "CW ID" button for a tab's transmit row, plus "Tune" where withTune is set
+// (the SSTV tab: 1750 Hz is SSTV's tune tone; the other modes have no common
+// one). level() gives the tab's TX level when pressed.
 class TxToolButtons : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit TxToolButtons(std::function<double()> level, QWidget *parent = nullptr);
+    explicit TxToolButtons(std::function<double()> level, bool withTune = false, QWidget *parent = nullptr);
     void setTransmitAllowed(bool on);
 
 private:

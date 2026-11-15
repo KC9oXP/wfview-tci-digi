@@ -326,7 +326,7 @@ QWidget *SstvPanel::buildTx()
     r6->addWidget(m_txLevel, 1);
     v->addLayout(r6);
     auto *r7 = new QHBoxLayout();
-    m_tools = new TxToolButtons([this]() { return m_sstv->txLevel(); });
+    m_tools = new TxToolButtons([this]() { return m_sstv->txLevel(); }, true);
     r7->addWidget(m_tools);
     m_cwIdAfter = new QCheckBox(tr("CW ID after picture"));
     m_cwIdAfter->setToolTip(tr("Send your CW ID right after each picture, without dropping PTT (like MMSSTV). "

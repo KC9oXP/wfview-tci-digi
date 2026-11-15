@@ -29,7 +29,8 @@ static std::string run(olivia::Config c,
                        double noise,
                        size_t *echoOut,
                        double preroll = 0.5,
-                       double leadNoiseSec = 0.5)
+                       double leadNoiseSec = 0.5,
+                       unsigned seed = 5)
 {
     const double fs = 48000.0;
     OliviaModulator mod;
@@ -55,7 +56,7 @@ static std::string run(olivia::Config c,
     if (echoOut)
         *echoOut = mod.unitsSent();
     audio.insert(audio.end(), size_t(12.0 * fs), 0.0f);
-    std::mt19937 rng(5);
+    std::mt19937 rng(seed);
     std::normal_distribution<float> nd(0.0f, float(noise));
     for (float &v : audio)
         v = 0.3f * v + nd(rng);
@@ -117,6 +118,21 @@ int main()
         std::printf("  preroll %.2f s\n", olivia::prerollSeconds(lc));
         CHECK(with.find("LETS TEST FLDIGI") != std::string::npos);
         (void)none;
+    }
+
+    std::printf("Start of a signal: no junk before the text (several noise seeds; they differ by compiler)\n");
+    {
+        olivia::Config sc;
+        sc.centreHz = 1500;
+        int clean = 0, runs = 0;
+        for (unsigned seed : {1u, 2u, 7u, 8u, 17u, 31u})
+        {
+            const std::string o
+                = run(sc, "LETS TEST FLDIGI\n", 0.0, 0.15, nullptr, olivia::prerollSeconds(sc), 0.2, seed);
+            clean += o.rfind("LETS TEST FLDIGI", 0) == 0;
+            ++runs;
+        }
+        CHECK(clean == runs);
     }
 
     std::printf("Squelch: 20 s of band noise prints nothing at squelch 5\n");

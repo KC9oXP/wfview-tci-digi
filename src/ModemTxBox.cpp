@@ -112,8 +112,7 @@ ModemTxBox::ModemTxBox(ModemEngine *engine, const QString &name, QWidget *parent
     m_txLevel->setMinimumWidth(80);
     m_txLevel->setMaximumWidth(200);
     m_txLevel->setToolTip(tr("Audio level sent to wfview. Set the radio's ALC/power with this and wfview's TX gain "
-                             "(PSK needs a clean, ALC-free signal). Kept for this mode (and sub-mode); "
-                             "Tune sends a steady tone at this level."));
+                             "(PSK needs a clean, ALC-free signal). Kept for this mode (and sub-mode)."));
     btns->addWidget(m_txLevel, 1);
     m_txLevelValue = new QLabel();
     m_txLevelValue->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("100%")) + 4);

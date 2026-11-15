@@ -267,8 +267,9 @@ void TxTools::editSettings(QWidget *parent)
     pitch->setSuffix(tr(" Hz"));
     pitch->setValue(qRound(m_cwIdPitch));
     form->addRow(tr("CW ID pitch"), pitch);
-    auto *note = new QLabel(tr("Both use the TX level of the tab they are sent from. Put {CWID} at the end of a "
-                               "macro to send the CW ID after it."));
+    auto *note = new QLabel(tr("The Tune button is in the SSTV tab; CW ID is in every transmit tab. Both use the "
+                               "TX level of the tab they are sent from. Put {CWID} at the end of a macro to send "
+                               "the CW ID after it."));
     note->setWordWrap(true);
     form->addRow(note);
     auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -283,7 +284,7 @@ void TxTools::editSettings(QWidget *parent)
 
 // ---------------------------------------------------------------------------
 
-TxToolButtons::TxToolButtons(std::function<double()> level, QWidget *parent)
+TxToolButtons::TxToolButtons(std::function<double()> level, bool withTune, QWidget *parent)
     : QWidget(parent)
     , m_level(std::move(level))
 {
@@ -291,13 +292,14 @@ TxToolButtons::TxToolButtons(std::function<double()> level, QWidget *parent)
     h->setContentsMargins(0, 0, 0, 0);
     m_tune = new QPushButton(tr("Tune"));
     UiStyle::greenWhenOn(m_tune);
-    m_tune->setToolTip(tr("Send a steady tone (1750 Hz unless changed in Options) at this tab's TX level, to set "
-                          "the TX level and ALC. Click again to stop. The TX time limit applies."));
+    m_tune->setToolTip(tr("Send a steady 1750 Hz tone (SSTV's tune tone; changeable in Options) at this tab's TX "
+                          "level, to set the TX level and ALC. Click again to stop. The TX time limit applies."));
     m_cwId = new QPushButton(tr("CW ID"));
     m_cwId->setToolTip(tr("Send your CW ID (\"DE <your call>\") as keyed audio at this tab's TX level.\n"
                           "Text, speed and pitch: Options > Tune tone and CW ID."));
     h->addWidget(m_tune);
     h->addWidget(m_cwId);
+    m_tune->setVisible(withTune);
 
     TxTools *tools = TxTools::instance();
     if (!tools)

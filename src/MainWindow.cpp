@@ -629,23 +629,7 @@ void MainWindow::buildMenus()
                         m_txLimit.stop();
                 });
     }
-    QMenu *alc = opts->addMenu(tr("ALC warning"));
-    for (double v : {0.0, 0.5, 1.0, 2.0, 5.0})
-    {
-        QAction *a = alc->addAction(v == 0.0 ? tr("Off") : tr("Above %1").arg(v, 0, 'f', 1));
-        a->setCheckable(true);
-        a->setChecked(std::fabs(m_powerWatch->alcLimit() - v) < 1e-6);
-        connect(a,
-                &QAction::triggered,
-                this,
-                [this, alc, a, v]()
-                {
-                    for (QAction *o : alc->actions())
-                        o->setChecked(o == a);
-                    m_powerWatch->setAlcLimit(v);
-                    m_settings->setValue(QStringLiteral("Tx/AlcWarn"), v);
-                });
-    }
+    opts->addAction(tr("ALC warning..."), this, &MainWindow::editAlcLimit);
     opts->addAction(tr("Tune tone and CW ID..."), this, [this]() { m_tools->editSettings(this); });
     opts->addSeparator();
     QMenu *ring = opts->addMenu(tr("Audio kept for \"Save last...\""));
@@ -785,8 +769,52 @@ void MainWindow::onStateChanged(TciClient::State state, const QString &message)
     updateRadioState();
 }
 
+// The ALC reading's scale differs from radio to radio (and by how the server
+// reports it), so the warning limit is kept per radio (TCI device name).
+QString MainWindow::alcKey() const
+{
+    const QString dev = AppPaths::safe(m_client->device().trimmed());
+    return dev.isEmpty() ? QStringLiteral("Tx/AlcWarn") : QStringLiteral("Tx/AlcWarn-") + dev;
+}
+
+void MainWindow::loadAlcLimit()
+{
+    const double fallback = m_settings->value(QStringLiteral("Tx/AlcWarn"), 1.0).toDouble();
+    m_powerWatch->setAlcLimit(m_settings->value(alcKey(), fallback).toDouble());
+}
+
+void MainWindow::editAlcLimit()
+{
+    const QString dev = m_client->device().trimmed();
+    bool ok = false;
+    const double v = QInputDialog::getDouble(
+        this,
+        tr("ALC warning"),
+        tr("Warn when the ALC reading stays above this value while transmitting (0 = no warning).\n\n"
+           "The ALC scale differs between radios, so the limit is kept for each radio%1.\n"
+           "Highest ALC in the last transmission: %2\n"
+           "Tip: Tune or send at a level you know is clean, look at that number, and set the limit a "
+           "little above it.")
+            .arg(dev.isEmpty() ? QString() : tr(" (now: %1)").arg(dev))
+            .arg(m_powerWatch->lastPeakAlc(), 0, 'f', 1),
+        m_powerWatch->alcLimit(),
+        0.0,
+        100000.0,
+        1,
+        &ok);
+    if (!ok)
+        return;
+    m_powerWatch->setAlcLimit(v);
+    m_settings->setValue(alcKey(), v);
+    statusBar()->showMessage(
+        v > 0.0 ? tr("ALC warning above %1%2").arg(v, 0, 'f', 1).arg(dev.isEmpty() ? QString() : tr(" for %1").arg(dev))
+                : tr("ALC warning off."),
+        6000);
+}
+
 void MainWindow::onRadioInfo()
 {
+    loadAlcLimit();
     const QSignalBlocker b(m_mode);
     const QString cur = m_client->modulation();
     m_mode->clear();

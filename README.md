@@ -101,7 +101,8 @@ button is dark red when off and green when on.
   (no AFC needed); S/N squelch (noise otherwise prints as random characters), which
   also stops the junk the library prints for a few seconds after a signal ends.
 - Transmit starts with two FEC blocks of idle (1-4 s) so the far end has found the
-  signal before the first letter.
+  signal before the first letter. (Receiving a station that sends no lead-in at all, the
+  first letter of an Olivia transmission can be lost to the squelch.)
 - Same macros, Call/My call, type-ahead, Hold TX and watchdogs as PSK.
 
 **AMTOR FEC (receive and transmit)**
@@ -131,6 +132,8 @@ button is dark red when off and green when on.
 - Transmit: open or paste a picture (or send back the one shown), pick the mode,
   optional text overlay ({MYCALL} {CALL} {RST}), preview, progress, abort, and *CW ID
   after picture*.
+- *Tune*: a steady 1750 Hz tone (SSTV's usual tune tone, as in MMSSTV) at the TX level,
+  to set the level and ALC; click again to stop.
 
 **WEFAX (receive)**
 - HF weather fax, 60/90/120/240 LPM, IOC 576/288.
@@ -165,8 +168,6 @@ Only one mode transmits at a time: starting a transmission in one tab stops any
 other. *My call* is shared by all tabs.
 
 **In every transmit tab**
-- *Tune*: a steady 1750 Hz tone (like MMSSTV's) at the tab's TX level, to set the level
-  and ALC; click again to stop.
 - *CW ID*: "DE <your call>" as keyed audio CW at the tab's TX level. `{CWID}` at the end
   of a macro sends it after the text without dropping PTT. Text, speed and pitch:
   Options > Tune tone and CW ID.
@@ -185,8 +186,9 @@ other. *My call* is shared by all tabs.
 - Options > *TX time limit* (default 5 minutes; off, 1-10): the transmitter is
   released after this long keyed, whatever the mode.
 - While transmitting, the top bar shows the output power, ALC and SWR wfview reports.
-  Options > *ALC warning*: the meter turns red and the status bar says so when ALC
-  stays above the limit.
+  Options > *ALC warning...*: the meter turns red and the status bar says so when ALC
+  stays above a limit you set. ALC scales differ between radios, so the limit is kept
+  per radio; the dialog shows the highest ALC of the last transmission to set it by.
 - If the radio keys up but reports no output power, a hint explains what to check (see
   *Radio data mode and modulation input* below). At very low power settings that can be
   normal: the hint goes away once any output is seen, and can be turned off.

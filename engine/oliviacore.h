@@ -89,6 +89,7 @@ private:
     double m_offset = 0.0;
     bool m_escape = false;
     double m_peakSnr = 0.0; // best S/N since the signal appeared
+    double m_openSec = 0.0; // how long the S/N has been above the squelch
     AudioResampler m_rs;
     std::vector<float> m_buf8;
     std::vector<double> m_dbl;
