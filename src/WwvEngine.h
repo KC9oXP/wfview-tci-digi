@@ -57,6 +57,7 @@ private:
     std::deque<double> m_raw;
     double m_lastTick = -1.0;
     QElapsedTimer m_emitTimer;
+    int m_emitKey = -1;
 };
 
 class WwvEngine : public QObject

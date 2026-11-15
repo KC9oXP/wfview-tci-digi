@@ -86,8 +86,13 @@ void WwvWorker::pushAudio(QVector<float> mono, float sampleRate, double arrivalE
         s.utcTickMs = epochMs(s.st.time, s.st.secondInMinute);
     // About five a second, by this thread's own clock: blocks can arrive in a
     // burst (a recording played fast, a backlog) with nearly the same arrival time.
-    if (!m_emitTimer.isValid() || m_emitTimer.elapsed() >= 200)
+    // A lamp changing or a new frame is never held back, or the last block of a
+    // burst could leave the tab showing the state from before it.
+    const int key = int(s.st.ticks) | int(s.st.tones) << 1 | int(s.st.code) << 2 | int(s.st.timeValid) << 3
+        | int(s.st.timeVerified) << 4 | int(s.st.carrier) << 5 | int(s.st.hawaii) << 6 | s.st.framesDecoded << 8;
+    if (!m_emitTimer.isValid() || m_emitTimer.elapsed() >= 200 || key != m_emitKey)
     {
+        m_emitKey = key;
         m_emitTimer.restart();
         emit snapshot(s);
     }

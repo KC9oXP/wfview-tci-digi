@@ -591,7 +591,7 @@ static void runNewModesTx()
     CHECK(pttDrops == 1);
 }
 
-// WWV Time: 160 s of synthesized WWV straight into the engine (its own worker thread).
+// WWV Time: 200 s of synthesized WWV straight into the engine (its own worker thread).
 static void runWwv()
 {
     std::printf("\n=== 0.5.0: WWV Time engine decodes and verifies a time ===\n");
@@ -609,7 +609,7 @@ static void runWwv()
     WwvEncoder enc;
     enc.start(t, 30, false);
     std::vector<float> b(960);
-    for (int i = 0; i < 50 * 160; ++i)
+    for (int i = 0; i < 50 * 200; ++i)
     {
         enc.render(b.data(), b.size(), 48000.0);
         QVector<float> v(int(b.size()));
