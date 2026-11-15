@@ -198,8 +198,9 @@ QWidget *SstvPanel::buildRx()
 
     m_wf = new WaterfallWidget();
     m_wf->setMaximumHeight(110);
-    m_wf->setToolTip(tr("Lines: sync 1200, black 1500, centre 1900, white 2300 Hz, moved by the offset. Click the "
-                        "middle of the signal to set the offset; mouse wheel = 1 Hz steps."));
+    m_wf->setToolTip(tr("Lines: sync 1200, black 1500, centre 1900, white 2300 Hz, moved by the offset. Click or "
+                        "drag to put the centre on the middle of the signal; mouse wheel = 1 Hz steps. With Auto "
+                        "on, the next VIS header or sync pulses refine it from where you put it."));
     v->addWidget(m_wf);
     auto *r3 = new QHBoxLayout();
     m_status = new QLabel();
@@ -217,11 +218,7 @@ QWidget *SstvPanel::buildRx()
     connect(m_autoOffset, &QCheckBox::toggled, m_sstv, &SstvEngine::setAutoOffset);
     connect(m_offset, &QSpinBox::valueChanged, m_sstv, [this](int v) { m_sstv->setOffsetHz(v); });
     // Clicking / wheeling the waterfall: that is where the middle (1900 Hz) of the signal is.
-    const auto tuneTo = [this](double hz)
-    {
-        const double autoPart = m_sstv->autoOffset() ? m_sstv->totalOffsetHz() - m_sstv->offsetHz() : 0.0;
-        m_sstv->setOffsetHz(hz - 1900.0 - autoPart);
-    };
+    const auto tuneTo = [this](double hz) { m_sstv->setOffsetHz(hz - 1900.0); };
     connect(m_wf, &WaterfallWidget::clicked, this, tuneTo);
     connect(m_wf, &WaterfallWidget::nudged, this, tuneTo);
     connect(m_trim, &QSpinBox::valueChanged, m_sstv, [this](int v) { m_sstv->setSlantPpm(v); });

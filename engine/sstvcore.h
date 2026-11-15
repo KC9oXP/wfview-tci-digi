@@ -121,9 +121,17 @@ public:
     }
     // Signal offset: received tones are this many Hz above nominal (sync at
     // 1200 + offset). The automatic part is added when autoOffset is on.
+    // Setting a new manual offset drops the automatic correction: the
+    // operator has said where the signal is (auto then refines from there).
     void setOffsetHz(double hz)
     {
+        if (hz != m_manualOff)
+            m_autoOff = 0.0;
         m_manualOff = hz;
+    }
+    void clearAutoOffset()
+    {
+        m_autoOff = 0.0;
     }
     void setAutoOffset(bool on)
     {

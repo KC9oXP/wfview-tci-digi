@@ -28,6 +28,7 @@ public slots:
     void startManual(int mode);
     void stopImage();
     void resetDecoder();
+    void clearAutoOffset();
 
 signals:
     void imageStarted(int mode, bool noVis);

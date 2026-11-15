@@ -470,6 +470,23 @@ static void offsetTests()
             CHECK(err < 8.0);
         }
     }
+    std::printf("Offset: a new manual offset replaces the automatic correction\n");
+    {
+        SstvDecoder dec;
+        dec.setSampleRate(fs);
+        const sstv::ModeInfo &m = sstv::info(sstv::Robot36);
+        std::vector<float> audio(size_t(0.4 * fs), 0.0f);
+        const std::vector<float> a = encodeAll(sstv::Robot36, testImage(m.width, m.height), fs, 70.0);
+        audio.insert(audio.end(), a.begin(), a.begin() + std::ptrdiff_t(6 * fs));
+        for (size_t pos = 0; pos + 1000 <= audio.size(); pos += 1000)
+            dec.process(audio.data() + pos, 1000);
+        CHECK(std::fabs(dec.offsetHz() - 70.0) < 6.0); // found by itself
+        dec.setOffsetHz(-40.0); // the operator moves it
+        CHECK(dec.offsetHz() == -40.0);
+        dec.setOffsetHz(-40.0); // the same value again (settings re-applied) changes nothing
+        CHECK(dec.offsetHz() == -40.0);
+    }
+
     std::printf("Offset: without correction a 70 Hz error is not decoded as well\n");
     {
         SstvDecoder dec;

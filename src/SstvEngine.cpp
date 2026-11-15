@@ -74,6 +74,11 @@ void SstvDecoderWorker::setParams(bool autoSlant, double slantPpm, double offset
     m_dec.setAutoStart(autoStart);
 }
 
+void SstvDecoderWorker::clearAutoOffset()
+{
+    m_dec.clearAutoOffset();
+}
+
 void SstvDecoderWorker::startManual(int mode)
 {
     m_dec.startManual(mode);
@@ -197,6 +202,7 @@ void SstvEngine::loadSettings(QSettings *s)
         m_slantPpm = std::clamp(s->value(QStringLiteral("SlantPpm"), m_slantPpm).toDouble(), -5000.0, 5000.0);
         m_txMode = std::clamp(s->value(QStringLiteral("TxMode"), m_txMode).toInt(), 0, int(sstv::ModeCount) - 1);
         m_offsetHz = std::clamp(s->value(QStringLiteral("OffsetHz"), m_offsetHz).toDouble(), -300.0, 300.0);
+        m_totalOffset = m_offsetHz;
         m_autoOffset = s->value(QStringLiteral("AutoOffset"), m_autoOffset).toBool();
         m_autoStart = s->value(QStringLiteral("AutoStart"), m_autoStart).toBool();
         m_cwIdAfterPicture = s->value(QStringLiteral("CwIdAfter"), m_cwIdAfterPicture).toBool();
@@ -220,13 +226,19 @@ void SstvEngine::applyConfig()
 
 void SstvEngine::setOffsetHz(double hz)
 {
+    // Set by hand (spin box, click, drag or wheel on the small waterfall): this
+    // is where the signal is now. The automatic correction starts again from
+    // zero, and the markers move at once, also with Decode off.
     hz = std::clamp(std::round(hz), -300.0, 300.0);
-    if (hz == m_offsetHz)
+    if (hz == m_offsetHz && m_totalOffset == hz)
         return;
     m_offsetHz = hz;
+    m_totalOffset = hz;
     save("OffsetHz", hz);
     applyConfig();
+    QMetaObject::invokeMethod(m_worker, "clearAutoOffset", Qt::QueuedConnection);
     emit settingsChanged();
+    emit statsChanged();
 }
 
 void SstvEngine::setAutoOffset(bool on)

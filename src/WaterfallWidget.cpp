@@ -292,6 +292,8 @@ void WaterfallWidget::mousePressEvent(QMouseEvent *e)
 void WaterfallWidget::mouseMoveEvent(QMouseEvent *e)
 {
     m_hoverX = int(e->position().x());
+    if (e->buttons() & Qt::LeftButton) // drag = keep tuning to the pointer
+        emit clicked(std::round(xToHz(std::clamp(e->position().x(), 0.0, double(width() - 1)))));
     update();
 }
 
