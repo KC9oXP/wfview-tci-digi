@@ -53,6 +53,42 @@ inline void decodeButton(QPushButton *b)
                        "QPushButton:checked:hover { border-color: #5fd07c; }"));
 }
 
+// The Connect button in the same colours: dark red while not connected
+// ("Connect"), amber while trying ("Cancel"), green while connected ("Disconnect").
+enum class Link
+{
+    Off,
+    Trying,
+    On
+};
+inline void connectButton(QPushButton *b, Link link)
+{
+    const char *bg = "#4a2c2c", *fg = "#c8a8a8", *edge = "#6a3c3c", *hover = "#8a5050", *weight = "normal";
+    if (link == Link::Trying)
+    {
+        bg = "#5a4a1c";
+        fg = "#f0e0a8";
+        edge = "#8a7230";
+        hover = "#c0a040";
+    }
+    else if (link == Link::On)
+    {
+        bg = "#1d6a33";
+        fg = "#eaffea";
+        edge = "#2f9a4c";
+        hover = "#5fd07c";
+        weight = "bold";
+    }
+    b->setStyleSheet(QStringLiteral("QPushButton { background-color: %1; color: %2; border: 1px solid %3;"
+                                    " border-radius: 3px; padding: 3px 12px; font-weight: %5; }"
+                                    "QPushButton:hover { border-color: %4; }")
+                         .arg(QLatin1String(bg),
+                              QLatin1String(fg),
+                              QLatin1String(edge),
+                              QLatin1String(hover),
+                              QLatin1String(weight)));
+}
+
 // Normal look when off, dark green when on.
 inline void greenWhenOn(QPushButton *b)
 {

@@ -357,6 +357,7 @@ void TciClient::onDiagTimer()
     if (m_rxPacketsWin == 0)
     {
         t = tr("RX audio: none");
+        m_silentWins = 0;
     }
     else
     {
@@ -369,6 +370,10 @@ void TciClient::onDiagTimer()
                 .arg(m_rxPacketsWin / sec, 0, 'f', 1)
                 .arg(qRound64(m_rxFramesWin / sec))
                 .arg(peakDb, 0, 'f', 1);
+        // Packets full of zeros: seen from wfview until it was restarted.
+        m_silentWins = m_rxPeak <= 0.0f ? m_silentWins + 1 : 0;
+        if (m_silentWins >= 3)
+            t += tr(" - SILENT (all zeros from the server: restart wfview if this stays)");
     }
     t += tr("   TX chrono: %1/s").arg(m_chronoWin / sec, 0, 'f', 1);
     if (m_txOn)

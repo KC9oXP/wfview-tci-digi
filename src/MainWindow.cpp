@@ -480,6 +480,13 @@ QWidget *MainWindow::buildConnectionBar()
     m_port->setToolTip(tr("wfview's TCI server port (Settings > External Control > TCI Server Port, default 50001)."));
     h->addWidget(m_port);
     m_connect = new QPushButton(tr("Connect"));
+    UiStyle::connectButton(m_connect, UiStyle::Link::Off);
+    {
+        // wide enough for "Disconnect" in bold, so the row does not shift
+        QFont f = m_connect->font();
+        f.setBold(true);
+        m_connect->setMinimumWidth(QFontMetrics(f).horizontalAdvance(tr("Disconnect")) + 30);
+    }
     h->addWidget(m_connect);
     m_autoReconnect = new QCheckBox(tr("Reconnect"));
     m_autoReconnect->setToolTip(tr("Reconnect automatically if the connection drops."));
@@ -793,6 +800,7 @@ void MainWindow::onStateChanged(TciClient::State state, const QString &message)
     {
     case TciClient::State::Disconnected:
         m_connect->setText(tr("Connect"));
+        UiStyle::connectButton(m_connect, UiStyle::Link::Off);
         m_connState->setText(message.isEmpty() ? tr("Not connected") : message);
         m_diag->setText(tr("Not connected"));
         m_freq->clear();
@@ -804,14 +812,17 @@ void MainWindow::onStateChanged(TciClient::State state, const QString &message)
         break;
     case TciClient::State::Connecting:
         m_connect->setText(tr("Cancel"));
+        UiStyle::connectButton(m_connect, UiStyle::Link::Trying);
         m_connState->setText(tr("Connecting..."));
         break;
     case TciClient::State::Connected:
         m_connect->setText(tr("Disconnect"));
+        UiStyle::connectButton(m_connect, UiStyle::Link::On);
         m_connState->setText(tr("Connected, waiting for the radio..."));
         break;
     case TciClient::State::Ready:
         m_connect->setText(tr("Disconnect"));
+        UiStyle::connectButton(m_connect, UiStyle::Link::On);
         m_connState->setText(tr("%1  (%2)").arg(m_client->device(), m_client->protocol()));
         if (m_client->frequencyHz() > 0)
             m_freq->setText(formatFreq(m_client->frequencyHz()));

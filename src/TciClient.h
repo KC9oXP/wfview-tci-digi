@@ -171,5 +171,6 @@ private:
     int m_lastUsedCh = 0;
     quint32 m_lastLength = 0;
     float m_rxPeak = 0.0f;
+    int m_silentWins = 0; // status periods in a row with all-zero RX audio
     bool m_headerMismatchLogged = false;
 };

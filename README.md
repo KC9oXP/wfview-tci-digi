@@ -345,6 +345,10 @@ Found while writing this client; the client works around each one.
 - **DIGU/DIGL always mean Data 1.** A TCI `modulation:0,digu;` puts the radio in USB with
   data mode D1, even if it was in D2 or D3. On a radio whose D1 input is not the one wfview
   feeds, transmit goes silent. Set the data mode in wfview instead.
+- **Silent RX audio.** Seen once (wfview 3.00, IC-7610, November 2026): wfview kept sending
+  RX audio packets at the normal rate, but every sample was zero (the status bar read
+  `peak -120.0 dBFS` and the waterfalls stayed empty). Restarting wfview cured it. The
+  status bar now says so when the audio is all zeros.
 - **`tx_sensors_enable` argument order.** The TCI spec is `tx_sensors_enable:true,<ms>;`;
   wfview 3.00 reads the enable flag from the second argument, so this client sends
   `tx_sensors_enable:0,true;` to wfview. wfview then sends `tx_sensors` with its ALC meter
