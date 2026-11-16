@@ -2,6 +2,7 @@
 
 #include "AppPaths.h"
 #include "ClockSet.h"
+#include "RadioModes.h"
 
 #include <QDate>
 #include <QSettings>
@@ -14,7 +15,7 @@
 namespace
 {
 constexpr int kSettleMs = 2000;
-constexpr int kMeasureMs = 14000;
+constexpr int kMeasureMs = 10000; // each sideband
 constexpr qint64 kStandards[] = {2500000, 5000000, 10000000, 15000000, 20000000, 25000000};
 
 qint64 epochMs(const wwv::Time &t, int second)
@@ -152,10 +153,10 @@ WwvEngine::WwvEngine(QSettings *settings, QObject *parent)
             this,
             [this]()
             {
-                if (m_carrierStage == 1)
+                if (m_carrierStage == 1 || m_carrierStage == 3)
                 {
                     // the radio has settled on the new frequency: measure
-                    m_carrierStage = 2;
+                    ++m_carrierStage;
                     QMetaObject::invokeMethod(m_worker, "setCarrierMode", Qt::QueuedConnection, Q_ARG(bool, true));
                     m_carrierEndMs = QDateTime::currentMSecsSinceEpoch() + kMeasureMs;
                     m_carrierTimer.start(kMeasureMs);
@@ -163,6 +164,27 @@ WwvEngine::WwvEngine(QSettings *settings, QObject *parent)
                 }
                 else if (m_carrierStage == 2)
                 {
+                    // upper sideband done: keep it, then the same from the other side
+                    checkRadioFollowed(m_nominalHz - 1000, false);
+                    m_usbOk = m_snap.st.carrier && m_snap.st.carrierSeconds >= 4.0;
+                    m_usbHz = m_snap.st.carrierHz - 1000.0;
+                    m_usbSeconds = m_snap.st.carrierSeconds;
+                    QMetaObject::invokeMethod(m_worker, "setCarrierMode", Qt::QueuedConnection, Q_ARG(bool, false));
+                    m_snap.st.carrier = false;
+                    m_snap.st.carrierSeconds = 0.0;
+                    if (!m_usbOk)
+                    {
+                        finishCarrier(true);
+                        return;
+                    }
+                    m_carrierStage = 3;
+                    emit tuneForCarrier(m_nominalHz + 1000, true);
+                    m_carrierTimer.start(kSettleMs);
+                    emit statsChanged();
+                }
+                else if (m_carrierStage == 4)
+                {
+                    checkRadioFollowed(m_nominalHz + 1000, true);
                     finishCarrier(true);
                 }
             });
@@ -327,7 +349,9 @@ int WwvEngine::carrierSecondsLeft() const
 {
     if (m_carrierStage == 0)
         return 0;
-    const qint64 left = (m_carrierStage == 1 ? kMeasureMs : 0) + m_carrierTimer.remainingTime();
+    // what is still to come after the running timer
+    static const int after[] = {0, 2 * kMeasureMs + kSettleMs, kMeasureMs + kSettleMs, kMeasureMs, 0};
+    const qint64 left = after[m_carrierStage] + m_carrierTimer.remainingTime();
     return int((left + 999) / 1000);
 }
 
@@ -354,12 +378,32 @@ void WwvEngine::measureCarrier()
     m_savedHz = m_radioHz;
     m_savedMode = m_radioMode;
     m_carrierStage = 1;
-    emit tuneForCarrier(m_nominalHz - 1000);
+    m_usbOk = false;
+    m_carrierNote.clear();
+    emit tuneForCarrier(m_nominalHz - 1000, false);
     m_carrierTimer.start(kSettleMs);
-    setMessage(tr("Measuring the carrier: the radio is on %1 kHz USB for about %2 s, then goes back.")
+    setMessage(tr("Measuring the carrier: the radio goes to %1 kHz USB, then %2 kHz LSB, about %3 s in all, "
+                  "then back.")
                    .arg((m_nominalHz - 1000) / 1000.0, 0, 'f', 3)
-                   .arg((kSettleMs + kMeasureMs) / 1000));
+                   .arg((m_nominalHz + 1000) / 1000.0, 0, 'f', 3)
+                   .arg(2 * (kSettleMs + kMeasureMs) / 1000));
     emit statsChanged();
+}
+
+void WwvEngine::checkRadioFollowed(qint64 dialHz, bool lsb)
+{
+    // What wfview reported while that sideband was measured.
+    const bool modeOk
+        = RadioModes::kind(m_radioMode) == RadioModes::Kind::Voice && RadioModes::isLsb(m_radioMode) == lsb;
+    if (m_radioHz == dialHz && modeOk)
+        return;
+    if (!m_carrierNote.isEmpty())
+        m_carrierNote += QStringLiteral("; ");
+    m_carrierNote += tr("sent to %1 Hz %2, the radio reported %3 Hz %4")
+                         .arg(dialHz)
+                         .arg(lsb ? QStringLiteral("LSB") : QStringLiteral("USB"))
+                         .arg(m_radioHz)
+                         .arg(m_radioMode.toUpper());
 }
 
 void WwvEngine::cancelCarrier()
@@ -370,18 +414,24 @@ void WwvEngine::cancelCarrier()
 
 void WwvEngine::finishCarrier(bool ok)
 {
-    const bool measured = m_carrierStage == 2;
+    const bool measured = m_carrierStage == 4 && m_usbOk;
     m_carrierTimer.stop();
     m_carrierStage = 0;
     QMetaObject::invokeMethod(m_worker, "setCarrierMode", Qt::QueuedConnection, Q_ARG(bool, false));
     if (m_savedHz > 0)
         emit restoreRadio(m_savedHz, m_savedMode);
-    if (ok && measured && m_snap.st.carrier && m_snap.st.carrierSeconds >= 5.0)
+    if (ok && measured && m_snap.st.carrier && m_snap.st.carrierSeconds >= 4.0)
     {
+        // A dial error moves the two tones opposite ways; the sound path (or a
+        // sideband offset in the radio) moves both the same way.
         m_carrier.valid = true;
         m_carrier.nominalHz = m_nominalHz;
-        m_carrier.deltaHz = m_snap.st.carrierHz - 1000.0;
-        m_carrier.seconds = m_snap.st.carrierSeconds;
+        m_carrier.usbHz = m_usbHz;
+        m_carrier.lsbHz = m_snap.st.carrierHz - 1000.0;
+        m_carrier.deltaHz = (m_carrier.usbHz - m_carrier.lsbHz) / 2.0;
+        m_carrier.commonHz = (m_carrier.usbHz + m_carrier.lsbHz) / 2.0;
+        m_carrier.seconds = m_usbSeconds + m_snap.st.carrierSeconds;
+        m_carrier.note = m_carrierNote;
         m_carrier.when = QDateTime::currentDateTimeUtc();
         setMessage(tr("Carrier measured over %1 s.").arg(m_carrier.seconds, 0, 'f', 0));
     }

@@ -69,8 +69,15 @@ public:
     {
         bool valid = false;
         qint64 nominalHz = 0;
-        double deltaHz = 0.0; // WWV reads this far above (+) the nominal on this radio
+        // WWV reads this far above (+) the nominal on this radio: half the
+        // difference of the two sidebands, so anything that moves both tones
+        // the same way (sound path, sideband offset) drops out
+        double deltaHz = 0.0;
+        double usbHz = 0.0; // tone - 1000 Hz, dial 1 kHz below in USB
+        double lsbHz = 0.0; // tone - 1000 Hz, dial 1 kHz above in LSB
+        double commonHz = 0.0; // what moved both tones the same way
         double seconds = 0.0;
+        QString note; // the radio was not where it was sent
         QDateTime when;
     };
 
@@ -136,8 +143,9 @@ signals:
     void settingsChanged();
     void statsChanged();
     void messageChanged(QString text);
-    // Carrier measurement: tune 1 kHz below nominalHz in USB / put things back.
-    void tuneForCarrier(qint64 dialHz);
+    // Carrier measurement: tune 1 kHz below nominalHz in USB, then 1 kHz above
+    // in LSB / put things back.
+    void tuneForCarrier(qint64 dialHz, bool lsb);
     void restoreRadio(qint64 hz, QString mode);
 
 private:
@@ -159,7 +167,12 @@ private:
     qint64 m_radioHz = 0;
     QString m_radioMode, m_device;
 
-    int m_carrierStage = 0; // 0 idle, 1 settling, 2 measuring
+    // 0 idle, 1 settling in USB, 2 measuring USB, 3 settling in LSB, 4 measuring LSB
+    int m_carrierStage = 0;
+    double m_usbHz = 0.0, m_usbSeconds = 0.0;
+    bool m_usbOk = false;
+    QString m_carrierNote;
+    void checkRadioFollowed(qint64 dialHz, bool lsb);
     qint64 m_savedHz = 0;
     QString m_savedMode;
     qint64 m_nominalHz = 0;

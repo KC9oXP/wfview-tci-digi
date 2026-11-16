@@ -272,20 +272,20 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_wwv,
             &WwvEngine::tuneForCarrier,
             this,
-            [this](qint64 dialHz)
+            [this](qint64 dialHz, bool lsb)
             {
-                // plain USB (not DIGU: wfview would change the radio's data mode)
-                QString usb = QStringLiteral("usb");
+                // plain USB / LSB (not DIGU / DIGL: wfview would change the radio's data mode)
+                QString ssb = lsb ? QStringLiteral("lsb") : QStringLiteral("usb");
                 for (const QString &m : m_client->modulations())
-                    if (RadioModes::kind(m) == RadioModes::Kind::Voice && !RadioModes::isLsb(m))
+                    if (RadioModes::kind(m) == RadioModes::Kind::Voice && RadioModes::isLsb(m) == lsb)
                     {
-                        usb = m;
+                        ssb = m;
                         break;
                     }
-                if (RadioModes::normalised(m_client->modulation()) != RadioModes::normalised(usb))
-                    m_client->setModulation(usb);
+                if (RadioModes::normalised(m_client->modulation()) != RadioModes::normalised(ssb))
+                    m_client->setModulation(ssb);
                 m_client->setFrequency(dialHz);
-                log(tr("WWV carrier measurement: %1 Hz %2").arg(formatFreq(dialHz), usb.toUpper()));
+                log(tr("WWV carrier measurement: %1 Hz %2").arg(formatFreq(dialHz), ssb.toUpper()));
             });
     connect(m_wwv,
             &WwvEngine::restoreRadio,
@@ -743,7 +743,11 @@ void MainWindow::buildMenus()
                                "WEFAX: HF weather fax receive with APT start/stop and phasing.<br>"
                                "AMTOR: FEC (mode B) send and receive (receiver as NAVTEX).<br>"
                                "WWV Time: time code, clock comparison, audio clock and carrier calibration.<br><br>"
-                               "License: GPLv3.")
+                               "License: GPLv3.<br><br>"
+                               "Problems and feature requests: "
+                               "<a href=\"https://github.com/KC9oXP/wfview-tci-digi/issues\">"
+                               "github.com/KC9oXP/wfview-tci-digi/issues</a>, or look the call sign up on QRZ.<br><br>"
+                               "Michael Rippey, KC9oXP")
                                 .arg(QStringLiteral(APP_VERSION)));
                     });
 }

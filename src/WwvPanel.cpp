@@ -152,8 +152,10 @@ WwvPanel::WwvPanel(WwvEngine *engine, QWidget *parent)
     line->setEnabled(false);
     cv->addWidget(line);
     m_measure = new QPushButton(tr("Measure carrier"));
-    m_measure->setToolTip(tr("Finds how far the radio's dial is off: tunes 1 kHz below the WWV frequency you are on, "
-                             "in USB, measures where the carrier lands for about 15 s, and puts the radio back. "
+    m_measure->setToolTip(tr("Finds how far the radio's dial is off: tunes 1 kHz below the WWV frequency you are on "
+                             "in USB, then 1 kHz above in LSB, measures where the carrier lands each time (about "
+                             "25 s in all) and puts the radio back. A dial error moves the two tones opposite "
+                             "ways; anything in the sound path moves both the same way and is left out. "
                              "Click again to stop."));
     cv->addWidget(m_measure, 0, Qt::AlignLeft);
     m_carrier = new QLabel();
@@ -339,17 +341,27 @@ void WwvPanel::syncStats()
         if (car.valid)
         {
             const double ppm = car.deltaHz / double(car.nominalHz) * 1e6;
-            m_carrier->setText(
-                tr("<b>WWV %1 MHz reads %2%3 Hz %4 on this radio</b> (%5 ppm; %6 UTC, %7 s).<br>"
-                   "To hear a signal exactly on frequency, the dial has to read that much %4. Fading moves the "
-                   "carrier a few tenths of a hertz: repeat it a few times.")
-                    .arg(car.nominalHz / 1e6, 0, 'f', 1)
-                    .arg(car.deltaHz >= 0 ? QStringLiteral("+") : QString())
-                    .arg(car.deltaHz, 0, 'f', 2)
-                    .arg(car.deltaHz >= 0 ? tr("high") : tr("low"))
-                    .arg(ppm, 0, 'f', 3)
-                    .arg(car.when.toString(QStringLiteral("HH:mm")))
-                    .arg(qRound(car.seconds)));
+            const auto signedHz = [](double v)
+            { return (v >= 0 ? QStringLiteral("+") : QString()) + QString::number(v, 'f', 2); };
+            QString text
+                = tr("<b>WWV %1 MHz reads %2 Hz %3 on this radio</b> (%4 ppm; %5 UTC, %6 s).<br>"
+                     "USB tone %7 Hz, LSB tone %8 Hz from 1000 Hz. The dial error is half their difference; "
+                     "both moved %9 Hz the same way, which is not the dial (sound path or a sideband offset in the "
+                     "radio).<br>"
+                     "To hear a signal exactly on frequency, the dial has to read that much %3. Fading moves the "
+                     "carrier a few tenths of a hertz: repeat it a few times.")
+                      .arg(car.nominalHz / 1e6, 0, 'f', 1)
+                      .arg(signedHz(car.deltaHz))
+                      .arg(car.deltaHz >= 0 ? tr("high") : tr("low"))
+                      .arg(ppm, 0, 'f', 3)
+                      .arg(car.when.toString(QStringLiteral("HH:mm")))
+                      .arg(qRound(car.seconds))
+                      .arg(signedHz(car.usbHz))
+                      .arg(signedHz(car.lsbHz))
+                      .arg(signedHz(car.commonHz));
+            if (!car.note.isEmpty())
+                text += tr("<br><b>Check:</b> %1.").arg(car.note.toHtmlEscaped());
+            m_carrier->setText(text);
         }
         else
         {

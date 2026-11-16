@@ -222,9 +222,11 @@ Tune WWV or WWVH (2.5, 5, 10, 15, 20, and 25 MHz for WWV) in AM with a wide filt
 - **Audio clock:** the spacing of the ticks gives the error of the sound path in ppm; one
   button copies it to the SSTV and WEFAX trims.
 - **Tones:** how far the 440/500/600 Hz tones read off.
-- **Measure carrier:** tunes 1 kHz below the WWV frequency in USB for about 15 s,
-  measures where the carrier lands, then puts the radio back: the radio's dial error in Hz
-  and ppm.
+- **Measure carrier:** tunes 1 kHz below the WWV frequency in USB, then 1 kHz above in
+  LSB (about 25 s in all), measures where the carrier lands each time, then puts the radio
+  back. A dial error moves the two tones opposite ways, so half their difference is the
+  radio's dial error in Hz and ppm; whatever moved both tones the same way (the sound path,
+  a sideband offset in the radio) is shown separately and left out.
 
 ---
 
