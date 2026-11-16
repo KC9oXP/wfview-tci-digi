@@ -46,7 +46,9 @@ Around the modes:
   watchdogs that drop PTT if anything stalls.
 
 ## Quick start
-*This app requires WFView V3 or newer, available here: https://github.com/wf-group/wfview/tree/v3-initial *
+
+*This app requires wfview v3 or newer, available here: https://github.com/wf-group/wfview/tree/v3-initial*
+
 1. **wfview v3**: *Settings > External Control > TCI Server Port* = `50001`. For transmit,
    also tick *Settings > User Interface > Enable PTT Controls*.
 2. Connect wfview to the radio as usual.
