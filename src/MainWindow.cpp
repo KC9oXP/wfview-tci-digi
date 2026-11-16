@@ -26,6 +26,7 @@
 #include "TxPowerWatch.h"
 #include "TxTools.h"
 #include "UiStyle.h"
+#include "UpdateCheck.h"
 #include "WaterfallWidget.h"
 #include "WefaxEngine.h"
 #include "WefaxPanel.h"
@@ -216,6 +217,8 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     statusBar()->addPermanentWidget(m_audioState);
 
     buildLogDock();
+    m_update = new UpdateCheck(m_settings, this);
+    connect(m_update, &UpdateCheck::logLine, this, &MainWindow::log);
     m_qso = new QsoLogDock(m_settings, this);
     addDockWidget(Qt::RightDockWidgetArea, m_qso);
     m_qso->hide();
@@ -421,6 +424,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
         QTimer::singleShot(0, this, &MainWindow::toggleConnection);
 
     updateRadioState();
+    m_update->startAutomatic();
 }
 
 MainWindow::~MainWindow() = default;
@@ -709,6 +713,10 @@ void MainWindow::buildMenus()
                     m_settings->setValue(QStringLiteral("Audio/RingSeconds"), sec);
                 });
     }
+    QAction *autoUpdate = opts->addAction(tr("Check for updates at start-up (once a day)"));
+    autoUpdate->setCheckable(true);
+    autoUpdate->setChecked(m_update->automatic());
+    connect(autoUpdate, &QAction::toggled, m_update, &UpdateCheck::setAutomatic);
     opts->addAction(tr("Data folder..."),
                     this,
                     [this]()
@@ -723,6 +731,7 @@ void MainWindow::buildMenus()
                     });
 
     QMenu *help = menuBar()->addMenu(tr("&Help"));
+    help->addAction(tr("Check for updates..."), m_update, &UpdateCheck::checkNow);
     help->addAction(tr("About"),
                     this,
                     [this]()

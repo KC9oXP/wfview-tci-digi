@@ -1,10 +1,10 @@
 # wfview TCI Digi - stand-alone digital modes for wfview over TCI: CW, RTTY, PSK,
 # Feld Hell, Olivia/Contestia, SSTV, AMTOR FEC, NAVTEX and WEFAX.
-# Qt 6 (Widgets, WebSockets), C++17.
+# Qt 6 (Widgets, WebSockets, Network), C++17.
 
 TEMPLATE = app
 TARGET = wfview-tci-digi
-QT += widgets websockets
+QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
@@ -67,6 +67,7 @@ HEADERS += \
     src/WwvEngine.h \
     src/WwvPanel.h \
     src/ClockSet.h \
+    src/UpdateCheck.h \
     src/MainWindow.h \
     engine/audioresampler.h \
     engine/fmdemod.h \
@@ -76,6 +77,7 @@ HEADERS += \
     engine/oliviacore.h \
     engine/extratxsources.h \
     engine/wavfile.h \
+    engine/versioncheck.h \
     engine/jalocha/pj_mfsk.h \
     engine/cwdecodercore.h \
     engine/cwhandkeydecoder.h \
@@ -131,6 +133,7 @@ SOURCES += \
     src/WwvEngine.cpp \
     src/WwvPanel.cpp \
     src/ClockSet.cpp \
+    src/UpdateCheck.cpp \
     src/MainWindow.cpp \
     engine/sstvcore.cpp \
     engine/wefaxcore.cpp \

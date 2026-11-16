@@ -23,6 +23,10 @@ int main(int argc, char *argv[])
             QTextStream(stdout) << "wfview TCI Digi " << APP_VERSION << Qt::endl;
             return 0;
         }
+        // Testing aid for the update check: behave as if this version were running.
+        const int pv = args.indexOf(QStringLiteral("--pretend-version"));
+        if (pv >= 0 && pv + 1 < args.size())
+            app.setProperty("pretendVersion", args.value(pv + 1));
         const int i = args.indexOf(QStringLiteral("--adjust-clock-ms"));
         if (i >= 0)
         {

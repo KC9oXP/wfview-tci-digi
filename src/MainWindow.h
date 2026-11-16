@@ -44,6 +44,7 @@ class RttyPanel;
 class SpectrumEngine;
 class TxPowerWatch;
 class TxTools;
+class UpdateCheck;
 
 class MainWindow : public QMainWindow
 {
@@ -128,6 +129,7 @@ private:
     AmtorEngine *m_amtor = nullptr;
     AmtorPanel *m_amtorPanel = nullptr;
     TxTools *m_tools = nullptr;
+    UpdateCheck *m_update = nullptr;
     QList<ModemEngine *> m_txEngines; // m_modems + tune tone + CW ID
     AudioHub *m_audio = nullptr;
     SessionLog *m_session = nullptr;

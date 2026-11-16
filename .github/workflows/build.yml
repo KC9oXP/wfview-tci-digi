@@ -3,8 +3,11 @@ name: Build
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
   pull_request:
+  # Publishing a release builds its tag again and attaches the AppImage to it.
+  release:
+    types: [ published ]
+  # Run by hand on a v* tag (Actions > Build > Run workflow > pick the tag) to attach it again.
   workflow_dispatch:
 
 env:
@@ -46,6 +49,8 @@ jobs:
           ./test_olivia
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_wwv.cpp engine/wwvcore.cpp -o test_wwv
           ./test_wwv
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_version.cpp -o test_version
+          ./test_version
       - name: Build app
         run: |
           mkdir build && cd build
@@ -99,16 +104,11 @@ jobs:
           name: wfview-tci-digi-linux-x86_64
           path: ${{ env.APPIMAGE }}
       - name: Attach the AppImage to the release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v'))
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
-          # The release script creates the release just after pushing the tag; wait for it.
-          for i in $(seq 1 40); do
-            gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 && break
-            echo "waiting for release $tag ($i)"; sleep 30
-          done
+          tag="$GITHUB_REF_NAME"
           gh release upload "$tag" "$APPIMAGE" --clobber -R "$GITHUB_REPOSITORY"
 
   windows:

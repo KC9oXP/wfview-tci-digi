@@ -1,7 +1,7 @@
 # End-to-end test against a mock wfview TCI server (see test_e2e.cpp).
 TEMPLATE = app
 TARGET = test_e2e
-QT += widgets websockets
+QT += widgets websockets network
 CONFIG += c++17 console
 CONFIG -= app_bundle
 DEFINES += APP_VERSION=\\\"test\\\"
@@ -57,6 +57,7 @@ HEADERS += \
     ../src/WwvEngine.h \
     ../src/WwvPanel.h \
     ../src/ClockSet.h \
+    ../src/UpdateCheck.h \
     ../src/MainWindow.h
 
 SOURCES += \
@@ -101,6 +102,7 @@ SOURCES += \
     ../src/WwvEngine.cpp \
     ../src/WwvPanel.cpp \
     ../src/ClockSet.cpp \
+    ../src/UpdateCheck.cpp \
     ../src/MainWindow.cpp \
     ../engine/sstvcore.cpp \
     ../engine/wefaxcore.cpp \

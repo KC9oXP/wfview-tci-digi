@@ -286,6 +286,15 @@ Tune WWV or WWVH (2.5, 5, 10, 15, 20, and 25 MHz for WWV) in AM with a wide filt
   channels, frames per packet, packets/s, peak level, how TX is paced), and says so when
   wfview sends receive audio that is all zeros (see the notes below).
 
+**Updates**
+- Once a day at start-up the program asks GitHub whether a newer release exists. If one
+  does, the status bar shows "Version x.y.z is available": click it to open the release
+  page, or *skip* to hear no more about that version. Nothing is downloaded or installed
+  for you.
+- Help > *Check for updates...* asks at any time. Options > *Check for updates at
+  start-up* switches the daily check off.
+- The only thing sent is the request for the public list of releases.
+
 ---
 
 ## Setting up wfview (v3)
@@ -331,7 +340,7 @@ was cut above about 1.5-1.8 kHz, which spoils SSTV; plain USB was fine.
 
 ## Building
 
-Qt 6 (Widgets, WebSockets), a C++17 compiler.
+Qt 6 (Widgets, WebSockets, Network), a C++17 compiler.
 
 ```
 mkdir build && cd build
@@ -357,6 +366,7 @@ g++ -std=c++17 -O2 -Iengine tests/test_wefax.cpp engine/wefaxcore.cpp -o test_we
 g++ -std=c++17 -O2 -Iengine tests/test_navtex.cpp engine/navtexcore.cpp -o test_navtex
 g++ -std=c++17 -O2 -Iengine tests/test_olivia.cpp engine/oliviacore.cpp -o test_olivia
 g++ -std=c++17 -O2 -Iengine tests/test_wwv.cpp engine/wwvcore.cpp -o test_wwv
+g++ -std=c++17 -O2 -Iengine tests/test_version.cpp -o test_version
 
 # End to end against a mock of wfview's TCI server (~3 min); --new runs only the
 # newer parts (WAV playback into the newer decoders, logs, Olivia / SSTV / AMTOR
