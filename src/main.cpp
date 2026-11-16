@@ -2,6 +2,7 @@
 #include "MainWindow.h"
 
 #include <QApplication>
+#include <QTextStream>
 #include <QIcon>
 #include <QSettings>
 
@@ -17,6 +18,11 @@ int main(int argc, char *argv[])
     // Elevated helper run of "Set PC clock" (see ClockSet.h): shift the clock and exit.
     {
         const QStringList args = QApplication::arguments();
+        if (args.contains(QStringLiteral("--version")))
+        {
+            QTextStream(stdout) << "wfview TCI Digi " << APP_VERSION << Qt::endl;
+            return 0;
+        }
         const int i = args.indexOf(QStringLiteral("--adjust-clock-ms"));
         if (i >= 0)
         {

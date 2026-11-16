@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=wfview TCI Digi
+GenericName=Digital modes over TCI
+Comment=CW, RTTY, PSK, Hell, Olivia, SSTV, AMTOR, NAVTEX, WEFAX and WWV time for wfview over TCI
+Exec=wfview-tci-digi
+Icon=wfview-tci-digi
+Terminal=false
+Categories=Network;HamRadio;
+Keywords=ham;radio;wfview;TCI;SSTV;RTTY;PSK;CW;

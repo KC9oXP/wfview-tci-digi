@@ -12,7 +12,10 @@ env:
 
 jobs:
   linux:
+    # Ubuntu 22.04 (glibc 2.35) so the AppImage also runs on older distributions.
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write   # attach the AppImage to the release of a v* tag
     steps:
       - uses: actions/checkout@v4
       - uses: jurplel/install-qt-action@v4
@@ -61,6 +64,52 @@ jobs:
         with:
           name: screens-linux
           path: screens/*.png
+      - name: AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'   # no FUSE on the runner
+          NO_STRIP: '1'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 file
+          ver=$(sed -n 's/^VERSION = //p' wfview-tci-digi.pro | tr -d '[:space:]')
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-*.AppImage
+          export QMAKE=$(command -v qmake)
+          export LD_LIBRARY_PATH="$QT_ROOT_DIR/lib:$LD_LIBRARY_PATH"
+          export LINUXDEPLOY_OUTPUT_VERSION="$ver"
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir \
+            --executable build/wfview-tci-digi \
+            --desktop-file dist/linux/wfview-tci-digi.desktop \
+            --icon-file icons/wfview-tci-digi.png \
+            --plugin qt --output appimage
+          out="wfview-tci-digi-$ver-x86_64.AppImage"
+          for f in ./*-x86_64.AppImage; do
+            case "$f" in ./linuxdeploy*|"./$out") ;; *) mv "$f" "$out" ;; esac
+          done
+          ls -l "$out"
+          # Checks: nothing missing in the bundled app and the X11 platform plugin, and the app starts.
+          if ldd AppDir/usr/bin/wfview-tci-digi AppDir/usr/plugins/platforms/libqxcb.so | grep "not found"; then
+            echo "missing libraries in the AppImage"; exit 1
+          fi
+          QT_QPA_PLATFORM=offscreen timeout 30 ./"$out" --version
+          echo "APPIMAGE=$out" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wfview-tci-digi-linux-x86_64
+          path: ${{ env.APPIMAGE }}
+      - name: Attach the AppImage to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          # The release script creates the release just after pushing the tag; wait for it.
+          for i in $(seq 1 40); do
+            gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 && break
+            echo "waiting for release $tag ($i)"; sleep 30
+          done
+          gh release upload "$tag" "$APPIMAGE" --clobber -R "$GITHUB_REPOSITORY"
 
   windows:
     runs-on: windows-2022

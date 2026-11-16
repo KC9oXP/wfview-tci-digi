@@ -61,8 +61,10 @@ Around the modes:
 
 **Windows:** download the zip from [Releases](https://github.com/KC9oXP/wfview-tci-digi/releases),
 unzip it anywhere and run `wfview-tci-digi.exe` (if a DLL is missing, run
-`vc_redist.x64.exe` from the same folder first). **Linux / macOS:** build from source
-(see [Building](#building)).
+`vc_redist.x64.exe` from the same folder first). **Linux (x86-64):** download
+`wfview-tci-digi-<version>-x86_64.AppImage` from the same page, then
+`chmod +x wfview-tci-digi-*.AppImage` and run it (no install needed; built on Ubuntu 22.04, so
+most current distributions work). **macOS:** build from source (see [Building](#building)).
 
 ## Screenshots
 
