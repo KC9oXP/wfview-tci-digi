@@ -3,13 +3,18 @@
 // SSTV tab.
 //   receive: Decode, auto slant / trim, Start now (no VIS) and Stop, the
 //   picture as it comes in, a strip of received pictures, a small waterfall
-//   transmit: open or paste a picture, mode, text overlay ({MYCALL} {CALL}
-//   {RST}), preview, Send / Abort, level and progress
+//   transmit: open or paste a picture, mode, picture text (a choice of CQ /
+//   Answer / Report / Thanks / 73 / Test / Custom, each editable; {MYCALL}
+//   {CALL} {RST} {GRID} {DATE} {TIME}), optional timestamp, preview,
+//   Send / Abort, level and progress
 
 #include <QImage>
 #include <QWidget>
 
 class ImageView;
+class QButtonGroup;
+class QDateTime;
+class QTimer;
 class QCheckBox;
 class QComboBox;
 class QLabel;
@@ -48,6 +53,8 @@ private:
     void loadTxImage(const QImage &img);
     void updatePreview();
     QImage composeTx() const;
+    void showMsgChoice(int id);
+    QString fillText(QString text, const QDateTime &utc) const;
     void addThumb(const QString &path, const QImage &img);
     void updateMarkers();
 
@@ -74,7 +81,13 @@ private:
 
     QImage m_txSource;
     QComboBox *m_txMode = nullptr;
+    QButtonGroup *m_msgGroup = nullptr;
     QLineEdit *m_overlay = nullptr;
+    QLineEdit *m_rst = nullptr;
+    QCheckBox *m_stamp = nullptr;
+    QComboBox *m_stampZone = nullptr;
+    QComboBox *m_stampPos = nullptr;
+    QTimer *m_stampTimer = nullptr;
     QLineEdit *m_call = nullptr;
     ImageView *m_preview = nullptr;
     QPushButton *m_send = nullptr;

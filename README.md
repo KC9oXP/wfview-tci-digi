@@ -27,7 +27,7 @@ wfview reaches the radio over LAN or over USB.
 | **PSK** | yes | yes | BPSK31, BPSK63, BPSK125; click a signal on the waterfall to tune it |
 | **Feld Hell** | yes | yes | Painted receive with auto column alignment and 30 minutes of scrollback |
 | **Olivia / Contestia** | yes | yes | All the usual tone/bandwidth settings; interoperates with fldigi |
-| **SSTV** | yes | yes | Martin, Scottie, Robot, PD modes; auto start, auto slant, auto offset; send a picture with a text overlay |
+| **SSTV** | yes | yes | Martin, Scottie, Robot, PD modes; auto start, auto slant, auto offset; send a picture with CQ / answer / report / 73 text and a timestamp |
 | **AMTOR FEC** | yes | yes | Mode B (SITOR-B style), 100 baud |
 | **NAVTEX** | yes | - | 518 / 490 kHz and SITOR-B on HF |
 | **WEFAX** | yes | - | HF weather fax, 60-240 LPM, straightens and saves the chart |
@@ -172,8 +172,14 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
   straightened as it comes in; a ppm *Trim* covers a known sound-card clock error.
 - Pictures are saved as PNG (in 4:3) and shown in a strip to click through.
 - Transmit: open or paste a picture (or *Use shown* to send back the one received), pick
-  the mode, optional text overlay (`{MYCALL}` `{CALL}` `{RST}`), preview, progress,
-  abort, *CW ID after picture*. *Tune* sends a steady 1750 Hz tone to set the level.
+  the mode, preview, progress, abort, *CW ID after picture*. *Tune* sends a steady
+  1750 Hz tone to set the level.
+- *Picture text*: pick the line drawn along the bottom of the picture - None, CQ
+  (`CQ SSTV de {MYCALL} {GRID}`), Answer (`{CALL} de {MYCALL}`), Report
+  (`{CALL} de {MYCALL} UR {RST}`), Thanks, 73, Test or Custom. Each text can be edited
+  and is kept (*Default* puts it back). `{MYCALL}` `{CALL}` `{RST}` `{GRID}` `{DATE}`
+  `{TIME}` are filled in; a long line is shrunk to fit.
+- *Timestamp*: date and time (UTC or local) in a top corner, taken when Send is pressed.
 
 ### AMTOR FEC (receive and transmit)
 

@@ -9,14 +9,19 @@
 #include "WaterfallWidget.h"
 #include "sstvcore.h"
 
+#include <algorithm>
+
 #include <QApplication>
+#include <QButtonGroup>
 #include <QCheckBox>
 #include <QClipboard>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -25,6 +30,7 @@
 #include <QMimeData>
 #include <QPainter>
 #include <QProgressBar>
+#include <QRadioButton>
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -32,8 +38,62 @@
 #include <QSpinBox>
 #include <QSplitter>
 #include <QTimer>
+#include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
+
+namespace
+{
+// Picture text choices: label, tooltip, default text. The text of each choice
+// can be edited and is kept per choice (SSTV/MsgText<n>).
+struct MsgChoice
+{
+    const char *label;
+    const char *tip;
+    const char *text;
+};
+const MsgChoice kMsgChoices[] = {
+    {QT_TRANSLATE_NOOP("SstvPanel", "None"), QT_TRANSLATE_NOOP("SstvPanel", "No text on the picture."), ""},
+    {QT_TRANSLATE_NOOP("SstvPanel", "CQ"), QT_TRANSLATE_NOOP("SstvPanel", "Calling CQ."), "CQ SSTV de {MYCALL} {GRID}"},
+    {QT_TRANSLATE_NOOP("SstvPanel", "Answer"),
+     QT_TRANSLATE_NOOP("SstvPanel", "Answering a station (fill in Call)."),
+     "{CALL} de {MYCALL}"},
+    {QT_TRANSLATE_NOOP("SstvPanel", "Report"),
+     QT_TRANSLATE_NOOP("SstvPanel", "Answer with a signal report (RST box)."),
+     "{CALL} de {MYCALL} UR {RST}"},
+    {QT_TRANSLATE_NOOP("SstvPanel", "Thanks"),
+     QT_TRANSLATE_NOOP("SstvPanel", "Thank the other station for the picture / report."),
+     "{CALL} TNX PIC + RPT de {MYCALL}"},
+    {QT_TRANSLATE_NOOP("SstvPanel", "73"),
+     QT_TRANSLATE_NOOP("SstvPanel", "The goodbye at the end of the contact."),
+     "{CALL} TNX QSO 73 de {MYCALL}"},
+    {QT_TRANSLATE_NOOP("SstvPanel", "Test"),
+     QT_TRANSLATE_NOOP("SstvPanel", "A test picture (no one called)."),
+     "TEST de {MYCALL}"},
+    {QT_TRANSLATE_NOOP("SstvPanel", "Custom"), QT_TRANSLATE_NOOP("SstvPanel", "Your own text."), ""},
+};
+constexpr int kMsgCount = int(sizeof(kMsgChoices) / sizeof(kMsgChoices[0]));
+constexpr int kMsgNone = 0, kMsgAnswer = 2, kMsgCustom = kMsgCount - 1;
+
+QString msgKey(int i)
+{
+    return QStringLiteral("SSTV/MsgText%1").arg(i);
+}
+
+// Largest bold font (from maxPx down) that fits text into width.
+QFont fitFont(const QString &text, int width, int maxPx)
+{
+    QFont f(QStringLiteral("Arial"));
+    f.setBold(true);
+    for (int px = maxPx; px >= 8; --px)
+    {
+        f.setPixelSize(px);
+        if (QFontMetrics(f).horizontalAdvance(text) <= width)
+            break;
+    }
+    return f;
+}
+} // namespace
 
 SstvPanel::SstvPanel(SstvEngine *engine, QSettings *settings, QWidget *parent)
     : QWidget(parent)
@@ -285,20 +345,151 @@ QWidget *SstvPanel::buildTx()
     r2->addWidget(m_txMode, 1);
     v->addLayout(r2);
 
+    // Picture text: a choice of the usual SSTV exchanges, each one editable.
+    auto *msgBox = new QGroupBox(tr("Picture text"));
+    auto *mv = new QVBoxLayout(msgBox);
+    auto *mg = new QGridLayout();
+    m_msgGroup = new QButtonGroup(this);
+    for (int i = 0; i < kMsgCount; ++i)
+    {
+        auto *rb = new QRadioButton(tr(kMsgChoices[i].label));
+        rb->setToolTip(tr(kMsgChoices[i].tip));
+        m_msgGroup->addButton(rb, i);
+        mg->addWidget(rb, i / 4, i % 4);
+    }
+    mv->addLayout(mg);
     auto *r3 = new QHBoxLayout();
-    r3->addWidget(new QLabel(tr("Text")));
-    m_overlay = new QLineEdit(
-        m_settings->value(QStringLiteral("SSTV/Overlay"), QStringLiteral("{CALL} de {MYCALL}")).toString());
-    m_overlay->setToolTip(tr("Drawn along the bottom of the picture. {MYCALL}, {CALL} and {RST} are filled in; "
-                             "leave empty for none."));
+    m_overlay = new QLineEdit();
+    m_overlay->setToolTip(tr("Drawn along the bottom of the picture. Edit it to change this choice's text "
+                             "(kept for next time).\n{MYCALL} {CALL} {RST} {GRID} {DATE} {TIME} are filled in "
+                             "(date and time in UTC)."));
     r3->addWidget(m_overlay, 1);
-    v->addLayout(r3);
+    auto *dflt = new QToolButton();
+    dflt->setText(tr("Default"));
+    dflt->setToolTip(tr("Put this choice's text back to the original."));
+    r3->addWidget(dflt);
+    mv->addLayout(r3);
     auto *r4 = new QHBoxLayout();
     r4->addWidget(new QLabel(tr("Call")));
     m_call = new QLineEdit();
     m_call->setPlaceholderText(tr("other station"));
-    r4->addWidget(m_call, 1);
-    v->addLayout(r4);
+    r4->addWidget(m_call, 2);
+    r4->addWidget(new QLabel(tr("RST")));
+    m_rst = new QLineEdit(m_settings->value(QStringLiteral("SSTV/Rst"), QStringLiteral("595")).toString());
+    m_rst->setMaxLength(5);
+    m_rst->setMaximumWidth(60);
+    m_rst->setToolTip(tr("Report sent as {RST} (SSTV: readability, strength, picture quality; 595 = perfect)."));
+    r4->addWidget(m_rst);
+    mv->addLayout(r4);
+    auto *r4b = new QHBoxLayout();
+    m_stamp = new QCheckBox(tr("Timestamp"));
+    m_stamp->setToolTip(tr("Put the date and time on the picture (taken when Send is pressed)."));
+    m_stamp->setChecked(m_settings->value(QStringLiteral("SSTV/Stamp"), false).toBool());
+    r4b->addWidget(m_stamp);
+    m_stampZone = new QComboBox();
+    m_stampZone->addItem(tr("UTC"), 0);
+    m_stampZone->addItem(tr("Local time"), 1);
+    m_stampZone->setCurrentIndex(m_settings->value(QStringLiteral("SSTV/StampLocal"), false).toBool() ? 1 : 0);
+    r4b->addWidget(m_stampZone);
+    m_stampPos = new QComboBox();
+    m_stampPos->addItem(tr("Top right"), int(Qt::AlignRight));
+    m_stampPos->addItem(tr("Top left"), int(Qt::AlignLeft));
+    m_stampPos->addItem(tr("Top centre"), int(Qt::AlignHCenter));
+    m_stampPos->setCurrentIndex(
+        std::clamp(m_settings->value(QStringLiteral("SSTV/StampPos"), 0).toInt(), 0, m_stampPos->count() - 1));
+    r4b->addWidget(m_stampPos);
+    r4b->addStretch(1);
+    mv->addLayout(r4b);
+    v->addWidget(msgBox);
+
+    // Which choice: saved, or worked out from the single text line of 0.5.0 and older.
+    int choice = m_settings->value(QStringLiteral("SSTV/MsgChoice"), -1).toInt();
+    if (choice < 0 || choice >= kMsgCount)
+    {
+        const QString old
+            = m_settings->value(QStringLiteral("SSTV/Overlay"), QLatin1String(kMsgChoices[kMsgAnswer].text)).toString();
+        if (old.trimmed().isEmpty())
+            choice = kMsgNone;
+        else if (old == QLatin1String(kMsgChoices[kMsgAnswer].text))
+            choice = kMsgAnswer;
+        else
+        {
+            choice = kMsgCustom;
+            if (!m_settings->contains(msgKey(kMsgCustom)))
+                m_settings->setValue(msgKey(kMsgCustom), old);
+        }
+    }
+    m_msgGroup->button(choice)->setChecked(true);
+    showMsgChoice(choice);
+
+    // Preview the timestamp minute by minute.
+    m_stampTimer = new QTimer(this);
+    m_stampTimer->setInterval(15000);
+    connect(m_stampTimer, &QTimer::timeout, this, [this]() { updatePreview(); });
+    if (m_stamp->isChecked())
+        m_stampTimer->start();
+    m_stampZone->setEnabled(m_stamp->isChecked());
+    m_stampPos->setEnabled(m_stamp->isChecked());
+
+    connect(m_msgGroup,
+            &QButtonGroup::idClicked,
+            this,
+            [this](int id)
+            {
+                m_settings->setValue(QStringLiteral("SSTV/MsgChoice"), id);
+                showMsgChoice(id);
+                updatePreview();
+            });
+    connect(dflt,
+            &QToolButton::clicked,
+            this,
+            [this]()
+            {
+                const int id = m_msgGroup->checkedId();
+                if (id < 0)
+                    return;
+                m_settings->remove(msgKey(id));
+                showMsgChoice(id);
+                updatePreview();
+            });
+    connect(m_rst,
+            &QLineEdit::textChanged,
+            this,
+            [this](const QString &t)
+            {
+                m_settings->setValue(QStringLiteral("SSTV/Rst"), t.trimmed());
+                updatePreview();
+            });
+    connect(m_stamp,
+            &QCheckBox::toggled,
+            this,
+            [this](bool on)
+            {
+                m_settings->setValue(QStringLiteral("SSTV/Stamp"), on);
+                m_stampZone->setEnabled(on);
+                m_stampPos->setEnabled(on);
+                if (on)
+                    m_stampTimer->start();
+                else
+                    m_stampTimer->stop();
+                updatePreview();
+            });
+    connect(m_stampZone,
+            &QComboBox::activated,
+            this,
+            [this](int i)
+            {
+                m_settings->setValue(QStringLiteral("SSTV/StampLocal"), i == 1);
+                updatePreview();
+            });
+    connect(m_stampPos,
+            &QComboBox::activated,
+            this,
+            [this](int i)
+            {
+                m_settings->setValue(QStringLiteral("SSTV/StampPos"), i);
+                updatePreview();
+            });
 
     m_preview = new ImageView(ImageView::Fit::Window);
     m_preview->setMinimumSize(160, 120);
@@ -375,7 +566,14 @@ QWidget *SstvPanel::buildTx()
             this,
             [this](const QString &t)
             {
-                m_settings->setValue(QStringLiteral("SSTV/Overlay"), t);
+                const int id = m_msgGroup->checkedId();
+                if (id > kMsgNone)
+                {
+                    if (t == QLatin1String(kMsgChoices[id].text))
+                        m_settings->remove(msgKey(id));
+                    else
+                        m_settings->setValue(msgKey(id), t);
+                }
                 updatePreview();
             });
     connect(m_call,
@@ -416,25 +614,71 @@ void SstvPanel::loadTxImage(const QImage &img)
     updatePreview();
 }
 
+void SstvPanel::showMsgChoice(int id)
+{
+    const QSignalBlocker b(m_overlay);
+    if (id <= kMsgNone)
+    {
+        m_overlay->clear();
+        m_overlay->setEnabled(false);
+        m_overlay->setPlaceholderText(tr("no text"));
+        return;
+    }
+    m_overlay->setEnabled(true);
+    m_overlay->setPlaceholderText(id == kMsgCustom ? tr("your text, e.g. {CALL} de {MYCALL} {GRID}") : QString());
+    m_overlay->setText(m_settings->value(msgKey(id), QLatin1String(kMsgChoices[id].text)).toString());
+}
+
+QString SstvPanel::fillText(QString text, const QDateTime &utc) const
+{
+    const QString grid = m_settings->value(QStringLiteral("Station/MyGrid")).toString().trimmed().toUpper();
+    text.replace(QStringLiteral("{MYCALL}"), m_sstv->myCall(), Qt::CaseInsensitive);
+    text.replace(QStringLiteral("{CALL}"), m_sstv->call(), Qt::CaseInsensitive);
+    text.replace(QStringLiteral("{RST}"), m_rst->text().trimmed(), Qt::CaseInsensitive);
+    text.replace(QStringLiteral("{GRID}"), grid, Qt::CaseInsensitive);
+    text.replace(QStringLiteral("{DATE}"), utc.toString(QStringLiteral("yyyy-MM-dd")), Qt::CaseInsensitive);
+    text.replace(QStringLiteral("{TIME}"), utc.toString(QStringLiteral("HHmm'z'")), Qt::CaseInsensitive);
+    // A placeholder left empty (no call yet, no grid) must not leave double spaces.
+    return text.simplified();
+}
+
 QImage SstvPanel::composeTx() const
 {
     QImage out = SstvEngine::fitToMode(m_txSource, m_sstv->txMode());
-    QString text = m_overlay->text();
-    text.replace(QStringLiteral("{MYCALL}"), m_sstv->myCall(), Qt::CaseInsensitive);
-    text.replace(QStringLiteral("{CALL}"), m_sstv->call(), Qt::CaseInsensitive);
-    text.replace(QStringLiteral("{RST}"), QStringLiteral("595"), Qt::CaseInsensitive);
-    text = text.trimmed();
-    if (text.isEmpty())
+    const QDateTime utc = QDateTime::currentDateTimeUtc();
+    const QString text = m_msgGroup->checkedId() > kMsgNone ? fillText(m_overlay->text(), utc) : QString();
+    const bool stamp = m_stamp->isChecked();
+    if (text.isEmpty() && !stamp)
         return out;
     QPainter p(&out);
-    QFont f(QStringLiteral("Arial"));
-    f.setBold(true);
-    f.setPixelSize(std::max(10, out.height() / 11));
-    p.setFont(f);
-    const int band = QFontMetrics(f).height() + 6;
-    p.fillRect(0, out.height() - band, out.width(), band, QColor(0, 0, 0, 170));
-    p.setPen(Qt::white);
-    p.drawText(QRect(0, out.height() - band, out.width(), band), Qt::AlignCenter, text);
+    p.setRenderHint(QPainter::TextAntialiasing);
+    if (!text.isEmpty())
+    {
+        // Big and bold along the bottom; shrunk to fit a long line.
+        const QFont f = fitFont(text, out.width() - 8, std::max(10, out.height() / 11));
+        p.setFont(f);
+        const int band = QFontMetrics(f).height() + 6;
+        p.fillRect(0, out.height() - band, out.width(), band, QColor(0, 0, 0, 170));
+        p.setPen(Qt::white);
+        p.drawText(QRect(0, out.height() - band, out.width(), band), Qt::AlignCenter, text);
+    }
+    if (stamp)
+    {
+        const bool local = m_stampZone->currentData().toInt() == 1;
+        const QString when = local
+            ? QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"))
+            : utc.toString(QStringLiteral("yyyy-MM-dd HH:mm 'UTC'"));
+        const QFont f = fitFont(when, out.width() - 8, std::max(9, out.height() / 18));
+        p.setFont(f);
+        const QFontMetrics fm(f);
+        const int w = fm.horizontalAdvance(when) + 10, h = fm.height() + 4;
+        const int align = m_stampPos->currentData().toInt();
+        const int x = align == Qt::AlignLeft ? 0 : align == Qt::AlignRight ? out.width() - w : (out.width() - w) / 2;
+        const QRect r(x, 0, w, h);
+        p.fillRect(r, QColor(0, 0, 0, 150));
+        p.setPen(QColor(255, 235, 120));
+        p.drawText(r, Qt::AlignCenter, when);
+    }
     return out;
 }
 
