@@ -8,10 +8,13 @@
 
 #include <QWidget>
 
+#include <functional>
+
 class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QSpinBox;
 class QTimer;
 class WaterfallWidget;
 class WwvEngine;
@@ -27,11 +30,14 @@ public:
         return m_wf;
     }
 
+    // Reads the SSTV and WEFAX Trim values (ppm) so this tab can show them.
+    void setTrimSource(std::function<void(int &sstv, int &wefax)> source);
+
 public slots:
     void addSpectrumLine(const QVector<float> &db, double hzPerBin);
 
 signals:
-    // "Copy to SSTV / WEFAX trim"
+    // "Copy to trim" or the Trim box here: set the SSTV and WEFAX trim to this.
     void trimPpmChosen(double ppm);
 
 private:
@@ -40,6 +46,7 @@ private:
     void sync();
     void syncStats();
     void updateClockLine();
+    void syncTrim();
 
     WwvEngine *m_wwv;
     QPushButton *m_decode = nullptr;
@@ -52,6 +59,9 @@ private:
     QPushButton *m_calibrate = nullptr, *m_setClock = nullptr;
     QLabel *m_clock = nullptr, *m_tone = nullptr, *m_carrier = nullptr, *m_symbols = nullptr, *m_message = nullptr;
     QPushButton *m_copyPpm = nullptr, *m_measure = nullptr;
+    QSpinBox *m_trim = nullptr;
+    QLabel *m_trimNote = nullptr;
+    std::function<void(int &, int &)> m_trimSource;
     WaterfallWidget *m_wf = nullptr;
     QTimer *m_tick = nullptr;
 };

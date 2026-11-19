@@ -15,6 +15,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSignalBlocker>
+#include <QSpinBox>
 #include <QTimeZone>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -139,10 +140,23 @@ WwvPanel::WwvPanel(WwvEngine *engine, QWidget *parent)
     m_clock->setWordWrap(true);
     m_clock->setTextInteractionFlags(Qt::TextSelectableByMouse);
     cv->addWidget(m_clock);
-    m_copyPpm = new QPushButton(tr("Copy to SSTV and WEFAX trim"));
-    m_copyPpm->setToolTip(tr("Puts the audio clock error into the Trim boxes of the SSTV and WEFAX tabs, so pictures "
-                             "come out straight from the first line."));
-    cv->addWidget(m_copyPpm, 0, Qt::AlignLeft);
+    auto *trimRow = new QHBoxLayout();
+    trimRow->addWidget(new QLabel(tr("Picture trim (SSTV and WEFAX)")));
+    m_trim = new QSpinBox();
+    m_trim->setRange(-5000, 5000);
+    m_trim->setSuffix(tr(" ppm"));
+    m_trim->setKeyboardTracking(false);
+    m_trim->setToolTip(tr("The sound card clock correction used by the SSTV and WEFAX tabs (their Trim boxes). "
+                          "Change it here or there; Copy puts the measured audio clock in."));
+    trimRow->addWidget(m_trim);
+    m_copyPpm = new QPushButton(tr("Copy audio clock to trim"));
+    m_copyPpm->setToolTip(tr("Puts the audio clock error measured above into the Trim boxes of the SSTV and WEFAX "
+                             "tabs, so pictures come out straight from the first line."));
+    trimRow->addWidget(m_copyPpm);
+    m_trimNote = new QLabel();
+    trimRow->addWidget(m_trimNote);
+    trimRow->addStretch(1);
+    cv->addLayout(trimRow);
     m_tone = new QLabel();
     m_tone->setWordWrap(true);
     m_tone->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -188,7 +202,22 @@ WwvPanel::WwvPanel(WwvEngine *engine, QWidget *parent)
     connect(m_delay, &QDoubleSpinBox::valueChanged, m_wwv, &WwvEngine::setAudioDelayMs);
     connect(m_calibrate, &QPushButton::clicked, m_wwv, &WwvEngine::calibrateDelay);
     connect(m_setClock, &QPushButton::clicked, m_wwv, &WwvEngine::setPcClock);
-    connect(m_copyPpm, &QPushButton::clicked, this, [this]() { emit trimPpmChosen(m_wwv->snap().st.clockPpm); });
+    connect(m_copyPpm,
+            &QPushButton::clicked,
+            this,
+            [this]()
+            {
+                emit trimPpmChosen(m_wwv->snap().st.clockPpm);
+                syncTrim();
+            });
+    connect(m_trim,
+            &QSpinBox::valueChanged,
+            this,
+            [this](int v)
+            {
+                emit trimPpmChosen(v);
+                syncTrim();
+            });
     connect(m_measure,
             &QPushButton::clicked,
             this,
@@ -207,6 +236,10 @@ WwvPanel::WwvPanel(WwvEngine *engine, QWidget *parent)
     m_tick = new QTimer(this);
     m_tick->setInterval(100);
     connect(m_tick, &QTimer::timeout, this, &WwvPanel::updateClockLine);
+    auto *trimTick = new QTimer(this); // picks up changes made in the SSTV / WEFAX tabs
+    trimTick->setInterval(1000);
+    connect(trimTick, &QTimer::timeout, this, &WwvPanel::syncTrim);
+    trimTick->start();
     m_tick->start();
     sync();
     syncStats();
@@ -392,4 +425,24 @@ void WwvPanel::updateClockLine()
                         .arg(t.toString(QStringLiteral("yyyy-MM-dd")))
                         .arg(t.date().dayOfYear())
                         .arg(s.st.timeVerified ? tr("verified") : tr("not verified yet (one frame)")));
+}
+
+void WwvPanel::setTrimSource(std::function<void(int &sstv, int &wefax)> source)
+{
+    m_trimSource = std::move(source);
+    syncTrim();
+}
+
+void WwvPanel::syncTrim()
+{
+    if (!m_trimSource)
+        return;
+    int sstv = 0, wefax = 0;
+    m_trimSource(sstv, wefax);
+    if (!m_trim->hasFocus() && m_trim->value() != sstv)
+    {
+        const QSignalBlocker b(m_trim);
+        m_trim->setValue(sstv);
+    }
+    m_trimNote->setText(wefax == sstv ? QString() : tr("(WEFAX has %1 ppm)").arg(wefax));
 }

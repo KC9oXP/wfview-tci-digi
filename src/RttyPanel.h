@@ -15,6 +15,7 @@ class QProgressBar;
 class QPushButton;
 class QSettings;
 class QSlider;
+class TxLevelSlider;
 class QSpinBox;
 class QSplitter;
 class RttyEngine;
@@ -90,6 +91,5 @@ private:
     QPushButton *m_abort = nullptr;
     QCheckBox *m_hold = nullptr;
     QCheckBox *m_diddle = nullptr;
-    QSlider *m_txLevel = nullptr;
-    QLabel *m_txLevelValue = nullptr;
+    TxLevelSlider *m_txLevel = nullptr;
 };

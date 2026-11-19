@@ -4,6 +4,7 @@
 #include "RttyEngine.h"
 #include "RxText.h"
 #include "ScopeWidget.h"
+#include "TxLevelSlider.h"
 #include "TxTools.h"
 #include "UiStyle.h"
 
@@ -412,16 +413,10 @@ QWidget *RttyPanel::buildTx()
     btns->addWidget(m_tools);
     btns->addStretch(1);
     btns->addWidget(new QLabel(tr("TX level")));
-    m_txLevel = new QSlider(Qt::Horizontal);
-    m_txLevel->setRange(0, 100);
-    m_txLevel->setMinimumWidth(80);
-    m_txLevel->setMaximumWidth(200);
-    m_txLevel->setToolTip(
-        tr("AFSK tone level sent to wfview. Set the radio's ALC/power with this and wfview's TX gain."));
+    m_txLevel = new TxLevelSlider();
+    m_txLevel->setSliderToolTip(tr("AFSK tone level sent to wfview, in dB below full level (0.5 dB steps; "
+                                   "Page Up/Down 3 dB). Set the radio's ALC/power with this and wfview's TX gain."));
     btns->addWidget(m_txLevel, 1);
-    m_txLevelValue = new QLabel();
-    m_txLevelValue->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("100%")) + 4);
-    btns->addWidget(m_txLevelValue);
     v->addLayout(btns);
 
     connect(m_call, &QLineEdit::textEdited, m_rtty, &RttyEngine::setCall);
@@ -432,7 +427,7 @@ QWidget *RttyPanel::buildTx()
     connect(m_abort, &QPushButton::clicked, m_rtty, &RttyEngine::abortTx);
     connect(m_hold, &QCheckBox::toggled, m_rtty, &RttyEngine::setHoldTx);
     connect(m_diddle, &QCheckBox::toggled, m_rtty, &RttyEngine::setDiddle);
-    connect(m_txLevel, &QSlider::valueChanged, this, [this](int v) { m_rtty->setTxLevel(v / 100.0); });
+    connect(m_txLevel, &TxLevelSlider::levelChanged, m_rtty, &RttyEngine::setTxLevel);
     return w;
 }
 
@@ -483,7 +478,7 @@ void RttyPanel::updateModeWarning()
 void RttyPanel::syncSettings()
 {
     const QSignalBlocker b1(m_decode), b2(m_squelch), b3(m_reverse), b4(m_baud), b5(m_shift), b6(m_mark),
-        b7(m_sideband), b8(m_stopBits), b9(m_usos), b10(m_figures), b11(m_hold), b12(m_diddle), b13(m_txLevel);
+        b7(m_sideband), b8(m_stopBits), b9(m_usos), b10(m_figures), b11(m_hold), b12(m_diddle);
     m_decode->setChecked(m_rtty->decoding());
     m_squelch->setValue(qRound(m_rtty->squelch() * 100));
     m_squelchValue->setText(QString::number(m_rtty->squelch(), 'f', 2));
@@ -512,8 +507,7 @@ void RttyPanel::syncSettings()
         m_call->setText(m_rtty->call());
     m_hold->setChecked(m_rtty->holdTx());
     m_diddle->setChecked(m_rtty->diddle());
-    m_txLevel->setValue(qRound(m_rtty->txLevel() * 100));
-    m_txLevelValue->setText(QStringLiteral("%1%").arg(qRound(m_rtty->txLevel() * 100)));
+    m_txLevel->setLevel(m_rtty->txLevel());
     updateScopeIdle();
 }
 

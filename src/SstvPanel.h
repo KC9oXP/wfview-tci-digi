@@ -24,6 +24,7 @@ class QProgressBar;
 class QPushButton;
 class QSettings;
 class QSlider;
+class TxLevelSlider;
 class QSpinBox;
 class SstvEngine;
 class TxToolButtons;
@@ -92,7 +93,7 @@ private:
     ImageView *m_preview = nullptr;
     QPushButton *m_send = nullptr;
     QPushButton *m_abort = nullptr;
-    QSlider *m_txLevel = nullptr;
+    TxLevelSlider *m_txLevel = nullptr;
     QProgressBar *m_progress = nullptr;
     QLabel *m_txWarn = nullptr;
     QCheckBox *m_cwIdAfter = nullptr;

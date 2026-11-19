@@ -12,7 +12,7 @@ class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
-class QSlider;
+class TxLevelSlider;
 class TxToolButtons;
 
 class ModemTxBox : public QWidget
@@ -64,7 +64,6 @@ private:
     QPushButton *m_rxBtn = nullptr;
     QPushButton *m_abort = nullptr;
     QCheckBox *m_hold = nullptr;
-    QSlider *m_txLevel = nullptr;
-    QLabel *m_txLevelValue = nullptr;
+    TxLevelSlider *m_txLevel = nullptr;
     TxToolButtons *m_tools = nullptr;
 };

@@ -4,6 +4,7 @@
 #include "ImageView.h"
 #include "RadioModes.h"
 #include "SstvEngine.h"
+#include "TxLevelSlider.h"
 #include "TxTools.h"
 #include "UiStyle.h"
 #include "WaterfallWidget.h"
@@ -509,8 +510,9 @@ QWidget *SstvPanel::buildTx()
     v->addWidget(m_progress);
     auto *r6 = new QHBoxLayout();
     r6->addWidget(new QLabel(tr("TX level")));
-    m_txLevel = new QSlider(Qt::Horizontal);
-    m_txLevel->setRange(1, 100);
+    m_txLevel = new TxLevelSlider();
+    m_txLevel->setSliderToolTip(tr("Picture audio level sent to wfview, in dB below full level (0.5 dB steps; "
+                                   "Page Up/Down 3 dB)."));
     r6->addWidget(m_txLevel, 1);
     v->addLayout(r6);
     auto *r7 = new QHBoxLayout();
@@ -586,7 +588,7 @@ QWidget *SstvPanel::buildTx()
             });
     connect(m_send, &QPushButton::clicked, this, [this]() { m_sstv->sendImage(composeTx()); });
     connect(m_abort, &QPushButton::clicked, m_sstv, &ModemEngine::abortTx);
-    connect(m_txLevel, &QSlider::valueChanged, this, [this](int v) { m_sstv->setTxLevel(v / 100.0); });
+    connect(m_txLevel, &TxLevelSlider::levelChanged, this, [this](double level) { m_sstv->setTxLevel(level); });
     connect(m_cwIdAfter, &QCheckBox::toggled, m_sstv, &SstvEngine::setCwIdAfter);
     return box;
 }
@@ -714,7 +716,7 @@ void SstvPanel::updateMarkers()
 
 void SstvPanel::sync()
 {
-    const QSignalBlocker b1(m_decode), b2(m_autoSlant), b3(m_trim), b4(m_txMode), b5(m_txLevel), b7(m_autoStart),
+    const QSignalBlocker b1(m_decode), b2(m_autoSlant), b3(m_trim), b4(m_txMode), b7(m_autoStart),
         b8(m_offset), b9(m_autoOffset), b10(m_cwIdAfter);
     m_decode->setChecked(m_sstv->decoding());
     m_autoSlant->setChecked(m_sstv->autoSlant());
@@ -726,7 +728,7 @@ void SstvPanel::sync()
     updateMarkers();
     m_trim->setValue(qRound(m_sstv->slantPpm()));
     m_txMode->setCurrentIndex(m_txMode->findData(m_sstv->txMode()));
-    m_txLevel->setValue(qRound(m_sstv->txLevel() * 100));
+    m_txLevel->setLevel(m_sstv->txLevel());
     if (!m_call->hasFocus() && m_call->text() != m_sstv->call())
     {
         const QSignalBlocker b6(m_call);

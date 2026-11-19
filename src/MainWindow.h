@@ -23,6 +23,7 @@ class WefaxPanel;
 class WwvEngine;
 class WwvPanel;
 class CwPanel;
+class FreqEdit;
 class CwTxEngine;
 class HellEngine;
 class HellPanel;
@@ -144,7 +145,7 @@ private:
     QPushButton *m_connect = nullptr;
     QCheckBox *m_autoReconnect = nullptr;
     QLabel *m_connState = nullptr;
-    QLineEdit *m_freq = nullptr;
+    FreqEdit *m_freq = nullptr;
     QComboBox *m_mode = nullptr;
     QLabel *m_txLamp = nullptr;
     QLabel *m_txMeter = nullptr;

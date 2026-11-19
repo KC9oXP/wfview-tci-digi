@@ -2,6 +2,7 @@
 
 #include "ModemEngine.h"
 #include "RadioModes.h"
+#include "TxLevelSlider.h"
 #include "TxTools.h"
 
 #include <QCheckBox>
@@ -19,7 +20,6 @@
 #include <QScrollArea>
 #include <QShortcut>
 #include <QSignalBlocker>
-#include <QSlider>
 #include <QVBoxLayout>
 
 namespace
@@ -107,16 +107,11 @@ ModemTxBox::ModemTxBox(ModemEngine *engine, const QString &name, QWidget *parent
     btns->addWidget(m_tools);
     btns->addStretch(1);
     btns->addWidget(new QLabel(tr("TX level")));
-    m_txLevel = new QSlider(Qt::Horizontal);
-    m_txLevel->setRange(0, 100);
-    m_txLevel->setMinimumWidth(80);
-    m_txLevel->setMaximumWidth(200);
-    m_txLevel->setToolTip(tr("Audio level sent to wfview. Set the radio's ALC/power with this and wfview's TX gain "
-                             "(PSK needs a clean, ALC-free signal). Kept for this mode (and sub-mode)."));
+    m_txLevel = new TxLevelSlider();
+    m_txLevel->setSliderToolTip(tr("Audio level sent to wfview, in dB below full level (0.5 dB steps; Page Up/Down 3 dB). "
+                                   "Set the radio's ALC/power with this and wfview's TX gain "
+                                   "(PSK needs a clean, ALC-free signal). Kept for this mode (and sub-mode)."));
     btns->addWidget(m_txLevel, 1);
-    m_txLevelValue = new QLabel();
-    m_txLevelValue->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("100%")) + 4);
-    btns->addWidget(m_txLevelValue);
     v->addLayout(btns);
 
     connect(m_call, &QLineEdit::textEdited, m_engine, &ModemEngine::setCall);
@@ -127,7 +122,7 @@ ModemTxBox::ModemTxBox(ModemEngine *engine, const QString &name, QWidget *parent
     connect(m_rxBtn, &QPushButton::clicked, m_engine, &ModemEngine::finishTx);
     connect(m_abort, &QPushButton::clicked, m_engine, &ModemEngine::abortTx);
     connect(m_hold, &QCheckBox::toggled, m_engine, &ModemEngine::setHoldTx);
-    connect(m_txLevel, &QSlider::valueChanged, this, [this](int val) { m_engine->setTxLevel(val / 100.0); });
+    connect(m_txLevel, &TxLevelSlider::levelChanged, m_engine, &ModemEngine::setTxLevel);
 
     connect(m_engine, &ModemEngine::settingsChanged, this, &ModemTxBox::syncSettings);
     connect(m_engine, &ModemEngine::macrosChanged, this, &ModemTxBox::syncMacros);
@@ -161,14 +156,13 @@ void ModemTxBox::setRadioState(bool ready, bool canTransmit, const QString &mode
 
 void ModemTxBox::syncSettings()
 {
-    const QSignalBlocker b1(m_hold), b2(m_txLevel);
+    const QSignalBlocker b1(m_hold);
     if (!m_myCall->hasFocus())
         m_myCall->setText(m_engine->myCall());
     if (!m_call->hasFocus())
         m_call->setText(m_engine->call());
     m_hold->setChecked(m_engine->holdTx());
-    m_txLevel->setValue(qRound(m_engine->txLevel() * 100));
-    m_txLevelValue->setText(QStringLiteral("%1%").arg(qRound(m_engine->txLevel() * 100)));
+    m_txLevel->setLevel(m_engine->txLevel());
 }
 
 void ModemTxBox::syncTransmitting(bool on)

@@ -7,6 +7,7 @@
 #include "CwDecoder.h"
 #include "CwPanel.h"
 #include "CwTxEngine.h"
+#include "FreqEdit.h"
 #include "HellEngine.h"
 #include "HellPanel.h"
 #include "NavtexEngine.h"
@@ -272,6 +273,12 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
                 m_wefax->setSlantPpm(std::round(ppm));
                 statusBar()->showMessage(tr("SSTV and WEFAX trim set to %1 ppm.").arg(qRound(ppm)), 6000);
             });
+    m_wwvPanel->setTrimSource(
+        [this](int &sstv, int &wefax)
+        {
+            sstv = qRound(m_sstv->slantPpm());
+            wefax = qRound(m_wefax->slantPpm());
+        });
     connect(m_wwv,
             &WwvEngine::tuneForCarrier,
             this,
@@ -295,10 +302,47 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
             this,
             [this](qint64 hz, const QString &mode)
             {
-                m_client->setFrequency(hz);
+                // Mode first, then the frequency: on the FT-991A a mode change after the
+                // frequency moved the dial (it came back 700 Hz low). Then check what the
+                // radio reports and send the frequency again if it is not there.
                 if (!mode.isEmpty() && RadioModes::normalised(m_client->modulation()) != RadioModes::normalised(mode))
                     m_client->setModulation(mode);
+                m_client->setFrequency(hz);
                 log(tr("WWV carrier measurement done: back to %1 Hz %2").arg(formatFreq(hz), mode));
+                auto check = [this, hz, mode](int tries, auto &&self) -> void
+                {
+                    QTimer::singleShot(1500,
+                                       this,
+                                       [this, hz, mode, tries, self]()
+                                       {
+                                           if (!m_client->isReady())
+                                               return;
+                                           const bool modeOk = mode.isEmpty()
+                                                               || RadioModes::normalised(m_client->modulation())
+                                                                      == RadioModes::normalised(mode);
+                                           if (m_client->frequencyHz() == hz && modeOk)
+                                               return;
+                                           if (tries <= 0)
+                                           {
+                                               log(tr("WWV: the radio did not go back to %1 Hz %2 (it reports %3 Hz %4).")
+                                                       .arg(formatFreq(hz),
+                                                            mode,
+                                                            formatFreq(m_client->frequencyHz()),
+                                                            m_client->modulation()));
+                                               return;
+                                           }
+                                           log(tr("WWV: radio reports %1 Hz %2, sending %3 Hz %4 again.")
+                                                   .arg(formatFreq(m_client->frequencyHz()),
+                                                        m_client->modulation(),
+                                                        formatFreq(hz),
+                                                        mode));
+                                           if (!modeOk)
+                                               m_client->setModulation(mode);
+                                           m_client->setFrequency(hz);
+                                           self(tries - 1, self);
+                                       });
+                };
+                check(2, check);
             });
     for (WaterfallWidget *wf : findChildren<WaterfallWidget *>())
         connect(wf, &WaterfallWidget::saveRequested, this, [this, wf]() { saveWaterfallShot(wf); });
@@ -537,9 +581,10 @@ QWidget *MainWindow::buildConnectionBar()
                 }
             });
 
-    m_freq = new QLineEdit();
-    m_freq->setAlignment(Qt::AlignRight);
-    m_freq->setToolTip(tr("Receiver frequency in Hz. Type a new one (e.g. 14.080 or 14080k) and press Enter."));
+    m_freq = new FreqEdit();
+    m_freq->setToolTip(tr("Receiver frequency in Hz. Over a digit: mouse wheel steps it, click the top half "
+                          "to step up, the bottom half to step down.\nTo type one (e.g. 14.080 or 14080k), click "
+                          "beside the digits, type and press Enter."));
     QFont ff = m_freq->font();
     ff.setPointSizeF(ff.pointSizeF() * 1.3);
     ff.setBold(true);
@@ -574,6 +619,7 @@ QWidget *MainWindow::buildConnectionBar()
                 m_freq->setText(formatFreq(m_client->frequencyHz()));
                 m_freq->clearFocus();
             });
+    connect(m_freq, &FreqEdit::tuneRequested, m_client, &TciClient::setFrequency);
     connect(m_mode, &QComboBox::activated, this, [this](int) { m_client->setModulation(m_mode->currentText()); });
     return bar;
 }
@@ -837,8 +883,7 @@ void MainWindow::onStateChanged(TciClient::State state, const QString &message)
         m_connect->setText(tr("Disconnect"));
         UiStyle::connectButton(m_connect, UiStyle::Link::On);
         m_connState->setText(tr("%1  (%2)").arg(m_client->device(), m_client->protocol()));
-        if (m_client->frequencyHz() > 0)
-            m_freq->setText(formatFreq(m_client->frequencyHz()));
+        m_freq->showHz(m_client->frequencyHz());
         break;
     }
     m_connState->setToolTip(m_connState->text());
@@ -913,8 +958,7 @@ void MainWindow::updateWwvRadio()
 void MainWindow::onFrequency(qint64 hz)
 {
     updateWwvRadio();
-    if (!m_freq->hasFocus())
-        m_freq->setText(formatFreq(hz));
+    m_freq->showHz(hz);
     m_session->setRadio(hz, m_client->modulation());
     m_qso->setRadio(hz, m_client->modulation());
 }

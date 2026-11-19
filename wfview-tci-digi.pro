@@ -61,6 +61,8 @@ HEADERS += \
     src/WefaxPanel.h \
     src/AmtorEngine.h \
     src/AmtorPanel.h \
+    src/FreqEdit.h \
+    src/TxLevelSlider.h \
     src/TxTools.h \
     src/RadioModes.h \
     src/UiStyle.h \
@@ -78,6 +80,8 @@ HEADERS += \
     engine/extratxsources.h \
     engine/wavfile.h \
     engine/versioncheck.h \
+    engine/txlevel.h \
+    engine/freqdigits.h \
     engine/jalocha/pj_mfsk.h \
     engine/cwdecodercore.h \
     engine/cwhandkeydecoder.h \
@@ -129,6 +133,8 @@ SOURCES += \
     src/RxText.cpp \
     src/AmtorEngine.cpp \
     src/AmtorPanel.cpp \
+    src/FreqEdit.cpp \
+    src/TxLevelSlider.cpp \
     src/TxTools.cpp \
     src/WwvEngine.cpp \
     src/WwvPanel.cpp \
