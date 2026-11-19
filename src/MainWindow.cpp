@@ -297,6 +297,20 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
                 m_client->setFrequency(dialHz);
                 log(tr("WWV carrier measurement: %1 Hz %2").arg(formatFreq(dialHz), ssb.toUpper()));
             });
+    connect(m_wwvPanel,
+            &WwvPanel::tuneRequested,
+            this,
+            [this](qint64 hz)
+            {
+                QString am = QStringLiteral("am");
+                for (const QString &m : m_client->modulations())
+                    if (RadioModes::normalised(m) == QLatin1String("AM"))
+                    {
+                        am = m;
+                        break;
+                    }
+                emit m_wwv->restoreRadio(hz, am);
+            });
     connect(m_wwv,
             &WwvEngine::restoreRadio,
             this,
@@ -308,7 +322,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
                 if (!mode.isEmpty() && RadioModes::normalised(m_client->modulation()) != RadioModes::normalised(mode))
                     m_client->setModulation(mode);
                 m_client->setFrequency(hz);
-                log(tr("WWV carrier measurement done: back to %1 Hz %2").arg(formatFreq(hz), mode));
+                log(tr("WWV: radio to %1 Hz %2").arg(formatFreq(hz), mode));
                 auto check = [this, hz, mode](int tries, auto &&self) -> void
                 {
                     QTimer::singleShot(1500,

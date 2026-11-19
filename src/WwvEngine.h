@@ -108,6 +108,14 @@ public:
     }
     // PC clock minus true time, ms (+ = the PC is fast). False if not known yet.
     bool pcOffsetMs(double &ms) const;
+    bool radioReady() const
+    {
+        return m_ready;
+    }
+    qint64 radioHz() const
+    {
+        return m_radioHz;
+    }
     bool measuringCarrier() const
     {
         return m_carrierStage != 0;

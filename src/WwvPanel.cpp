@@ -64,6 +64,43 @@ WwvPanel::WwvPanel(WwvEngine *engine, QWidget *parent)
     m_station = new QLabel();
     r1->addWidget(m_station);
     r1->addStretch(1);
+    r1->addWidget(new QLabel(tr("Go to")));
+    struct Std
+    {
+        qint64 hz;
+        const char *label;
+        const char *who;
+    };
+    static const Std stds[] = {
+        {2500000, "2.5", QT_TR_NOOP("WWV (Colorado) and WWVH (Hawaii)")},
+        {5000000, "5", QT_TR_NOOP("WWV (Colorado) and WWVH (Hawaii)")},
+        {10000000, "10", QT_TR_NOOP("WWV (Colorado) and WWVH (Hawaii)")},
+        {15000000, "15", QT_TR_NOOP("WWV (Colorado) and WWVH (Hawaii)")},
+        {20000000, "20", QT_TR_NOOP("WWV (Colorado) only")},
+        {25000000, "25", QT_TR_NOOP("WWV (Colorado) only; experimental, may be off the air")},
+    };
+    for (const Std &f : stds)
+    {
+        auto *b = new QPushButton(QString::fromLatin1(f.label));
+        UiStyle::greenWhenOn(b);
+        b->setProperty("hz", f.hz);
+        b->setToolTip(tr("%1 MHz AM: %2. Green while the radio is on it.")
+                          .arg(QString::fromLatin1(f.label), tr(f.who)));
+        b->setMinimumWidth(QFontMetrics(b->font()).horizontalAdvance(QStringLiteral("2.5")) + 16);
+        b->setMaximumWidth(QFontMetrics(b->font()).horizontalAdvance(QStringLiteral("2.5")) + 24);
+        r1->addWidget(b);
+        m_freqButtons.append(b);
+        connect(b,
+                &QPushButton::clicked,
+                this,
+                [this, b]()
+                {
+                    syncFreqButtons(); // the radio decides when it is green, not the click
+                    if (m_wwv->radioReady() && !m_wwv->measuringCarrier())
+                        emit tuneRequested(b->property("hz").toLongLong());
+                });
+    }
+    r1->addWidget(new QLabel(tr("MHz")));
     root->addLayout(r1);
 
     auto *hint = new QLabel(tr("WWV (Colorado) and WWVH (Hawaii): 2.5, 5, 10, 15, 20 MHz (WWV also 25). Use AM with a "
@@ -236,6 +273,7 @@ WwvPanel::WwvPanel(WwvEngine *engine, QWidget *parent)
     m_tick = new QTimer(this);
     m_tick->setInterval(100);
     connect(m_tick, &QTimer::timeout, this, &WwvPanel::updateClockLine);
+    connect(m_tick, &QTimer::timeout, this, &WwvPanel::syncFreqButtons);
     auto *trimTick = new QTimer(this); // picks up changes made in the SSTV / WEFAX tabs
     trimTick->setInterval(1000);
     connect(trimTick, &QTimer::timeout, this, &WwvPanel::syncTrim);
@@ -445,4 +483,20 @@ void WwvPanel::syncTrim()
         m_trim->setValue(sstv);
     }
     m_trimNote->setText(wefax == sstv ? QString() : tr("(WEFAX has %1 ppm)").arg(wefax));
+}
+
+void WwvPanel::syncFreqButtons()
+{
+    const bool usable = m_wwv->radioReady() && !m_wwv->measuringCarrier();
+    for (QPushButton *b : m_freqButtons)
+    {
+        const bool on = m_wwv->radioReady() && m_wwv->radioHz() == b->property("hz").toLongLong();
+        if (b->isChecked() != on)
+        {
+            const QSignalBlocker blk(b);
+            b->setChecked(on);
+        }
+        if (b->isEnabled() != usable)
+            b->setEnabled(usable);
+    }
 }

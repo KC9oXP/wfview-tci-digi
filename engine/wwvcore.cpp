@@ -181,8 +181,9 @@ bool gridToLatLon(const std::string &grid, double &lat, double &lon)
 
 double pathDelayMs(double lat, double lon, bool hawaii, double *distanceKm)
 {
-    // WWV Fort Collins, Colorado; WWVH Kekaha, Kauai.
-    const double slat = hawaii ? 21.9872 : 40.6781, slon = hawaii ? -159.7636 : -105.0469;
+    // WWV near Fort Collins, Colorado; WWVH Kekaha, Kauai. Middle of each antenna field
+    // (NIST SP 250-67, tables 1.2 and 2.7).
+    const double slat = hawaii ? 21.9874 : 40.6798, slon = hawaii ? -159.7637 : -105.0408;
     const double r = M_PI / 180.0;
     const double dlat = (slat - lat) * r, dlon = (slon - lon) * r;
     const double h = std::sin(dlat / 2) * std::sin(dlat / 2)
