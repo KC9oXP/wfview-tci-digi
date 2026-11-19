@@ -3,7 +3,7 @@
 // Looks on GitHub for a newer release of the program and tells the user.
 // Nothing is downloaded or installed: the notice links to the release page.
 //
-// - Once a day at most on its own (Options > Check for updates at start-up),
+// - At every start-up (Options > Check for updates at start-up),
 //   or at any time from Help > Check for updates.
 // - The only thing sent is the request for the public release list.
 // - "Skip this version" silences the notice until a newer release appears.
@@ -28,10 +28,12 @@ public:
     void setAutomatic(bool on);
 
     // The version this program compares itself with (APP_VERSION, or --pretend-version for testing).
-    QString runningVersion() const { return m_running; }
+    QString runningVersion() const
+    {
+        return m_running;
+    }
 
-    // Start-up check: does nothing when switched off, when the last check was
-    // less than a day ago, or in a build without a version number.
+    // Start-up check: does nothing when switched off or in a build without a version number.
     void startAutomatic();
 
 public slots:

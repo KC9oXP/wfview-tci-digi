@@ -299,12 +299,12 @@ the top half of the digit to step up and the bottom half to step down. To type a
   wfview sends receive audio that is all zeros (see the notes below).
 
 **Updates**
-- Once a day at start-up the program asks GitHub whether a newer release exists. If one
-  does, the status bar shows "Version x.y.z is available": click it to open the release
-  page, or *skip* to hear no more about that version. Nothing is downloaded or installed
-  for you.
-- Help > *Check for updates...* asks at any time. Options > *Check for updates at
-  start-up* switches the daily check off.
+- At every start the program asks GitHub whether a newer release exists. If one does,
+  the status bar shows "Version x.y.z is available": click it to open the release page,
+  or *skip* to hear no more about that version. Nothing is installed for you.
+- Help > *Check for updates...* asks at any time and shows links to the release page and
+  to the download for your computer (Windows zip or Linux AppImage). Options > *Check for
+  updates at start-up* switches the start-up check off.
 - The only thing sent is the request for the public list of releases.
 
 ---

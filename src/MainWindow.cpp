@@ -786,7 +786,7 @@ void MainWindow::buildMenus()
                     m_settings->setValue(QStringLiteral("Audio/RingSeconds"), sec);
                 });
     }
-    QAction *autoUpdate = opts->addAction(tr("Check for updates at start-up (once a day)"));
+    QAction *autoUpdate = opts->addAction(tr("Check for updates at start-up"));
     autoUpdate->setCheckable(true);
     autoUpdate->setChecked(m_update->automatic());
     connect(autoUpdate, &QAction::toggled, m_update, &UpdateCheck::setAutomatic);
