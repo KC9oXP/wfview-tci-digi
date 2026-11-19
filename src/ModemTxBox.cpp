@@ -108,9 +108,10 @@ ModemTxBox::ModemTxBox(ModemEngine *engine, const QString &name, QWidget *parent
     btns->addStretch(1);
     btns->addWidget(new QLabel(tr("TX level")));
     m_txLevel = new TxLevelSlider();
-    m_txLevel->setSliderToolTip(tr("Audio level sent to wfview, in dB below full level (0.5 dB steps; Page Up/Down 3 dB). "
-                                   "Set the radio's ALC/power with this and wfview's TX gain "
-                                   "(PSK needs a clean, ALC-free signal). Kept for this mode (and sub-mode)."));
+    m_txLevel->setSliderToolTip(
+        tr("Audio level sent to wfview, in dB below full level (0.5 dB steps; Page Up/Down 3 dB). "
+           "Set the radio's ALC/power with this and wfview's TX gain "
+           "(PSK needs a clean, ALC-free signal). Kept for this mode (and sub-mode)."));
     btns->addWidget(m_txLevel, 1);
     v->addLayout(btns);
 

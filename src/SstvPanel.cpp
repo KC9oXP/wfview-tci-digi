@@ -10,8 +10,6 @@
 #include "WaterfallWidget.h"
 #include "sstvcore.h"
 
-#include <algorithm>
-
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -31,8 +29,8 @@
 #include <QMimeData>
 #include <QPainter>
 #include <QProgressBar>
-#include <QRadioButton>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
@@ -42,6 +40,7 @@
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <algorithm>
 
 namespace
 {
@@ -682,9 +681,8 @@ QImage SstvPanel::composeTx() const
     if (stamp)
     {
         const bool local = m_stampZone->currentData().toInt() == 1;
-        const QString when = local
-            ? QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"))
-            : utc.toString(QStringLiteral("yyyy-MM-dd HH:mm 'UTC'"));
+        const QString when = local ? QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"))
+                                   : utc.toString(QStringLiteral("yyyy-MM-dd HH:mm 'UTC'"));
         const QFont f = fitFont(when, out.width() - 8, std::max(9, out.height() / 18));
         p.setFont(f);
         const QFontMetrics fm(f);
@@ -731,8 +729,8 @@ void SstvPanel::updateMarkers()
 
 void SstvPanel::sync()
 {
-    const QSignalBlocker b1(m_decode), b2(m_autoSlant), b3(m_trim), b4(m_txMode), b7(m_autoStart),
-        b8(m_offset), b9(m_autoOffset), b10(m_cwIdAfter), b11(m_trimTx);
+    const QSignalBlocker b1(m_decode), b2(m_autoSlant), b3(m_trim), b4(m_txMode), b7(m_autoStart), b8(m_offset),
+        b9(m_autoOffset), b10(m_cwIdAfter), b11(m_trimTx);
     m_decode->setChecked(m_sstv->decoding());
     m_autoSlant->setChecked(m_sstv->autoSlant());
     m_autoStart->setChecked(m_sstv->autoStart());
@@ -809,10 +807,8 @@ void SstvPanel::updateTrimTxNote()
     if (ppm == 0)
         m_trimTxNote->setText(tr("(Trim is 0 ppm: nothing to correct)"));
     else if (px < 1.5)
-        m_trimTxNote->setText(tr("(%1 ppm moves a %2 picture %3 px: too small to matter)")
-                                  .arg(ppm)
-                                  .arg(name)
-                                  .arg(px, 0, 'f', 1));
+        m_trimTxNote->setText(
+            tr("(%1 ppm moves a %2 picture %3 px: too small to matter)").arg(ppm).arg(name).arg(px, 0, 'f', 1));
     else
         m_trimTxNote->setText(tr("(%1 ppm: corrects about %2 px of lean on %3)").arg(ppm).arg(qRound(px)).arg(name));
 }

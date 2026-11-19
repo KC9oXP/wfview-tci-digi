@@ -15,8 +15,8 @@ TxLevelSlider::TxLevelSlider(QWidget *parent)
     h->setContentsMargins(0, 0, 0, 0);
     m_slider = new QSlider(Qt::Horizontal);
     m_slider->setRange(txlevel::kMinSteps, txlevel::kMaxSteps);
-    m_slider->setSingleStep(1);                        // arrow keys / wheel: 0.5 dB
-    m_slider->setPageStep(3 * txlevel::kStepsPerDb);   // Page Up/Down, click in the groove: 3 dB
+    m_slider->setSingleStep(1); // arrow keys / wheel: 0.5 dB
+    m_slider->setPageStep(3 * txlevel::kStepsPerDb); // Page Up/Down, click in the groove: 3 dB
     m_slider->setMinimumWidth(80);
     m_slider->setMaximumWidth(200);
     h->addWidget(m_slider, 1);
@@ -25,10 +25,14 @@ TxLevelSlider::TxLevelSlider(QWidget *parent)
     m_value->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("-40.0 dB")) + 4);
     h->addWidget(m_value);
 
-    connect(m_slider, &QSlider::valueChanged, this, [this](int steps) {
-        updateLabel();
-        emit levelChanged(txlevel::stepsToLevel(steps));
-    });
+    connect(m_slider,
+            &QSlider::valueChanged,
+            this,
+            [this](int steps)
+            {
+                updateLabel();
+                emit levelChanged(txlevel::stepsToLevel(steps));
+            });
     updateLabel();
 }
 

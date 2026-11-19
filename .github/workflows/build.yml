@@ -51,6 +51,10 @@ jobs:
           ./test_wwv
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_version.cpp -o test_version
           ./test_version
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_txlevel.cpp -o test_txlevel
+          ./test_txlevel
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_freqdigits.cpp -o test_freqdigits
+          ./test_freqdigits
       - name: Build app
         run: |
           mkdir build && cd build

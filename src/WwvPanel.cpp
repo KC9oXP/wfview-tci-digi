@@ -84,8 +84,8 @@ WwvPanel::WwvPanel(WwvEngine *engine, QWidget *parent)
         auto *b = new QPushButton(QString::fromLatin1(f.label));
         UiStyle::greenWhenOn(b);
         b->setProperty("hz", f.hz);
-        b->setToolTip(tr("%1 MHz AM: %2. Green while the radio is on it.")
-                          .arg(QString::fromLatin1(f.label), tr(f.who)));
+        b->setToolTip(
+            tr("%1 MHz AM: %2. Green while the radio is on it.").arg(QString::fromLatin1(f.label), tr(f.who)));
         b->setMinimumWidth(QFontMetrics(b->font()).horizontalAdvance(QStringLiteral("2.5")) + 16);
         b->setMaximumWidth(QFontMetrics(b->font()).horizontalAdvance(QStringLiteral("2.5")) + 24);
         r1->addWidget(b);
@@ -412,8 +412,8 @@ void WwvPanel::syncStats()
         if (car.valid)
         {
             const double ppm = car.deltaHz / double(car.nominalHz) * 1e6;
-            const auto signedHz = [](double v)
-            { return (v >= 0 ? QStringLiteral("+") : QString()) + QString::number(v, 'f', 2); };
+            const auto signedHz
+                = [](double v) { return (v >= 0 ? QStringLiteral("+") : QString()) + QString::number(v, 'f', 2); };
             QString text
                 = tr("<b>WWV %1 MHz reads %2 Hz %3 on this radio</b> (%4 ppm; %5 UTC, %6 s).<br>"
                      "USB tone %7 Hz, LSB tone %8 Hz from 1000 Hz. The dial error is half their difference; "

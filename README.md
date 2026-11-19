@@ -174,6 +174,8 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
   1900 Hz VIS leader and the 1200 Hz sync pulses.
 - *Auto slant* fits a line through every line's sync pulse, so a slanted picture is
   straightened as it comes in; a ppm *Trim* covers a known sound-card clock error.
+  *Use when sending* applies the Trim to sent pictures too (worth it only for large
+  errors: the note beside it says how many pixels it changes in the chosen mode).
 - Pictures are saved as PNG (in 4:3) and shown in a strip to click through.
 - Transmit: open or paste a picture (or *Use shown* to send back the one received), pick
   the mode, preview, progress, abort, *CW ID after picture*. *Tune* sends a steady
@@ -208,7 +210,10 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
 
 ### WWV Time (receive)
 
-Tune WWV or WWVH (2.5, 5, 10, 15, 20, and 25 MHz for WWV) in AM with a wide filter.
+Tune WWV or WWVH in AM with a wide filter: WWV (near Fort Collins, Colorado) is on 2.5, 5,
+10, 15 and 20 MHz, plus an experimental 25 MHz broadcast that may be off the air; WWVH
+(Kauai, Hawaii) is on 2.5, 5, 10 and 15 MHz. The *Go to* buttons at the right of the
+lamps tune the radio there in AM; the one you are on is green.
 
 - **Lamps** show what is being heard: second ticks, the 440/500/600 Hz tones, the 100 Hz
   time code, a decoded time, a measured carrier. If *100 Hz code* stays grey while *Ticks*
@@ -221,8 +226,9 @@ Tune WWV or WWVH (2.5, 5, 10, 15, 20, and 25 MHz for WWV) in AM with a wide filt
   (from your grid square) and the audio delay through radio and wfview. *Calibrate
   delay* measures that delay once while the PC clock is known to be right (kept per
   radio). *Set PC clock to WWV* shifts the clock (Windows; asks for administrator rights).
-- **Audio clock:** the spacing of the ticks gives the error of the sound path in ppm; one
-  button copies it to the SSTV and WEFAX trims.
+- **Audio clock:** the spacing of the ticks gives the error of the sound path in ppm.
+  *Picture trim* shows the SSTV and WEFAX trim and can be changed there; *Copy audio
+  clock to trim* puts the measured value in. Only SSTV and WEFAX use it.
 - **Tones:** how far the 440/500/600 Hz tones read off.
 - **Measure carrier:** tunes 1 kHz below the WWV frequency in USB, then 1 kHz above in
   LSB (about 25 s in all), measures where the carrier lands each time, then puts the radio
@@ -239,10 +245,14 @@ Tune WWV or WWVH (2.5, 5, 10, 15, 20, and 25 MHz for WWV) in AM with a wide filt
   transmitting is added to the queue), *Hold TX*, *TX level*, Esc to abort.
 - *CW ID*: "DE <your call>" as keyed audio CW. `{CWID}` at the end of a macro sends it
   after the text without dropping PTT (Options > Tune tone and CW ID).
-- The TX level is kept per mode, and per sub-mode for PSK31/63/125 and each Olivia /
-  Contestia setting.
+- The TX level is in dB below full level (0 to -40 dB, 0.5 dB steps; Page Up/Down 3 dB),
+  kept per mode, and per sub-mode for PSK31/63/125 and each Olivia / Contestia setting.
 - The mode check accepts every data-mode name servers use (DIGU/DIGL, DATA-U/DATA-L,
   USB-D/LSB-D, PKTUSB ...) and plain USB/LSB.
+
+**Frequency box** (top bar): point at a digit and turn the mouse wheel to step it, or click
+the top half of the digit to step up and the bottom half to step down. To type a frequency
+(14.080, 14080k), click beside the digits, type and press Enter.
 
 **Transmit safety**
 - Options > *TX time limit* (default 5 minutes; off, 1-10): the transmitter is released
@@ -369,6 +379,8 @@ g++ -std=c++17 -O2 -Iengine tests/test_navtex.cpp engine/navtexcore.cpp -o test_
 g++ -std=c++17 -O2 -Iengine tests/test_olivia.cpp engine/oliviacore.cpp -o test_olivia
 g++ -std=c++17 -O2 -Iengine tests/test_wwv.cpp engine/wwvcore.cpp -o test_wwv
 g++ -std=c++17 -O2 -Iengine tests/test_version.cpp -o test_version
+g++ -std=c++17 -O2 -Iengine tests/test_txlevel.cpp -o test_txlevel
+g++ -std=c++17 -O2 -Iengine tests/test_freqdigits.cpp -o test_freqdigits
 
 # End to end against a mock of wfview's TCI server (~3 min); --new runs only the
 # newer parts (WAV playback into the newer decoders, logs, Olivia / SSTV / AMTOR

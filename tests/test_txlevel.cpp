@@ -33,7 +33,7 @@ int main()
     CHECK(near(dbToLevel(-20.0), 0.1));
     CHECK(near(dbToLevel(-40.0), 0.01));
     CHECK(near(dbToLevel(-60.0), 0.01)); // clamped to the bottom
-    CHECK(near(dbToLevel(+3.0), 1.0));   // never above full level
+    CHECK(near(dbToLevel(+3.0), 1.0)); // never above full level
     CHECK(near(levelToDb(1.0), 0.0));
     CHECK(near(levelToDb(0.1), -20.0));
     CHECK(near(levelToDb(0.0), kMinDb));
@@ -41,10 +41,10 @@ int main()
     CHECK(near(levelToDb(2.0), 0.0));
 
     std::printf("old percent settings land where expected\n");
-    CHECK(levelToSteps(1.00) == 0);    // 100% -> 0 dB
-    CHECK(levelToSteps(0.50) == -12);  // 50%  -> -6.0 dB
-    CHECK(levelToSteps(0.04) == -56);  // 4%   -> -28.0 dB (IC-7610 setting)
-    CHECK(levelToSteps(0.01) == -80);  // 1%   -> -40 dB (old SSTV minimum)
+    CHECK(levelToSteps(1.00) == 0); // 100% -> 0 dB
+    CHECK(levelToSteps(0.50) == -12); // 50%  -> -6.0 dB
+    CHECK(levelToSteps(0.04) == -56); // 4%   -> -28.0 dB (IC-7610 setting)
+    CHECK(levelToSteps(0.01) == -80); // 1%   -> -40 dB (old SSTV minimum)
     CHECK(levelToSteps(0.0) == kMinSteps);
 
     std::printf("every slider step round-trips\n");

@@ -7,7 +7,6 @@
 // dial.
 
 #include <QWidget>
-
 #include <functional>
 
 class QDoubleSpinBox;

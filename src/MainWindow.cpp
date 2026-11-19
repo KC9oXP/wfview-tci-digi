@@ -38,7 +38,6 @@
 
 #include <QAction>
 #include <QApplication>
-#include <QScreen>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -62,6 +61,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QScreen>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSpinBox>
@@ -312,53 +312,52 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
                     }
                 emit m_wwv->restoreRadio(hz, am);
             });
-    connect(m_wwv,
-            &WwvEngine::restoreRadio,
-            this,
-            [this](qint64 hz, const QString &mode)
+    connect(
+        m_wwv,
+        &WwvEngine::restoreRadio,
+        this,
+        [this](qint64 hz, const QString &mode)
+        {
+            // Mode first, then the frequency: on the FT-991A a mode change after the
+            // frequency moved the dial (it came back 700 Hz low). Then check what the
+            // radio reports and send the frequency again if it is not there.
+            if (!mode.isEmpty() && RadioModes::normalised(m_client->modulation()) != RadioModes::normalised(mode))
+                m_client->setModulation(mode);
+            m_client->setFrequency(hz);
+            log(tr("WWV: radio to %1 Hz %2").arg(formatFreq(hz), mode));
+            auto check = [this, hz, mode](int tries, auto &&self) -> void
             {
-                // Mode first, then the frequency: on the FT-991A a mode change after the
-                // frequency moved the dial (it came back 700 Hz low). Then check what the
-                // radio reports and send the frequency again if it is not there.
-                if (!mode.isEmpty() && RadioModes::normalised(m_client->modulation()) != RadioModes::normalised(mode))
-                    m_client->setModulation(mode);
-                m_client->setFrequency(hz);
-                log(tr("WWV: radio to %1 Hz %2").arg(formatFreq(hz), mode));
-                auto check = [this, hz, mode](int tries, auto &&self) -> void
-                {
-                    QTimer::singleShot(1500,
-                                       this,
-                                       [this, hz, mode, tries, self]()
-                                       {
-                                           if (!m_client->isReady())
-                                               return;
-                                           const bool modeOk = mode.isEmpty()
-                                                               || RadioModes::normalised(m_client->modulation())
-                                                                      == RadioModes::normalised(mode);
-                                           if (m_client->frequencyHz() == hz && modeOk)
-                                               return;
-                                           if (tries <= 0)
-                                           {
-                                               log(tr("WWV: the radio did not go back to %1 Hz %2 (it reports %3 Hz %4).")
-                                                       .arg(formatFreq(hz),
-                                                            mode,
-                                                            formatFreq(m_client->frequencyHz()),
-                                                            m_client->modulation()));
-                                               return;
-                                           }
-                                           log(tr("WWV: radio reports %1 Hz %2, sending %3 Hz %4 again.")
-                                                   .arg(formatFreq(m_client->frequencyHz()),
-                                                        m_client->modulation(),
-                                                        formatFreq(hz),
-                                                        mode));
-                                           if (!modeOk)
-                                               m_client->setModulation(mode);
-                                           m_client->setFrequency(hz);
-                                           self(tries - 1, self);
-                                       });
-                };
-                check(2, check);
-            });
+                QTimer::singleShot(
+                    1500,
+                    this,
+                    [this, hz, mode, tries, self]()
+                    {
+                        if (!m_client->isReady())
+                            return;
+                        const bool modeOk = mode.isEmpty()
+                            || RadioModes::normalised(m_client->modulation()) == RadioModes::normalised(mode);
+                        if (m_client->frequencyHz() == hz && modeOk)
+                            return;
+                        if (tries <= 0)
+                        {
+                            log(tr("WWV: the radio did not go back to %1 Hz %2 (it reports %3 Hz %4).")
+                                    .arg(formatFreq(hz),
+                                         mode,
+                                         formatFreq(m_client->frequencyHz()),
+                                         m_client->modulation()));
+                            return;
+                        }
+                        log(tr("WWV: radio reports %1 Hz %2, sending %3 Hz %4 again.")
+                                .arg(
+                                    formatFreq(m_client->frequencyHz()), m_client->modulation(), formatFreq(hz), mode));
+                        if (!modeOk)
+                            m_client->setModulation(mode);
+                        m_client->setFrequency(hz);
+                        self(tries - 1, self);
+                    });
+            };
+            check(2, check);
+        });
     for (WaterfallWidget *wf : findChildren<WaterfallWidget *>())
         connect(wf, &WaterfallWidget::saveRequested, this, [this, wf]() { saveWaterfallShot(wf); });
     connect(m_client, &TciClient::diagnostics, m_diag, &QLabel::setText);

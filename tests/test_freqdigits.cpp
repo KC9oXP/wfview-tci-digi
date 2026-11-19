@@ -35,10 +35,10 @@ int main()
     CHECK(placeAt("", 0) == 0);
 
     std::printf("step\n");
-    CHECK(step(4999300, 1000, 1) == 5000300);   // carries into the MHz digit
+    CHECK(step(4999300, 1000, 1) == 5000300); // carries into the MHz digit
     CHECK(step(5000000, 100, -7) == 4999300);
     CHECK(step(14074000, 1, -1) == 14073999);
-    CHECK(step(500, 1000, -1) == 1);            // never 0 or below
+    CHECK(step(500, 1000, -1) == 1); // never 0 or below
     CHECK(step(999999000, 1000000, 1) == kMaxHz);
 
     std::printf(g_fail ? "\n%d FAILED\n" : "\nall passed\n", g_fail);

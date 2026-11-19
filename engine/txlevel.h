@@ -9,8 +9,8 @@
 
 namespace txlevel
 {
-constexpr double kMinDb = -40.0;       // bottom of the slider
-constexpr int kStepsPerDb = 2;         // 0.5 dB per slider step
+constexpr double kMinDb = -40.0; // bottom of the slider
+constexpr int kStepsPerDb = 2; // 0.5 dB per slider step
 constexpr int kMinSteps = int(kMinDb) * kStepsPerDb; // -80
 constexpr int kMaxSteps = 0;
 
