@@ -95,6 +95,11 @@ public:
     {
         return m_cwIdAfterPicture;
     }
+    // Apply the Trim (slantPpm) to sent pictures as well.
+    bool trimOnTx() const
+    {
+        return m_trimOnTx;
+    }
     QImage lastImage() const
     {
         return m_img;
@@ -122,6 +127,7 @@ public slots:
     void setAutoOffset(bool on);
     void setAutoStart(bool on);
     void setCwIdAfter(bool on);
+    void setTrimOnTx(bool on);
     void startManual(int mode);
     void stopImage();
     // img must already be the mode's size (fitToMode, overlay drawn).
@@ -156,6 +162,7 @@ private:
     double m_totalOffset = 0.0;
     bool m_autoStart = true;
     bool m_cwIdAfterPicture = false;
+    bool m_trimOnTx = false;
     int m_txMode = sstv::Martin1;
     bool m_receiving = false;
     int m_rxMode = -1;

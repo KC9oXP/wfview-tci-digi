@@ -84,6 +84,9 @@ constexpr double kSyncHz = 1200.0;
 const ModeInfo &info(int mode);
 int modeForVis(int vis); // -1 if unknown
 double imageSeconds(int mode); // without the VIS header
+// How far (in pixels) the last line ends up shifted against the first when the
+// picture's timing is off by ppm: what a sound card clock error does to a picture.
+double leanPixels(int mode, double ppm);
 // Where the sync pulse starts within a sync period, ms.
 double syncOffsetMs(int mode);
 } // namespace sstv
@@ -290,6 +293,12 @@ public:
     {
         m_offset = hz;
     }
+    // Sound card clock correction, ppm: positive = every part of the picture is sent that
+    // much longer (in samples), for an output clock that runs that much fast.
+    void setTimingPpm(double ppm)
+    {
+        m_timingPpm = ppm;
+    }
 
 private:
     struct Seg
@@ -311,6 +320,7 @@ private:
     double m_total = 0.0;
     bool m_done = false;
     double m_offset = 0.0;
+    double m_timingPpm = 0.0;
 };
 
 namespace sstv

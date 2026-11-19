@@ -190,6 +190,17 @@ QWidget *SstvPanel::buildRx()
     m_trim->setToolTip(tr("Fixed correction of the line timing (a sound card clock error), applied before the "
                           "auto slant. Positive = lines longer."));
     r1->addWidget(m_trim);
+    m_trimTx = new QCheckBox(tr("Use when sending"));
+    m_trimTx->setToolTip(
+        tr("Also apply the Trim to pictures you send, so a sound card clock that is off does not make them "
+           "lean at the other station.\nOnly worth it when the clock error is large (tens of ppm or more): "
+           "a few ppm moves a whole picture by less than one pixel. The WWV tab measures the error.\n"
+           "This assumes sending and receiving use the same audio clock (the radio's USB sound card, or "
+           "a LAN radio)."));
+    r1->addWidget(m_trimTx);
+    m_trimTxNote = new QLabel();
+    m_trimTxNote->setEnabled(false);
+    r1->addWidget(m_trimTxNote);
     r1->addStretch(1);
     m_level = new QLabel();
     r1->addWidget(m_level);
@@ -275,6 +286,7 @@ QWidget *SstvPanel::buildRx()
 
     connect(m_decode, &QPushButton::toggled, m_sstv, &ModemEngine::setDecoding);
     connect(m_autoSlant, &QCheckBox::toggled, m_sstv, &SstvEngine::setAutoSlant);
+    connect(m_trimTx, &QCheckBox::toggled, m_sstv, &SstvEngine::setTrimOnTx);
     connect(m_autoStart, &QCheckBox::toggled, m_sstv, &SstvEngine::setAutoStart);
     connect(m_autoOffset, &QCheckBox::toggled, m_sstv, &SstvEngine::setAutoOffset);
     connect(m_offset, &QSpinBox::valueChanged, m_sstv, [this](int v) { m_sstv->setOffsetHz(v); });
@@ -355,6 +367,7 @@ QWidget *SstvPanel::buildTx()
     {
         auto *rb = new QRadioButton(tr(kMsgChoices[i].label));
         rb->setToolTip(tr(kMsgChoices[i].tip));
+        rb->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed); // never squashed
         m_msgGroup->addButton(rb, i);
         mg->addWidget(rb, i / 4, i % 4);
     }
@@ -401,6 +414,8 @@ QWidget *SstvPanel::buildTx()
     r4b->addWidget(m_stampPos);
     r4b->addStretch(1);
     mv->addLayout(r4b);
+    // Keeps its full height in a short window; the preview below gives way instead.
+    msgBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     v->addWidget(msgBox);
 
     // Which choice: saved, or worked out from the single text line of 0.5.0 and older.
@@ -493,7 +508,7 @@ QWidget *SstvPanel::buildTx()
             });
 
     m_preview = new ImageView(ImageView::Fit::Window);
-    m_preview->setMinimumSize(160, 120);
+    m_preview->setMinimumSize(160, 90);
     m_preview->setToolTip(tr("What will be sent (shown at 4:3 like the receiving end)."));
     v->addWidget(m_preview, 1);
 
@@ -717,7 +732,7 @@ void SstvPanel::updateMarkers()
 void SstvPanel::sync()
 {
     const QSignalBlocker b1(m_decode), b2(m_autoSlant), b3(m_trim), b4(m_txMode), b7(m_autoStart),
-        b8(m_offset), b9(m_autoOffset), b10(m_cwIdAfter);
+        b8(m_offset), b9(m_autoOffset), b10(m_cwIdAfter), b11(m_trimTx);
     m_decode->setChecked(m_sstv->decoding());
     m_autoSlant->setChecked(m_sstv->autoSlant());
     m_autoStart->setChecked(m_sstv->autoStart());
@@ -728,6 +743,8 @@ void SstvPanel::sync()
     updateMarkers();
     m_trim->setValue(qRound(m_sstv->slantPpm()));
     m_txMode->setCurrentIndex(m_txMode->findData(m_sstv->txMode()));
+    m_trimTx->setChecked(m_sstv->trimOnTx());
+    updateTrimTxNote();
     m_txLevel->setLevel(m_sstv->txLevel());
     if (!m_call->hasFocus() && m_call->text() != m_sstv->call())
     {
@@ -777,3 +794,25 @@ void SstvPanel::addSpectrumLine(const QVector<float> &db, double hzPerBin)
 }
 
 void SstvPanel::saveState() { }
+
+void SstvPanel::updateTrimTxNote()
+{
+    if (!m_sstv->trimOnTx())
+    {
+        m_trimTxNote->clear();
+        return;
+    }
+    const int mode = m_sstv->txMode();
+    const int ppm = qRound(m_sstv->slantPpm());
+    const double px = sstv::leanPixels(mode, ppm);
+    const QString name = QString::fromLatin1(sstv::info(mode).name);
+    if (ppm == 0)
+        m_trimTxNote->setText(tr("(Trim is 0 ppm: nothing to correct)"));
+    else if (px < 1.5)
+        m_trimTxNote->setText(tr("(%1 ppm moves a %2 picture %3 px: too small to matter)")
+                                  .arg(ppm)
+                                  .arg(name)
+                                  .arg(px, 0, 'f', 1));
+    else
+        m_trimTxNote->setText(tr("(%1 ppm: corrects about %2 px of lean on %3)").arg(ppm).arg(qRound(px)).arg(name));
+}

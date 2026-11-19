@@ -38,6 +38,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QScreen>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -456,8 +457,21 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
 
     // ---- restore
     m_settings->beginGroup(QStringLiteral("Window"));
-    restoreGeometry(m_settings->value(QStringLiteral("Geometry")).toByteArray());
+    if (!restoreGeometry(m_settings->value(QStringLiteral("Geometry")).toByteArray()))
+    {
+        // First start: big enough for the tallest tab (SSTV), within the screen.
+        const QRect avail = screen() ? screen()->availableGeometry() : QRect(0, 0, 1280, 900);
+        resize(std::min(1280, avail.width() * 9 / 10), std::min(900, avail.height() * 9 / 10));
+    }
     restoreState(m_settings->value(QStringLiteral("State")).toByteArray());
+    {
+        // A window saved shorter than its contents need (older versions) grows to fit,
+        // so no tab gets squashed; never past the screen.
+        const int need = minimumSizeHint().height();
+        const int room = screen() ? screen()->availableGeometry().height() : need;
+        if (!isMaximized() && height() < need)
+            resize(width(), std::min(need, room));
+    }
     {
         // Saved by tab name since 0.4.1 (the order changed).
         const QString name = m_settings->value(QStringLiteral("TabName")).toString();

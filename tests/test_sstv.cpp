@@ -554,6 +554,39 @@ int main()
         CHECK(r.err < 20.0);
     }
 
+    std::printf("Send trim: +1000 ppm makes the picture 1000 ppm longer in samples\n");
+    {
+        const int mode = int(sstv::Martin1);
+        const sstv::ModeInfo &m = sstv::info(mode);
+        const std::vector<uint32_t> img(size_t(m.width) * size_t(m.height), 0x808080u);
+        auto count = [&](double ppm)
+        {
+            SstvEncoder enc;
+            enc.setTimingPpm(ppm);
+            enc.start(mode, img);
+            std::vector<float> block(16);
+            size_t n = 0;
+            while (!enc.done())
+            {
+                enc.render(block.data(), block.size(), 12000.0);
+                n += block.size();
+            }
+            return double(n);
+        };
+        const double r = count(1000.0) / count(0.0);
+        std::printf("  ratio %.6f\n", r);
+        CHECK(std::fabs(r - 1.001) < 0.0002);
+    }
+
+    std::printf("Lean estimate (pixels over a whole picture)\n");
+    {
+        const double small = sstv::leanPixels(sstv::Martin1, 2.6), big = sstv::leanPixels(sstv::Martin1, -100.0);
+        std::printf("  Martin M1: 2.6 ppm %.2f px, 100 ppm %.1f px\n", small, big);
+        CHECK(small > 0.4 && small < 1.0);
+        CHECK(big > 20.0 && big < 30.0);
+        CHECK(sstv::leanPixels(sstv::Martin1, 0.0) == 0.0);
+    }
+
     std::printf("VIS table: every mode has a unique code\n");
     for (int a = 0; a < sstv::ModeCount; ++a)
         CHECK(sstv::modeForVis(sstv::info(a).vis) == a);

@@ -124,6 +124,13 @@ double imageSeconds(int mode)
     return m.periods() * m.lineMs / 1000.0 + (m.family == Family::Scottie ? kScottieStartSyncMs / 1000.0 : 0.0);
 }
 
+double leanPixels(int mode, double ppm)
+{
+    const ModeInfo &m = info(mode);
+    const double pixelMs = m.scanMs / m.width; // one pixel of one colour (or Y) scan
+    return std::fabs(ppm) * 1e-6 * imageSeconds(mode) * 1000.0 / pixelMs;
+}
+
 double valueHz(double v)
 {
     return valueToHz(v);
@@ -985,7 +992,9 @@ void SstvEncoder::nextSegments()
 
 void SstvEncoder::render(float *out, size_t n, double fs)
 {
-    const double dt = 1.0 / fs;
+    // A fast output clock plays the samples early; stretch the timing (not the tones) to match.
+    const double dt = 1.0 / (fs * (1.0 + m_timingPpm * 1e-6));
+    const double toneDt = 1.0 / fs;
     for (size_t i = 0; i < n; ++i)
     {
         if (m_done || m_mode < 0)
@@ -1010,7 +1019,7 @@ void SstvEncoder::render(float *out, size_t n, double fs)
             out[i] = 0.0f;
             continue;
         }
-        m_phase += 2.0 * M_PI * (m_segs[m_segIdx].hz + m_offset) * dt;
+        m_phase += 2.0 * M_PI * (m_segs[m_segIdx].hz + m_offset) * toneDt;
         if (m_phase > 2.0 * M_PI)
             m_phase -= 2.0 * M_PI;
         out[i] = float(std::sin(m_phase));

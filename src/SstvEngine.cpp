@@ -206,6 +206,7 @@ void SstvEngine::loadSettings(QSettings *s)
         m_autoOffset = s->value(QStringLiteral("AutoOffset"), m_autoOffset).toBool();
         m_autoStart = s->value(QStringLiteral("AutoStart"), m_autoStart).toBool();
         m_cwIdAfterPicture = s->value(QStringLiteral("CwIdAfter"), m_cwIdAfterPicture).toBool();
+        m_trimOnTx = s->value(QStringLiteral("TrimOnTx"), m_trimOnTx).toBool();
         s->endGroup();
     }
     ModemEngine::loadSettings(s);
@@ -293,6 +294,15 @@ void SstvEngine::setAutoSlant(bool on)
     emit settingsChanged();
 }
 
+void SstvEngine::setTrimOnTx(bool on)
+{
+    if (on == m_trimOnTx)
+        return;
+    m_trimOnTx = on;
+    save("TrimOnTx", on);
+    emit settingsChanged();
+}
+
 void SstvEngine::setSlantPpm(double ppm)
 {
     ppm = std::clamp(ppm, -5000.0, 5000.0);
@@ -366,7 +376,9 @@ void SstvEngine::sendImage(const QImage &img)
         std::memcpy(&rgb[size_t(y) * size_t(m.width)], fitted.constScanLine(y), size_t(m.width) * 4);
     for (uint32_t &v : rgb)
         v &= 0x00ffffffu;
-    std::static_pointer_cast<SstvTxSource>(txSource())->setImage(m_txMode, rgb);
+    auto src = std::static_pointer_cast<SstvTxSource>(txSource());
+    src->setTimingPpm(m_trimOnTx ? m_slantPpm : 0.0);
+    src->setImage(m_txMode, rgb);
     startTx();
     if (transmitting())
     {

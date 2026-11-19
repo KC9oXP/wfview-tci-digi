@@ -118,6 +118,12 @@ public:
         m_mode = mode;
         m_rgb = rgb;
     }
+    // Sound card clock correction for the next picture (0 = none).
+    void setTimingPpm(double ppm)
+    {
+        std::lock_guard<std::mutex> lock(mutex());
+        m_timingPpm = ppm;
+    }
     double progress() const
     {
         std::lock_guard<std::mutex> lock(mutex());
@@ -136,6 +142,7 @@ protected:
     }
     void modPreroll(double) override
     {
+        m_enc.setTimingPpm(m_timingPpm);
         if (m_mode >= 0 && !m_rgb.empty())
             m_enc.start(m_mode, m_rgb);
         else
@@ -164,4 +171,5 @@ private:
     SstvEncoder m_enc;
     int m_mode = -1;
     std::vector<uint32_t> m_rgb;
+    double m_timingPpm = 0.0;
 };

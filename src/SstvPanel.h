@@ -51,6 +51,7 @@ private:
     QWidget *buildTx();
     void sync();
     void syncTx(bool on);
+    void updateTrimTxNote();
     void loadTxImage(const QImage &img);
     void updatePreview();
     QImage composeTx() const;
@@ -66,6 +67,8 @@ private:
     QPushButton *m_decode = nullptr;
     QCheckBox *m_autoSlant = nullptr;
     QSpinBox *m_trim = nullptr;
+    QCheckBox *m_trimTx = nullptr;
+    QLabel *m_trimTxNote = nullptr;
     QComboBox *m_manualMode = nullptr;
     QCheckBox *m_autoStart = nullptr;
     QSpinBox *m_offset = nullptr;
