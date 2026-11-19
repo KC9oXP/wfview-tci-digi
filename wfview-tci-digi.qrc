@@ -2,5 +2,6 @@
     <qresource prefix="/">
         <file>icons/wfview-tci-digi.png</file>
         <file>icons/wfview-tci-digi.svg</file>
+        <file>resources/memories-builtin.csv</file>
     </qresource>
 </RCC>

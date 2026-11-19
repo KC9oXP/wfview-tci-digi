@@ -273,6 +273,25 @@ the top half of the digit to step up and the bottom half to step down. To type a
 - *Presets*: frequency presets for the tab showing (SSTV 3.845 LSB / 14.230 ..., WEFAX NMF
   / NMG with the 1.9 kHz offset, NAVTEX 518 kHz, WWV 2.5-25 MHz AM ...). A preset sets the
   dial and mode over TCI; add the current frequency or edit the list.
+- *Memories* (Ctrl+M, also Options > Memories...): a window listing frequencies with their
+  tab, sub-mode (BPSK31, Olivia 8/500, RTTY 45.45/170 ...), dial, sideband, band, US
+  license classes and a comment. Click one and the app switches to that tab, sets the
+  sub-mode and tunes the dial and sideband over TCI (untick *Tune on click* to use
+  double-click or Go instead). Filter by tab, by license class (Novice, Technician,
+  General, Advanced, Extra) or by text; *Add current...* saves what you are on now.
+  - The list is `memories.csv` in the data folder, so it can also be edited in Excel or a
+    text editor; changes saved there show in the window straight away. Columns: `Name,
+    Tab, Sub-mode, Dial MHz, Sideband, Band, Classes, Comment` (Dial MHz also takes Hz or
+    kHz, e.g. `14070 kHz`).
+  - The first time, the file is made from a built-in list: the digital-mode frequencies of
+    the ARRL band plan, common PSK31 / Olivia / SSTV spots (marked as such in the
+    comment), and the NAVTEX, WEFAX and WWV receive frequencies. *Add built-in...* adds any
+    built-in entries missing from your list later without touching your own.
+  - Classes: an empty Classes cell is worked out from FCC Part 97 (ITU Region 2) for the
+    tab's emission (CW, RTTY/data or SSTV image) across the 3 kHz the signal can occupy
+    from the dial, e.g. SSTV on 7.171 LSB is Advanced and Extra only, data on 28.120 is open
+    to every class, Novice and Technician have CW only on 80, 40 and 15 m. 60 m is not
+    covered (channel rules). This is a guide: check the current rules before transmitting.
 
 **Logs, scrollback, screenshots, recordings**
 - *Session log*: everything decoded and sent, a text file per mode per UTC day, with a
@@ -381,6 +400,8 @@ g++ -std=c++17 -O2 -Iengine tests/test_wwv.cpp engine/wwvcore.cpp -o test_wwv
 g++ -std=c++17 -O2 -Iengine tests/test_version.cpp -o test_version
 g++ -std=c++17 -O2 -Iengine tests/test_txlevel.cpp -o test_txlevel
 g++ -std=c++17 -O2 -Iengine tests/test_freqdigits.cpp -o test_freqdigits
+# Memories file format and license-class rules (the argument also checks the built-in list)
+g++ -std=c++17 -O2 -Iengine tests/test_memories.cpp -o test_memories && ./test_memories resources/memories-builtin.csv
 
 # End to end against a mock of wfview's TCI server (~3 min); --new runs only the
 # newer parts (WAV playback into the newer decoders, logs, Olivia / SSTV / AMTOR

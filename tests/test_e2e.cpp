@@ -12,6 +12,7 @@
 #include "CwTxEngine.h"
 #include "HellEngine.h"
 #include "MainWindow.h"
+#include "MemoriesDialog.h"
 #include "MockTciServer.h"
 #include "NavtexEngine.h"
 #include "OliviaEngine.h"
@@ -35,6 +36,8 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -43,6 +46,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QTabWidget>
+#include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <cmath>
@@ -703,6 +707,120 @@ static void renderScreens(const QString &dir)
     CHECK(calls == 6); // RTTY, PSK, Hell, CW, Olivia, AMTOR
 }
 
+static void runMemories()
+{
+    std::printf("\n=== 0.6.0: memories window tunes tab, sub-mode, dial and sideband ===\n");
+    MockTciServer server;
+    server.listen();
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("TCI/Port"), server.port());
+    settings.setValue(QStringLiteral("TCI/ConnectOnStart"), true);
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    MainWindow w(&settings);
+    w.show();
+    auto *client = w.findChild<TciClient *>();
+    CHECK(waitFor([&] { return client->isReady(); }, 5000));
+    pump(500);
+    auto *tabs = w.findChild<QTabWidget *>();
+    tabs->setCurrentIndex(0); // CW
+
+    QPushButton *memBtn = nullptr;
+    for (QPushButton *b : w.findChildren<QPushButton *>())
+        if (b->text() == QStringLiteral("Memories"))
+            memBtn = b;
+    CHECK(memBtn != nullptr);
+    if (!memBtn)
+        return;
+    memBtn->click();
+    pump(300);
+    auto *dlg = w.findChild<MemoriesDialog *>();
+    CHECK(dlg != nullptr && dlg->isVisible());
+    if (!dlg)
+        return;
+    // First open: memories.csv made from the built-in list.
+    const QString path = MemoriesDialog::filePath();
+    std::printf("  file %s\n", qPrintable(QDir::toNativeSeparators(path)));
+    CHECK(path.startsWith(tmp.filePath(QStringLiteral("data"))));
+    CHECK(QFileInfo::exists(path));
+    CHECK(MemoriesDialog::builtIn().size() >= 40);
+    auto *table = dlg->findChild<QTableWidget *>();
+    CHECK(table && table->rowCount() == int(MemoriesDialog::builtIn().size()));
+
+    const auto rowOf = [&](const QString &name)
+    {
+        for (int r = 0; r < table->rowCount(); ++r)
+            if (table->item(r, 0)->text() == name)
+                return r;
+        return -1;
+    };
+    const auto click = [&](const QString &name)
+    {
+        const int r = rowOf(name);
+        if (r < 0)
+            return false;
+        table->selectRow(r);
+        emit table->cellClicked(r, 0);
+        return true;
+    };
+
+    // PSK31 20 m: PSK tab, BPSK31, 14.070 USB
+    auto *psk = w.findChild<PskEngine *>();
+    psk->setSpeed(psk::Bpsk63);
+    CHECK(click(QStringLiteral("PSK31 20 m")));
+    CHECK(waitFor([&] { return server.freq == 14070000; }, 3000));
+    CHECK(tabs->tabText(tabs->currentIndex()) == QStringLiteral("PSK"));
+    CHECK(psk->speed() == psk::Bpsk31);
+
+    // RTTY 40 m: RTTY tab, 45.45 / 170
+    auto *rtty = w.findChild<RttyEngine *>();
+    rtty->setBaud(75);
+    CHECK(click(QStringLiteral("RTTY 40 m")));
+    CHECK(waitFor([&] { return server.freq == 7080000; }, 3000));
+    CHECK(tabs->tabText(tabs->currentIndex()) == QStringLiteral("RTTY"));
+    CHECK(std::fabs(rtty->baud() - 45.45) < 0.01 && rtty->shift() == 170);
+
+    // SSTV 40 m: LSB (stays a data mode: digl)
+    CHECK(click(QStringLiteral("SSTV 40 m")));
+    CHECK(waitFor([&] { return server.freq == 7171000; }, 3000));
+    CHECK(waitFor([&] { return server.lastMode.toLower() == QStringLiteral("digl"); }, 3000));
+    std::printf("  mode after SSTV 40 m: %s\n", qPrintable(server.lastMode));
+
+    // Classes: the 40 m SSTV spot is Advanced/Extra only, so a General filter hides it.
+    QComboBox *classBox = nullptr;
+    for (QComboBox *c : dlg->findChildren<QComboBox *>())
+        if (c->findText(QStringLiteral("Any class")) >= 0)
+            classBox = c;
+    CHECK(classBox != nullptr);
+    if (classBox)
+    {
+        CHECK(rowOf(QStringLiteral("SSTV 40 m")) >= 0);
+        classBox->setCurrentIndex(classBox->findText(QStringLiteral("General")));
+        CHECK(rowOf(QStringLiteral("SSTV 40 m")) < 0);
+        CHECK(rowOf(QStringLiteral("SSTV 20 m")) >= 0);
+        CHECK(rowOf(QStringLiteral("NAVTEX 518 kHz")) >= 0); // receive-only always listed
+        classBox->setCurrentIndex(classBox->findText(QStringLiteral("Technician")));
+        CHECK(rowOf(QStringLiteral("PSK31 10 m")) >= 0);
+        CHECK(rowOf(QStringLiteral("PSK31 20 m")) < 0);
+        classBox->setCurrentIndex(0);
+    }
+
+    // Edited outside the app (Excel): a new row shows up.
+    {
+        QFile f(path);
+        CHECK(f.open(QIODevice::Append));
+        f.write("My net,Olivia,Olivia 16/500,7.0725,USB,,,Sunday net\r\n");
+    }
+    CHECK(waitFor([&] { return rowOf(QStringLiteral("My net")) >= 0; }, 5000));
+    auto *olivia = w.findChild<OliviaEngine *>();
+    CHECK(click(QStringLiteral("My net")));
+    CHECK(waitFor([&] { return server.freq == 7072500; }, 3000));
+    CHECK(olivia->tones() == 16 && olivia->bandwidth() == 500 && !olivia->contestia());
+    const int netRow = rowOf(QStringLiteral("My net"));
+    CHECK(netRow >= 0 && table->item(netRow, 6)->text() == QStringLiteral("General, Advanced, Extra"));
+    dlg->close();
+}
+
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
@@ -730,6 +848,7 @@ int main(int argc, char *argv[])
     runNewModes();
     runNewModesTx();
     runWwv();
+    runMemories();
     const int screens = args.indexOf(QStringLiteral("--screens"));
     if (screens >= 0)
         renderScreens(args.value(screens + 1, QStringLiteral(".")));

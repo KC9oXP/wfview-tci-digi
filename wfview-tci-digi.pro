@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.5.5
+VERSION = 0.6.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -70,7 +70,9 @@ HEADERS += \
     src/WwvPanel.h \
     src/ClockSet.h \
     src/UpdateCheck.h \
+    src/MemoriesDialog.h \
     src/MainWindow.h \
+    engine/memories.h \
     engine/audioresampler.h \
     engine/fmdemod.h \
     engine/sstvcore.h \
@@ -140,6 +142,7 @@ SOURCES += \
     src/WwvPanel.cpp \
     src/ClockSet.cpp \
     src/UpdateCheck.cpp \
+    src/MemoriesDialog.cpp \
     src/MainWindow.cpp \
     engine/sstvcore.cpp \
     engine/wefaxcore.cpp \

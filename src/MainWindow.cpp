@@ -10,6 +10,7 @@
 #include "FreqEdit.h"
 #include "HellEngine.h"
 #include "HellPanel.h"
+#include "MemoriesDialog.h"
 #include "NavtexEngine.h"
 #include "NavtexPanel.h"
 #include "OliviaEngine.h"
@@ -63,6 +64,7 @@
 #include <QRegularExpression>
 #include <QScreen>
 #include <QSettings>
+#include <QShortcut>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStatusBar>
@@ -488,6 +490,8 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
             {
                 updateQsoMode();
                 fillPresetBox();
+                if (m_memories)
+                    m_memories->setCurrentTab(currentTabKey());
             });
     updateQsoMode();
     fillPresetBox();
@@ -607,6 +611,17 @@ QWidget *MainWindow::buildConnectionBar()
                         applyPreset(list.at(index));
                 }
             });
+
+    m_memBtn = new QPushButton(tr("Memories"));
+    m_memBtn->setToolTip(tr("Memories (Ctrl+M): your list of frequencies with tab, sub-mode, sideband, license "
+                            "classes and comments. Click one to go there. Kept in memories.csv in the data folder, "
+                            "so it can be edited in Excel too."));
+    h->addWidget(m_memBtn);
+    connect(m_memBtn, &QPushButton::clicked, this, &MainWindow::showMemories);
+    {
+        auto *sc = new QShortcut(QKeySequence(tr("Ctrl+M")), this);
+        connect(sc, &QShortcut::activated, this, &MainWindow::showMemories);
+    }
 
     m_freq = new FreqEdit();
     m_freq->setToolTip(tr("Receiver frequency in Hz. Over a digit: mouse wheel steps it, click the top half "
@@ -766,6 +781,7 @@ void MainWindow::buildMenus()
                         m_txLimit.stop();
                 });
     }
+    opts->addAction(tr("Memories..."), this, &MainWindow::showMemories);
     opts->addAction(tr("ALC warning..."), this, &MainWindow::editAlcLimit);
     opts->addAction(tr("Tune tone and CW ID..."), this, [this]() { m_tools->editSettings(this); });
     opts->addSeparator();
@@ -1549,7 +1565,7 @@ void MainWindow::fillPresetBox()
     m_presetBox->setToolTip(tr("Frequency presets for the %1 tab: set the dial (and USB/LSB) over TCI.").arg(key));
 }
 
-void MainWindow::applyPreset(const Preset &p)
+void MainWindow::applyPreset(const Preset &p, const QString &what)
 {
     if (!m_client->isReady())
     {
@@ -1600,7 +1616,7 @@ void MainWindow::applyPreset(const Preset &p)
         if (RadioModes::isData(pick))
             note += tr(" (check wfview's data mode: Data 1 is set this way)");
     }
-    const QString t = tr("Preset %1: %2 Hz%3").arg(p.name, formatFreq(p.hz), note);
+    const QString t = tr("%1 %2: %3 Hz%4").arg(what.isEmpty() ? tr("Preset") : what, p.name, formatFreq(p.hz), note);
     log(t);
     statusBar()->showMessage(t, 6000);
 }
@@ -1686,4 +1702,126 @@ void MainWindow::editPresets()
     }
     savePresets(currentTabKey(), list);
     fillPresetBox();
+}
+
+// ---------------------------------------------------------------------------
+// Software memories
+// ---------------------------------------------------------------------------
+
+void MainWindow::showMemories()
+{
+    if (!m_memories)
+    {
+        QStringList tabs;
+        for (int i = 0; i < m_tabs->count(); ++i)
+            if (m_tabs->isTabEnabled(i))
+                tabs << m_tabs->tabText(i);
+        m_memories = new MemoriesDialog(m_settings, tabs, this);
+        m_memories->setCurrentProvider([this]() { return currentMemory(); });
+        connect(m_memories, &MemoriesDialog::tuneRequested, this, &MainWindow::applyMemory);
+    }
+    m_memories->setCurrentTab(currentTabKey());
+    m_memories->show();
+    m_memories->raise();
+    m_memories->activateWindow();
+}
+
+memories::Memory MainWindow::currentMemory() const
+{
+    memories::Memory m;
+    m.tab = currentTabKey().toStdString();
+    m.dialHz = m_client->frequencyHz();
+    const QString mode = m_client->modulation();
+    if (RadioModes::normalised(mode) == QLatin1String("AM"))
+        m.sideband = "AM";
+    else if (RadioModes::carriesAudio(mode))
+        m.sideband = RadioModes::isLsb(mode) ? "LSB" : "USB";
+    QWidget *w = m_tabs->currentWidget();
+    if (w == m_pskPanel)
+        m.subMode = psk::speedName(m_psk->speed());
+    else if (w == m_oliviaPanel)
+        m.subMode
+            = OliviaEngine::presetName({m_olivia->contestia(), m_olivia->tones(), m_olivia->bandwidth()}).toStdString();
+    else if (w == m_rttyPanel)
+        m.subMode = QStringLiteral("%1/%2").arg(m_rtty->baud(), 0, 'g', 4).arg(m_rtty->shift()).toStdString();
+    return m;
+}
+
+// Sets the sub-mode of a tab from its text ("BPSK31", "Olivia 8/500", "45.45/170").
+// Returns a note for the status bar when the text was not understood.
+QString MainWindow::applySubMode(const QString &tab, const QString &subIn)
+{
+    const QString sub = subIn.trimmed();
+    if (sub.isEmpty())
+        return QString();
+    QString norm = sub.toUpper();
+    norm.remove(QLatin1Char(' '));
+    if (tab.compare(QLatin1String("PSK"), Qt::CaseInsensitive) == 0)
+    {
+        for (int sp = psk::Bpsk31; sp <= psk::Bpsk125; ++sp)
+        {
+            const QString n = QString::fromLatin1(psk::speedName(sp));
+            if (norm == n || QStringLiteral("B") + norm == n) // "PSK31" works too
+            {
+                m_psk->setSpeed(sp);
+                return QString();
+            }
+        }
+    }
+    else if (tab.compare(QLatin1String("Olivia"), Qt::CaseInsensitive) == 0)
+    {
+        for (const OliviaEngine::Preset &p : OliviaEngine::presets())
+        {
+            QString n = OliviaEngine::presetName(p).toUpper();
+            n.remove(QLatin1Char(' '));
+            if (norm == n)
+            {
+                m_olivia->setMode(p.contestia, p.tones, p.bandwidth);
+                return QString();
+            }
+        }
+    }
+    else if (tab.compare(QLatin1String("RTTY"), Qt::CaseInsensitive) == 0)
+    {
+        // "45.45/170" (baud / shift)
+        const QStringList f = sub.split(QLatin1Char('/'));
+        bool okB = false, okS = false;
+        const double baud = f.value(0).trimmed().toDouble(&okB);
+        const int shift = f.size() > 1 ? f.value(1).trimmed().toInt(&okS) : 0;
+        if (okB && baud >= 20 && baud <= 300)
+        {
+            m_rtty->setBaud(baud);
+            if (okS && shift >= 20 && shift <= 1000)
+                m_rtty->setShift(shift);
+            return QString();
+        }
+    }
+    else
+        return tr("(sub-mode \"%1\" is not used on the %2 tab)").arg(sub, tab);
+    return tr("(sub-mode \"%1\" not known: left as it was)").arg(sub);
+}
+
+void MainWindow::applyMemory(const memories::Memory &m)
+{
+    if (anyTransmitting())
+    {
+        statusBar()->showMessage(tr("Not while transmitting."), 5000);
+        return;
+    }
+    const QString tab = QString::fromStdString(m.tab);
+    // Show the memory's tab (if there is one by that name).
+    for (int i = 0; i < m_tabs->count(); ++i)
+        if (m_tabs->isTabEnabled(i) && m_tabs->tabText(i).compare(tab, Qt::CaseInsensitive) == 0)
+        {
+            m_tabs->setCurrentIndex(i);
+            break;
+        }
+    const QString subNote = applySubMode(currentTabKey(), QString::fromStdString(m.subMode));
+    if (!subNote.isEmpty())
+        log(QStringLiteral("Memory %1 %2").arg(QString::fromStdString(m.name), subNote));
+    Preset p;
+    p.name = QString::fromStdString(m.name);
+    p.hz = m.dialHz;
+    p.sideband = QString::fromStdString(m.sideband);
+    applyPreset(p, tr("Memory"));
 }

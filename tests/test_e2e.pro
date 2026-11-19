@@ -60,6 +60,8 @@ HEADERS += \
     ../src/WwvPanel.h \
     ../src/ClockSet.h \
     ../src/UpdateCheck.h \
+    ../src/MemoriesDialog.h \
+    ../engine/memories.h \
     ../src/MainWindow.h
 
 SOURCES += \
@@ -107,6 +109,7 @@ SOURCES += \
     ../src/WwvPanel.cpp \
     ../src/ClockSet.cpp \
     ../src/UpdateCheck.cpp \
+    ../src/MemoriesDialog.cpp \
     ../src/MainWindow.cpp \
     ../engine/sstvcore.cpp \
     ../engine/wefaxcore.cpp \

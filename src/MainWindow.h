@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TciClient.h"
+#include "memories.h"
 
 #include <QMainWindow>
 #include <QTimer>
@@ -27,6 +28,7 @@ class FreqEdit;
 class CwTxEngine;
 class HellEngine;
 class HellPanel;
+class MemoriesDialog;
 class ModemEngine;
 class PskEngine;
 class PskPanel;
@@ -81,7 +83,12 @@ private:
     QList<Preset> presets(const QString &tabKey) const;
     void savePresets(const QString &tabKey, const QList<Preset> &list);
     void fillPresetBox();
-    void applyPreset(const Preset &p);
+    void applyPreset(const Preset &p, const QString &what = QString());
+    // Software memories (Memories button, Ctrl+M)
+    void showMemories();
+    void applyMemory(const memories::Memory &m);
+    memories::Memory currentMemory() const;
+    QString applySubMode(const QString &tab, const QString &sub);
     void addCurrentPreset();
     void editPresets();
     void abortAllTx(const QString &why);
@@ -154,6 +161,8 @@ private:
     QPushButton *m_logBtn = nullptr;
     QAction *m_sessionAct = nullptr;
     QComboBox *m_presetBox = nullptr;
+    QPushButton *m_memBtn = nullptr;
+    MemoriesDialog *m_memories = nullptr;
     QTimer m_txLimit;
     int m_txLimitMin = 5;
     TxPowerWatch *m_powerWatch = nullptr;

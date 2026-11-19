@@ -1,0 +1,60 @@
+Name,Tab,Sub-mode,Dial MHz,Sideband,Band,Classes,Comment
+CW 160 m,CW,,1.810,USB,160 m,"General, Advanced, Extra",ARRL band plan: 1.810 CW QRP; whole band 1.800-2.000 is CW
+CW 80 m,CW,,3.550,USB,80 m,"Novice, Technician, General, Advanced, Extra","80 m CW, in the 3.525-3.600 segment open to all classes (Novice/Technician: CW only)"
+CW 40 m,CW,,7.030,USB,40 m,"Novice, Technician, General, Advanced, Extra","40 m CW, General segment starts 7.025"
+CW 40 m Novice/Tech,CW,,7.110,USB,40 m,"Novice, Technician, General, Advanced, Extra","Inside 7.025-7.125, the 40 m segment Novice/Technician may use (CW only)"
+CW 30 m,CW,,10.110,USB,30 m,"General, Advanced, Extra","30 m: General and up; 200 W limit, CW and data only"
+CW 20 m,CW,,14.050,USB,20 m,"General, Advanced, Extra","20 m CW, General segment starts 14.025"
+CW 17 m,CW,,18.080,USB,17 m,"General, Advanced, Extra",17 m CW below the RTTY segment (18.100)
+CW 15 m,CW,,21.050,USB,15 m,"Novice, Technician, General, Advanced, Extra","15 m CW, General segment starts 21.025"
+CW 15 m Novice/Tech,CW,,21.110,USB,15 m,"Novice, Technician, General, Advanced, Extra","Inside 21.025-21.200, the 15 m segment Novice/Technician may use (CW only)"
+CW 12 m,CW,,24.900,USB,12 m,"General, Advanced, Extra",12 m CW below the RTTY segment (24.920)
+CW 10 m,CW,,28.050,USB,10 m,"Novice, Technician, General, Advanced, Extra",ARRL band plan: 28.000-28.070 CW
+CW 6 m,CW,,50.090,USB,6 m,"Technician, General, Advanced, Extra",ARRL band plan: 50.0-50.1 CW and beacons
+RTTY 160 m,RTTY,45.45/170,1.802,USB,160 m,"General, Advanced, Extra",ARRL band plan: 1.800-1.810 digital modes
+RTTY 80 m,RTTY,45.45/170,3.580,USB,80 m,"General, Advanced, Extra",ARRL band plan: 3.570-3.600 RTTY/Data
+RTTY 80 m DX,RTTY,45.45/170,3.588,USB,80 m,"General, Advanced, Extra",ARRL band plan: 3.590 RTTY/Data DX (tones at 2125/2295 Hz put the signal near 3.590)
+RTTY 40 m DX,RTTY,45.45/170,7.038,USB,40 m,"General, Advanced, Extra",ARRL band plan: 7.040 RTTY/Data DX (tones at 2125/2295 Hz put the signal near 7.040)
+RTTY 40 m,RTTY,45.45/170,7.080,USB,40 m,"General, Advanced, Extra",ARRL band plan: 7.080-7.125 RTTY/Data
+RTTY 30 m,RTTY,45.45/170,10.130,USB,30 m,"General, Advanced, Extra",ARRL band plan: 10.130-10.140 RTTY
+RTTY 20 m,RTTY,45.45/170,14.080,USB,20 m,"General, Advanced, Extra",ARRL band plan: 14.070-14.095 RTTY
+RTTY 17 m,RTTY,45.45/170,18.100,USB,17 m,"General, Advanced, Extra",ARRL band plan: 18.100-18.105 RTTY
+RTTY 15 m,RTTY,45.45/170,21.080,USB,15 m,"General, Advanced, Extra",ARRL band plan: 21.070-21.110 RTTY/Data
+RTTY 12 m,RTTY,45.45/170,24.920,USB,12 m,"General, Advanced, Extra",ARRL band plan: 24.920-24.925 RTTY
+RTTY 10 m,RTTY,45.45/170,28.080,USB,10 m,"Novice, Technician, General, Advanced, Extra",ARRL band plan: 28.070-28.150 RTTY; open to all classes
+PSK31 80 m,PSK,BPSK31,3.580,USB,80 m,"General, Advanced, Extra",Common PSK31 spot; ARRL band plan: 3.570-3.600 RTTY/Data
+PSK31 40 m,PSK,BPSK31,7.070,USB,40 m,"General, Advanced, Extra","Common PSK31 spot (below the ARRL 7.080-7.125 RTTY/Data segment, but in the FCC data sub-band)"
+PSK31 30 m,PSK,BPSK31,10.142,USB,30 m,"General, Advanced, Extra",Common PSK31 spot; ARRL band plan lists 10.140-10.150 as packet
+PSK31 20 m,PSK,BPSK31,14.070,USB,20 m,"General, Advanced, Extra",Common PSK31 spot; ARRL band plan: 14.070-14.095 RTTY
+PSK31 17 m,PSK,BPSK31,18.100,USB,17 m,"General, Advanced, Extra",ARRL band plan: 18.100-18.105 RTTY
+PSK31 15 m,PSK,BPSK31,21.070,USB,15 m,"General, Advanced, Extra",Common PSK31 spot; ARRL band plan: 21.070-21.110 RTTY/Data
+PSK31 12 m,PSK,BPSK31,24.920,USB,12 m,"General, Advanced, Extra",ARRL band plan: 24.920-24.925 RTTY
+PSK31 10 m,PSK,BPSK31,28.120,USB,10 m,"Novice, Technician, General, Advanced, Extra",Common PSK31 spot; ARRL band plan: 28.070-28.150 RTTY; open to all classes
+Olivia 80 m,Olivia,Olivia 8/500,3.583,USB,80 m,"General, Advanced, Extra",Common Olivia spot; ARRL band plan: 3.570-3.600 RTTY/Data
+Olivia 40 m,Olivia,Olivia 8/500,7.072,USB,40 m,"General, Advanced, Extra","Common Olivia spot (below the ARRL 7.080 RTTY/Data segment, in the FCC data sub-band)"
+Olivia 20 m,Olivia,Olivia 8/500,14.072,USB,20 m,"General, Advanced, Extra",Common Olivia spot; ARRL band plan: 14.070-14.095 RTTY
+Olivia 10 m,Olivia,Olivia 8/500,28.120,USB,10 m,"Novice, Technician, General, Advanced, Extra",ARRL band plan: 28.070-28.150 RTTY; open to all classes
+Hell 80 m,Hell,,3.580,USB,80 m,"General, Advanced, Extra",No set Hell frequency in the ARRL plan; 3.570-3.600 RTTY/Data
+Hell 20 m,Hell,,14.080,USB,20 m,"General, Advanced, Extra",No set Hell frequency in the ARRL plan; 14.070-14.095 RTTY
+SSTV 80 m,SSTV,,3.845,LSB,80 m,"General, Advanced, Extra",ARRL band plan: 3.845 SSTV
+SSTV 40 m,SSTV,,7.171,LSB,40 m,"Advanced, Extra",ARRL band plan: 7.171 SSTV. Below 7.175: Advanced and Extra only
+SSTV 20 m,SSTV,,14.230,USB,20 m,"General, Advanced, Extra",ARRL band plan: 14.230 SSTV
+SSTV 20 m alt,SSTV,,14.233,USB,20 m,"General, Advanced, Extra",Common second 20 m SSTV spot (not in the ARRL plan)
+SSTV 15 m,SSTV,,21.340,USB,15 m,"General, Advanced, Extra",ARRL band plan: 21.340 SSTV
+SSTV 10 m,SSTV,,28.680,USB,10 m,"General, Advanced, Extra",ARRL band plan: 28.680 SSTV. Above 28.500: not Technician/Novice
+NAVTEX 518 kHz,NAVTEX,,0.517,USB,,Receive only,Receive only. 518 kHz NAVTEX (dial 517.0 for a 1 kHz tone)
+NAVTEX 490 kHz,NAVTEX,,0.489,USB,,Receive only,Receive only. 490 kHz NAVTEX (dial 489.0)
+NAVTEX 4209.5 kHz,NAVTEX,,4.2085,USB,,Receive only,Receive only. 4209.5 kHz NAVTEX (dial 4208.5)
+WEFAX NMF 4235,WEFAX,,4.2331,USB,,Receive only,Receive only. NMF Boston 4235 kHz
+WEFAX NMF 6340.5,WEFAX,,6.3386,USB,,Receive only,Receive only. NMF Boston 6340.5 kHz
+WEFAX NMF 9110,WEFAX,,9.1081,USB,,Receive only,Receive only. NMF Boston 9110 kHz
+WEFAX NMF 12750,WEFAX,,12.7481,USB,,Receive only,Receive only. NMF Boston 12750 kHz
+WEFAX NMG 4317.9,WEFAX,,4.316,USB,,Receive only,Receive only. NMG New Orleans 4317.9 kHz
+WEFAX NMG 8503.9,WEFAX,,8.502,USB,,Receive only,Receive only. NMG New Orleans 8503.9 kHz
+WEFAX NMG 12789.9,WEFAX,,12.788,USB,,Receive only,Receive only. NMG New Orleans 12789.9 kHz
+WWV 2.5 MHz,WWV Time,,2.500,AM,,Receive only,Receive only. WWV / WWVH
+WWV 5 MHz,WWV Time,,5.000,AM,,Receive only,Receive only. WWV / WWVH
+WWV 10 MHz,WWV Time,,10.000,AM,,Receive only,Receive only. WWV / WWVH
+WWV 15 MHz,WWV Time,,15.000,AM,,Receive only,Receive only. WWV / WWVH
+WWV 20 MHz,WWV Time,,20.000,AM,,Receive only,Receive only. WWV
+WWV 25 MHz,WWV Time,,25.000,AM,,Receive only,Receive only. WWV

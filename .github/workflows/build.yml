@@ -55,6 +55,8 @@ jobs:
           ./test_txlevel
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_freqdigits.cpp -o test_freqdigits
           ./test_freqdigits
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_memories.cpp -o test_memories
+          ./test_memories resources/memories-builtin.csv
       - name: Build app
         run: |
           mkdir build && cd build
