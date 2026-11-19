@@ -32,6 +32,7 @@ public:
     explicit TuneEngine(QObject *parent = nullptr);
     void startTune(double level, double hz);
     void stopTune(); // fades out, then releases
+    void setTuneLevel(double level); // while the tone is on: follows the TX level slider
 
 public slots:
     void pushAudio(const QVector<float> &, float) override { }
@@ -123,6 +124,7 @@ public:
 public slots:
     void startTune(double level);
     void stopTune();
+    void setTuneLevel(double level);
     void sendCwId(double level);
     void setTuneHz(double hz);
     void setCwId(const QString &text, int wpm, double pitchHz);
@@ -154,6 +156,10 @@ public:
     explicit TxToolButtons(std::function<double()> level, bool withTune = false, QWidget *parent = nullptr);
     void setTransmitAllowed(bool on);
 
+public slots:
+    // The tab's TX level slider moved: a Tune started here follows it at once.
+    void levelChanged(double level);
+
 private:
     void sync();
 
@@ -161,4 +167,5 @@ private:
     QPushButton *m_tune = nullptr;
     QPushButton *m_cwId = nullptr;
     bool m_allowed = false;
+    bool m_ownTune = false; // this tab's Tune button started the tone
 };

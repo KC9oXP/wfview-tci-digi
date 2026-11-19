@@ -2,6 +2,7 @@
 
 #include "UiStyle.h"
 #include "modemtxsource.h"
+#include "txlevel.h"
 
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -113,6 +114,12 @@ void TuneEngine::startTune(double level, double hz)
     startTx();
 }
 
+void TuneEngine::setTuneLevel(double level)
+{
+    m_level = std::clamp(level, 0.0, 1.0);
+    txSource()->setLevel(float(m_level));
+}
+
 void TuneEngine::stopTune()
 {
     if (!transmitting())
@@ -199,10 +206,17 @@ void TxTools::startTune(double level)
 {
     m_tune->startTune(level, m_tuneHz);
     if (m_tune->transmitting())
-        emit message(
-            tr("Tune: %1 Hz tone at %2 % - click Tune again to stop.").arg(qRound(m_tuneHz)).arg(qRound(level * 100)));
+        emit message(tr("Tune: %1 Hz tone at %2 dB - click Tune again to stop; the TX level slider changes it at once.")
+                         .arg(qRound(m_tuneHz))
+                         .arg(txlevel::levelToDb(level), 0, 'f', 1));
     else
         emit message(tr("Tune: %1").arg(m_tune->status()));
+}
+
+void TxTools::setTuneLevel(double level)
+{
+    if (m_tune->transmitting())
+        m_tune->setTuneLevel(level);
 }
 
 void TxTools::stopTune()
@@ -316,12 +330,30 @@ TxToolButtons::TxToolButtons(std::function<double()> level, bool withTune, QWidg
                 if (tools->tuning())
                     tools->stopTune();
                 else
+                {
                     tools->startTune(m_level ? m_level() : 0.1);
+                    m_ownTune = tools->tuning();
+                }
                 sync();
             });
     connect(m_cwId, &QPushButton::clicked, this, [this, tools]() { tools->sendCwId(m_level ? m_level() : 0.1); });
-    connect(tools, &TxTools::tuningChanged, this, [this](bool) { sync(); });
+    connect(tools,
+            &TxTools::tuningChanged,
+            this,
+            [this](bool on)
+            {
+                if (!on)
+                    m_ownTune = false;
+                sync();
+            });
     sync();
+}
+
+void TxToolButtons::levelChanged(double level)
+{
+    TxTools *tools = TxTools::instance();
+    if (m_ownTune && tools && tools->tuning())
+        tools->setTuneLevel(level);
 }
 
 void TxToolButtons::setTransmitAllowed(bool on)

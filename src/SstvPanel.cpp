@@ -603,6 +603,7 @@ QWidget *SstvPanel::buildTx()
     connect(m_send, &QPushButton::clicked, this, [this]() { m_sstv->sendImage(composeTx()); });
     connect(m_abort, &QPushButton::clicked, m_sstv, &ModemEngine::abortTx);
     connect(m_txLevel, &TxLevelSlider::levelChanged, this, [this](double level) { m_sstv->setTxLevel(level); });
+    connect(m_txLevel, &TxLevelSlider::levelChanged, m_tools, &TxToolButtons::levelChanged);
     connect(m_cwIdAfter, &QCheckBox::toggled, m_sstv, &SstvEngine::setCwIdAfter);
     return box;
 }
