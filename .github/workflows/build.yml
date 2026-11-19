@@ -59,6 +59,8 @@ jobs:
           ./test_memories resources/memories-builtin.csv
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_pskreporter.cpp -o test_pskreporter
           ./test_pskreporter
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_upload.cpp -o test_upload
+          ./test_upload
       - name: Build app
         run: |
           mkdir build && cd build
@@ -71,6 +73,7 @@ jobs:
           mkdir build-tests && cd build-tests
           qmake ../tests/test_e2e.pro CONFIG+=release
           make -j4
+          g++ -std=c++17 -O2 ../tests/fake_tqsl.cpp -o fake_tqsl
           mkdir -p ../screens
           ./test_e2e --screens ../screens
       - uses: actions/upload-artifact@v4
@@ -142,6 +145,7 @@ jobs:
           mkdir build-tests && cd build-tests
           qmake ..\tests\test_e2e.pro CONFIG+=release
           nmake
+          cl /nologo /EHsc ..\tests\fake_tqsl.cpp /Fe:fake_tqsl.exe
           windeployqt --release --no-translations release\test_e2e.exe
           release\test_e2e.exe
       - name: Package

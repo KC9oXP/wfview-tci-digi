@@ -30,6 +30,7 @@ class HellEngine;
 class HellPanel;
 class MemoriesDialog;
 class PskReporter;
+class LogUploader;
 class ModemEngine;
 class PskEngine;
 class PskPanel;
@@ -172,6 +173,10 @@ private:
     QPushButton *m_memBtn = nullptr;
     MemoriesDialog *m_memories = nullptr;
     PskReporter *m_pskr = nullptr;
+    LogUploader *m_uploader = nullptr;
+    QPushButton *m_qrzBtn = nullptr;
+    QPushButton *m_lotwBtn = nullptr;
+    void updateUploadButtons();
     QPushButton *m_pskrBtn = nullptr;
     QTimer m_pskrRefresh;
     QTimer m_txLimit;

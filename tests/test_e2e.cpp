@@ -12,6 +12,7 @@
 #include "CwTxEngine.h"
 #include "FreqEdit.h"
 #include "HellEngine.h"
+#include "LogUploader.h"
 #include "MainWindow.h"
 #include "MemoriesDialog.h"
 #include "MockTciServer.h"
@@ -22,6 +23,7 @@
 #include "QsoLog.h"
 #include "RttyEngine.h"
 #include "RxText.h"
+#include "SecretStore.h"
 #include "SstvEngine.h"
 #include "TciClient.h"
 #include "TxPowerWatch.h"
@@ -41,7 +43,9 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDir>
+#include <QDockWidget>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QHostAddress>
@@ -52,10 +56,13 @@
 #include <QSettings>
 #include <QTabWidget>
 #include <QTableWidget>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTextCursor>
 #include <QTimer>
 #include <QUdpSocket>
+#include <QUrlQuery>
 #include <QWheelEvent>
 #include <cmath>
 #include <cstdio>
@@ -981,6 +988,247 @@ static void runPskReporterAndFreqBox()
     CHECK(!pskr->enabled() && pskrBtn->text() == QStringLiteral("PSKR off"));
 }
 
+// A stand-in for logbook.qrz.com: plain HTTP on localhost, answers from a list.
+class FakeQrz : public QObject
+{
+public:
+    QTcpServer server;
+    QStringList bodies;
+    QStringList answers; // next answers; "RESULT=OK&LOGID=1&COUNT=1" when empty
+    FakeQrz()
+    {
+        server.listen(QHostAddress::LocalHost, 0);
+        QObject::connect(&server,
+                         &QTcpServer::newConnection,
+                         this,
+                         [this]()
+                         {
+                             QTcpSocket *s = server.nextPendingConnection();
+                             auto *buf = new QByteArray();
+                             QObject::connect(
+                                 s,
+                                 &QTcpSocket::readyRead,
+                                 s,
+                                 [this, s, buf]()
+                                 {
+                                     buf->append(s->readAll());
+                                     const int he = buf->indexOf("\r\n\r\n");
+                                     if (he < 0)
+                                         return;
+                                     int len = 0;
+                                     for (const QByteArray &l : buf->left(he).split('\n'))
+                                         if (l.toLower().startsWith("content-length:"))
+                                             len = l.mid(15).trimmed().toInt();
+                                     if (buf->size() < he + 4 + len)
+                                         return;
+                                     bodies << QString::fromUtf8(buf->mid(he + 4, len));
+                                     const QByteArray a
+                                         = (answers.isEmpty() ? QStringLiteral("RESULT=OK&LOGID=1&COUNT=1")
+                                                              : answers.takeFirst())
+                                               .toUtf8();
+                                     s->write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "
+                                              + QByteArray::number(a.size()) + "\r\nConnection: close\r\n\r\n" + a);
+                                     s->disconnectFromHost();
+                                     buf->clear();
+                                 });
+                             QObject::connect(s,
+                                              &QTcpSocket::disconnected,
+                                              s,
+                                              [s, buf]()
+                                              {
+                                                  delete buf;
+                                                  s->deleteLater();
+                                              });
+                         });
+    }
+};
+
+static QString fakeTqslPath()
+{
+    const QDir app(QCoreApplication::applicationDirPath());
+    for (const QString &n : {QStringLiteral("fake_tqsl.exe"), QStringLiteral("fake_tqsl")})
+        for (const QString &d : {app.path(), app.filePath(QStringLiteral(".."))})
+            if (QFileInfo(QDir(d).filePath(n)).isFile())
+                return QDir(d).absoluteFilePath(n);
+    return QString();
+}
+
+static void runUploads()
+{
+    std::printf("\n=== 0.8.0: logged QSO to GridTracker (UDP ADIF), QRZ and LoTW; secrets never shown ===\n");
+    SecretStore::setTestMode(true); // never touch the real Credential Manager
+
+    // protected memory: round trip, last 4
+    {
+        SecretBuffer b("hello", 5);
+        QString seen;
+        b.reveal([&](const char *p, size_t n) { seen = QString::fromUtf8(p, int(n)); });
+        CHECK(seen == QStringLiteral("hello") && b.tail4() == QStringLiteral("ello") && b.size() == 5);
+    }
+
+    MockTciServer server;
+    server.listen();
+    QUdpSocket gridTracker;
+    CHECK(gridTracker.bind(QHostAddress::LocalHost, 0));
+    FakeQrz qrz;
+    LogUploader::setQrzUrlForTests(QUrl(QStringLiteral("http://127.0.0.1:%1/api").arg(qrz.server.serverPort())));
+    const QString fake = fakeTqslPath();
+    std::printf("  fake TQSL: %s\n", fake.isEmpty() ? "(not built: LoTW part skipped)" : qPrintable(fake));
+    LogUploader::setTqslPathForTests(fake);
+    QTemporaryDir tmp;
+    const QString tqslLog = tmp.filePath(QStringLiteral("tqsl.log"));
+    qputenv("FAKE_TQSL_LOG", QFile::encodeName(tqslLog));
+    qputenv("FAKE_TQSL_STATUS", "0");
+
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("TCI/Port"), server.port());
+    settings.setValue(QStringLiteral("TCI/ConnectOnStart"), true);
+    settings.setValue(QStringLiteral("Station/MyCall"), QStringLiteral("KC9OXP"));
+    settings.setValue(QStringLiteral("Station/MyGrid"), QStringLiteral("EN71ar"));
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    settings.setValue(QStringLiteral("Upload/UdpEnabled"), true);
+    settings.setValue(QStringLiteral("Upload/UdpHost"), QStringLiteral("127.0.0.1"));
+    settings.setValue(QStringLiteral("Upload/UdpPort"), gridTracker.localPort());
+    settings.setValue(QStringLiteral("Upload/QrzEnabled"), true);
+    settings.setValue(QStringLiteral("Upload/LotwEnabled"), !fake.isEmpty());
+    settings.setValue(QStringLiteral("Upload/LotwLocation"), QStringLiteral("Home EN71ar"));
+    const QString keyText = QStringLiteral("ABCD-0A0B-1C1D-2E2F");
+    const QString pwText = QStringLiteral("pa ss&word -x");
+    {
+        QString k = keyText, p = pwText;
+        CHECK(SecretStore::save(QStringLiteral("qrz-key"), k) && k.isEmpty()); // the caller's copy is wiped
+        CHECK(SecretStore::save(QStringLiteral("tqsl-password"), p) && p.isEmpty());
+    }
+
+    MainWindow w(&settings);
+    w.show();
+    auto *client = w.findChild<TciClient *>();
+    CHECK(waitFor([&] { return client->isReady(); }, 5000));
+    pump(500);
+    auto *up = w.findChild<LogUploader *>();
+    CHECK(up != nullptr);
+    if (!up)
+        return;
+    auto *qso = w.findChild<QsoLogDock *>();
+    const auto logQso = [&](const QString &call)
+    {
+        qso->setCall(call);
+        for (QPushButton *b : qso->findChildren<QPushButton *>())
+            if (b->text() == QStringLiteral("Log QSO"))
+                b->click();
+    };
+    logQso(QStringLiteral("W1AW"));
+
+    // GridTracker: the ADIF record in one datagram
+    CHECK(waitFor([&] { return gridTracker.hasPendingDatagrams(); }, 3000));
+    QByteArray d(int(gridTracker.pendingDatagramSize()), 0);
+    gridTracker.readDatagram(d.data(), d.size());
+    std::printf("  UDP: %s", d.constData());
+    CHECK(d.contains("<CALL:4>W1AW") && d.contains("<EOR>") && d.contains("<STATION_CALLSIGN:6>KC9OXP"));
+
+    // QRZ: INSERT with the key, everything encoded
+    CHECK(waitFor([&] { return qrz.bodies.size() == 1 && up->qrzWaiting() == 0; }, 5000));
+    if (!qrz.bodies.isEmpty())
+    {
+        const QUrlQuery body(qrz.bodies.first());
+        CHECK(body.queryItemValue(QStringLiteral("KEY")) == keyText);
+        CHECK(body.queryItemValue(QStringLiteral("ACTION")) == QStringLiteral("INSERT"));
+        CHECK(body.queryItemValue(QStringLiteral("ADIF"), QUrl::FullyDecoded).contains(QStringLiteral("<CALL:4>W1AW")));
+        CHECK(!qrz.bodies.first().contains(QLatin1Char('<'))); // encoded, nothing raw
+    }
+    CHECK(up->qrzState() == LogUploader::State::Ok);
+
+    // LoTW: TQSL run with the password as one argument, the station location, the file
+    if (!fake.isEmpty())
+    {
+        CHECK(waitFor([&] { return up->lotwWaiting() == 0 && up->lotwState() == LogUploader::State::Ok; }, 10000));
+        QFile f(tqslLog);
+        const QString t = f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+        std::printf("  fake TQSL saw:\n%s", qPrintable(t.left(600)));
+        CHECK(t.contains(QStringLiteral("arg: -p\narg: ") + pwText + QLatin1Char('\n')));
+        CHECK(t.contains(QStringLiteral("arg: -l\narg: Home EN71ar\n")));
+        CHECK(t.contains(QStringLiteral("arg: -u\n")) && t.contains(QStringLiteral("arg: -x\n")));
+        CHECK(t.contains(QStringLiteral("<CALL:4>W1AW")));
+    }
+
+    // Secrets never in the TCI log
+    QPlainTextEdit *tciLog = nullptr;
+    for (QDockWidget *dock : w.findChildren<QDockWidget *>())
+        if (dock->objectName() == QStringLiteral("tciLog"))
+            tciLog = dock->findChild<QPlainTextEdit *>();
+    CHECK(tciLog != nullptr);
+    if (tciLog)
+    {
+        const QString t = tciLog->toPlainText();
+        CHECK(!t.contains(keyText) && !t.contains(QStringLiteral("pa ss")));
+        if (!fake.isEmpty())
+            CHECK(t.contains(QStringLiteral("-p ********")));
+    }
+
+    // QRZ refuses the key: stops, keeps the QSO; Test key passes again and it goes.
+    qrz.answers << QStringLiteral("RESULT=AUTH&REASON=insufficient privileges");
+    logQso(QStringLiteral("K3WW"));
+    CHECK(waitFor([&] { return up->qrzState() == LogUploader::State::Problem; }, 5000));
+    CHECK(up->qrzWaiting() == 1);
+    logQso(QStringLiteral("W6EL")); // stopped: no request with a refused key
+    pump(500);
+    CHECK(qrz.bodies.size() == 2 && up->qrzWaiting() == 2);
+    bool passed = false;
+    QString passText;
+    QObject::connect(up,
+                     &LogUploader::qrzTestResult,
+                     up,
+                     [&](bool p, const QString &t)
+                     {
+                         passed = p;
+                         passText = t;
+                     });
+    qrz.answers << QStringLiteral("RESULT=OK&DATA=CALLSIGN=KC9OXP&amp;COUNT=42");
+    up->testQrz();
+    CHECK(waitFor([&] { return !passText.isEmpty(); }, 5000));
+    std::printf("  Test key: %s\n", qPrintable(passText));
+    CHECK(passed && passText.contains(QStringLiteral("KC9OXP")) && passText.contains(QStringLiteral("42")));
+    CHECK(QUrlQuery(qrz.bodies.at(2)).queryItemValue(QStringLiteral("ACTION")) == QStringLiteral("STATUS"));
+    CHECK(waitFor([&] { return up->qrzWaiting() == 0; }, 5000)); // a good key: the two waiting went
+    qrz.answers << QStringLiteral("RESULT=FAIL&REASON=invalid api key");
+    passText.clear();
+    up->testQrz();
+    CHECK(waitFor([&] { return !passText.isEmpty(); }, 5000));
+    CHECK(!passed && passText.startsWith(QStringLiteral("Fail")));
+
+    // LoTW: no internet -> waits; a TQSL error -> stops with the reason
+    if (!fake.isEmpty())
+    {
+        qputenv("FAKE_TQSL_STATUS", "11");
+        logQso(QStringLiteral("N1MM"));
+        CHECK(waitFor([&] { return up->lotwState() == LogUploader::State::Waiting; }, 10000));
+        CHECK(up->lotwWaiting() == 1 && up->lotwText().contains(QStringLiteral("reach")));
+        qputenv("FAKE_TQSL_STATUS", "4");
+        up->retryNow();
+        CHECK(waitFor([&] { return up->lotwState() == LogUploader::State::Problem; }, 10000));
+        std::printf("  LoTW after status 4: %s\n", qPrintable(up->lotwText()));
+        qputenv("FAKE_TQSL_STATUS", "0");
+        up->retryNow();
+        CHECK(waitFor([&] { return up->lotwWaiting() == 0 && up->lotwState() == LogUploader::State::Ok; }, 10000));
+    }
+
+    // a QSO whose call is not a call sign: ADIF file only
+    const int before = qrz.bodies.size();
+    logQso(QStringLiteral("TEST TEST"));
+    pump(500);
+    CHECK(qrz.bodies.size() == before);
+
+    // status bar
+    QPushButton *qrzBtn = nullptr;
+    for (QPushButton *b : w.findChildren<QPushButton *>())
+        if (b->text().startsWith(QStringLiteral("QRZ")))
+            qrzBtn = b;
+    CHECK(qrzBtn && qrzBtn->isVisible());
+    SecretStore::forget(QStringLiteral("qrz-key"));
+    SecretStore::forget(QStringLiteral("tqsl-password"));
+    CHECK(!SecretStore::has(QStringLiteral("qrz-key")));
+}
+
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
@@ -1010,6 +1258,7 @@ int main(int argc, char *argv[])
     runWwv();
     runMemories();
     runPskReporterAndFreqBox();
+    runUploads();
     const int screens = args.indexOf(QStringLiteral("--screens"));
     if (screens >= 0)
         renderScreens(args.value(screens + 1, QStringLiteral(".")));

@@ -10,6 +10,7 @@
 #include "FreqEdit.h"
 #include "HellEngine.h"
 #include "HellPanel.h"
+#include "LogUploader.h"
 #include "MemoriesDialog.h"
 #include "NavtexEngine.h"
 #include "NavtexPanel.h"
@@ -229,6 +230,19 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_pskrBtn->setFocusPolicy(Qt::NoFocus);
     m_pskrBtn->setCursor(Qt::PointingHandCursor);
     statusBar()->addPermanentWidget(m_pskrBtn);
+    m_uploader = new LogUploader(m_settings, this);
+    m_qrzBtn = new QPushButton(tr("QRZ"));
+    m_lotwBtn = new QPushButton(tr("LoTW"));
+    for (QPushButton *b : {m_qrzBtn, m_lotwBtn})
+    {
+        b->setFlat(true);
+        b->setFocusPolicy(Qt::NoFocus);
+        b->setCursor(Qt::PointingHandCursor);
+        statusBar()->addPermanentWidget(b);
+        connect(b, &QPushButton::clicked, this, [this]() { m_uploader->editSettings(this); });
+    }
+    connect(m_uploader, &LogUploader::statusChanged, this, &MainWindow::updateUploadButtons);
+    connect(m_uploader, &LogUploader::message, this, &MainWindow::log);
     connect(m_pskrBtn, &QPushButton::clicked, this, &MainWindow::togglePskReporter);
     m_pskrBtn->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_pskrBtn, &QWidget::customContextMenuRequested, this, [this](const QPoint &) { editPskReporter(); });
@@ -798,6 +812,8 @@ void MainWindow::buildMenus()
     }
     opts->addAction(tr("Memories..."), this, &MainWindow::showMemories);
     opts->addAction(tr("PSK Reporter..."), this, &MainWindow::editPskReporter);
+    opts->addAction(
+        tr("Logging and uploads (GridTracker, QRZ, LoTW)..."), this, [this]() { m_uploader->editSettings(this); });
     opts->addAction(tr("ALC warning..."), this, &MainWindow::editAlcLimit);
     opts->addAction(tr("Tune tone and CW ID..."), this, [this]() { m_tools->editSettings(this); });
     opts->addSeparator();
@@ -1434,6 +1450,9 @@ void MainWindow::wireLogs()
                     tr("%1 in the QSO log: Log QSO (Ctrl+L) writes it to the ADIF file.").arg(call), 6000);
             });
     wirePskReporter();
+    // Each logged QSO: to another program, QRZ and/or LoTW as set in Logging and uploads.
+    connect(m_qso, &QsoLogDock::qsoLogged, m_uploader, &LogUploader::qsoLogged);
+    updateUploadButtons();
 }
 
 void MainWindow::updateQsoMode()
@@ -2054,4 +2073,39 @@ void MainWindow::editPskReporter()
     m_pskr->setAutoDetect(autoDet->isChecked());
     m_pskr->setEnabled(enable->isChecked());
     updatePskrButton();
+}
+
+// ---------------------------------------------------------------------------
+// Upload indicators (status bar): shown only for the services that are on
+// ---------------------------------------------------------------------------
+
+void MainWindow::updateUploadButtons()
+{
+    if (!m_uploader || !m_qrzBtn)
+        return;
+    const auto paint = [this](QPushButton *b, bool on, LogUploader::State st, int waiting, const QString &tip)
+    {
+        b->setVisible(on);
+        if (!on)
+            return;
+        QString bg = QStringLiteral("#2e8b3a"); // ok: green
+        if (st == LogUploader::State::Busy)
+            bg = QStringLiteral("#3a6ea5"); // sending: blue
+        else if (st == LogUploader::State::Waiting)
+            bg = QStringLiteral("#d08a00"); // waiting to retry: amber
+        else if (st == LogUploader::State::Problem)
+            bg = QStringLiteral("#b03030"); // stopped: red
+        b->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: white; border-radius: 3px; "
+                                        "padding: 1px 6px; font-weight: bold; }")
+                             .arg(bg));
+        const QString base = b == m_qrzBtn ? tr("QRZ") : tr("LoTW");
+        b->setText(waiting > 0 ? tr("%1 %2").arg(base).arg(waiting) : base);
+        b->setToolTip(tip + tr("\nClick for Logging and uploads."));
+    };
+    paint(m_qrzBtn, m_uploader->qrzEnabled(), m_uploader->qrzState(), m_uploader->qrzWaiting(), m_uploader->qrzText());
+    paint(m_lotwBtn,
+          m_uploader->lotwEnabled(),
+          m_uploader->lotwState(),
+          m_uploader->lotwWaiting(),
+          m_uploader->lotwText());
 }

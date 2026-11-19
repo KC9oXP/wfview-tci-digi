@@ -8,7 +8,7 @@ DEFINES += APP_VERSION=\\\"test\\\"
 win32 {
     msvc: QMAKE_CXXFLAGS += /utf-8
     DEFINES += _USE_MATH_DEFINES NOMINMAX
-    LIBS += -lshell32
+    LIBS += -lshell32 -ladvapi32 -lcrypt32
 }
 
 INCLUDEPATH += $$PWD $$PWD/../src $$PWD/../engine $$PWD/../engine/ggmorse/include
@@ -62,6 +62,9 @@ HEADERS += \
     ../src/UpdateCheck.h \
     ../src/MemoriesDialog.h \
     ../src/PskReporter.h \
+    ../src/SecretStore.h \
+    ../src/LogUploader.h \
+    ../engine/uploadcore.h \
     ../engine/callspot.h \
     ../engine/pskrcore.h \
     ../engine/memories.h \
@@ -114,6 +117,8 @@ SOURCES += \
     ../src/UpdateCheck.cpp \
     ../src/MemoriesDialog.cpp \
     ../src/PskReporter.cpp \
+    ../src/SecretStore.cpp \
+    ../src/LogUploader.cpp \
     ../src/MainWindow.cpp \
     ../engine/sstvcore.cpp \
     ../engine/wefaxcore.cpp \

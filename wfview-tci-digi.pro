@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.7.0
+VERSION = 0.8.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -18,7 +18,7 @@ win32 {
     RC_ICONS = icons/wfview-tci-digi.ico
     msvc: QMAKE_CXXFLAGS += /utf-8
     DEFINES += _USE_MATH_DEFINES NOMINMAX
-    LIBS += -lshell32
+    LIBS += -lshell32 -ladvapi32 -lcrypt32
 }
 
 INCLUDEPATH += src engine engine/ggmorse/include
@@ -72,6 +72,9 @@ HEADERS += \
     src/UpdateCheck.h \
     src/MemoriesDialog.h \
     src/PskReporter.h \
+    src/SecretStore.h \
+    src/LogUploader.h \
+    engine/uploadcore.h \
     engine/callspot.h \
     engine/pskrcore.h \
     src/MainWindow.h \
@@ -147,6 +150,8 @@ SOURCES += \
     src/UpdateCheck.cpp \
     src/MemoriesDialog.cpp \
     src/PskReporter.cpp \
+    src/SecretStore.cpp \
+    src/LogUploader.cpp \
     src/MainWindow.cpp \
     engine/sstvcore.cpp \
     engine/wefaxcore.cpp \

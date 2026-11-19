@@ -312,6 +312,28 @@ station hears to [pskreporter.info](https://pskreporter.info), where they show o
   hour unless it moves band; mode names are ADIF (CW, RTTY, PSK31, OLIVIA, CONTESTI,
   AMTORFEC). A *test server* option sends to PSK Reporter's packet checker instead of the map.
 
+**Logging and uploads** (Options > *Logging and uploads...*; status bar *QRZ* / *LoTW*): every
+logged QSO is always written to the ADIF file. Each one can also go, as soon as it is logged:
+- *To another program* as an ADIF record over UDP, e.g. GridTracker2 (Settings > General >
+  Receive ADIF UDP Broadcasts For Logging, port 2333), which then uploads with its own LoTW / QRZ
+  settings. Nothing secret is stored in this app.
+- *Straight to your QRZ.com logbook* with its logbook API key (QRZ subscription needed). *Test key*
+  answers Pass or Fail.
+- *Straight to LoTW*: TQSL signs and uploads in the background (no TQSL window, no password to type)
+  with the certificate password saved once, or none if the certificate has no password. TQSL is found
+  where its installer put it; the station location is the name set up in TQSL.
+- A QSO that cannot be sent (no internet) waits and goes with the next one; *Retry now* sends it at
+  once. A login problem (wrong key or password) stops that service and turns its button red until it
+  is fixed, instead of trying again and again. Status bar: green sent, blue sending, amber waiting,
+  red stopped.
+- Security: the key and password are kept in Windows Credential Manager, never in a file, and shown
+  only as stars. When used, a secret is decrypted into locked memory (kept out of the page file and
+  encrypted in place while it waits), handed to the HTTPS request or TQSL, and wiped. The QRZ address
+  is built in (a settings file cannot point the key elsewhere), redirects are not followed, every
+  field is encoded, and nothing secret is written to the logs (TQSL's command line is shown with
+  `-p ********`). Outside Windows there is no supported store yet, so secrets last only until the
+  app closes. As with any program, malware running as your Windows user could still read them.
+
 **Logs, scrollback, screenshots, recordings**
 - *Session log*: everything decoded and sent, a text file per mode per UTC day, with a
   header line for each change of frequency or settings.
@@ -426,11 +448,14 @@ g++ -std=c++17 -O2 -Iengine tests/test_memories.cpp -o test_memories && ./test_m
 # PSK Reporter datagrams (checked byte for byte against the sample on pskreporter.info/pskdev)
 # and callsign spotting in decoded text
 g++ -std=c++17 -O2 -Iengine tests/test_pskreporter.cpp -o test_pskreporter
+# Log uploads: QRZ form encoding and replies, TQSL command line and status codes
+g++ -std=c++17 -O2 -Iengine tests/test_upload.cpp -o test_upload
 
 # End to end against a mock of wfview's TCI server (~3 min); --new runs only the
 # newer parts (WAV playback into the newer decoders, logs, Olivia / SSTV / AMTOR
 # transmit, Tune and CW ID)
-qmake ../tests/test_e2e.pro && make && QT_QPA_PLATFORM=offscreen ./test_e2e
+qmake ../tests/test_e2e.pro && make && g++ -std=c++17 -O2 ../tests/fake_tqsl.cpp -o fake_tqsl
+QT_QPA_PLATFORM=offscreen ./test_e2e
 ```
 
 `test_e2e --serve 50001` runs only the mock server, which plays an RTTY station
