@@ -1,7 +1,7 @@
 #pragma once
 
 // PSK Reporter: sends the callsigns this station hears to pskreporter.info (see
-// engine/pskreporter.h for the datagram format and the sending rules).
+// engine/pskrcore.h for the datagram format and the sending rules).
 //
 // Off until the user turns it on. Two ways a call gets reported:
 //  - Logged: every QSO logged in the QSO log (call, frequency, mode).
@@ -10,7 +10,7 @@
 // Reports go out at most every 5 minutes, timed from when reporting was turned on.
 
 #include "callspot.h"
-#include "pskreporter.h"
+#include "pskrcore.h"
 
 #include <QDateTime>
 #include <QHostAddress>

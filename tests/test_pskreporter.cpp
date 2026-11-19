@@ -2,7 +2,7 @@
 // Build: g++ -std=c++17 -O2 -Wall -Iengine tests/test_pskreporter.cpp -o test_pskreporter
 
 #include "callspot.h"
-#include "pskreporter.h"
+#include "pskrcore.h"
 
 #include <cstdio>
 

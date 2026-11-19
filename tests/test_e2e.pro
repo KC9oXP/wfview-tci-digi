@@ -63,7 +63,7 @@ HEADERS += \
     ../src/MemoriesDialog.h \
     ../src/PskReporter.h \
     ../engine/callspot.h \
-    ../engine/pskreporter.h \
+    ../engine/pskrcore.h \
     ../engine/memories.h \
     ../src/MainWindow.h
 
