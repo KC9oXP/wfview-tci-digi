@@ -57,8 +57,9 @@ public:
     }
 };
 // Classes filter choices (index 0 = any).
-const unsigned kClassBits[]
-    = {0, memories::Novice, memories::Technician, memories::General, memories::Advanced, memories::Extra};
+const unsigned kClassBits[] = {
+    0, memories::Novice, memories::Technician, memories::General, memories::Advanced, memories::Extra, memories::Other};
+constexpr int kClassChoices = 7;
 } // namespace
 
 QString MemoriesDialog::filePath()
@@ -95,9 +96,11 @@ MemoriesDialog::MemoriesDialog(QSettings *settings, const QStringList &tabNames,
     top->addWidget(new QLabel(tr("License")));
     m_classFilter = new QComboBox();
     m_classFilter->addItems(
-        {tr("Any class"), tr("Novice"), tr("Technician"), tr("General"), tr("Advanced"), tr("Extra")});
-    m_classFilter->setToolTip(tr("Only list memories a US license class may transmit on (FCC Part 97). Receive-only "
-                                 "memories are always listed."));
+        {tr("Any class"), tr("Novice"), tr("Technician"), tr("General"), tr("Advanced"), tr("Extra"), tr("Other")});
+    m_classFilter->setToolTip(
+        tr("Only list memories a US license class may transmit on (FCC Part 97). Receive-only "
+           "memories are always listed.\nOther: memories you marked Other (11 m, MARS, other countries ...) and ones "
+           "outside the US amateur rules."));
     top->addWidget(m_classFilter);
     m_search = new QLineEdit();
     m_search->setPlaceholderText(tr("Search name or comment"));
@@ -126,6 +129,8 @@ MemoriesDialog::MemoriesDialog(QSettings *settings, const QStringList &tabNames,
     auto *row = new QHBoxLayout();
     auto *go = new QPushButton(tr("Go"));
     go->setToolTip(tr("Tune to the selected memory: tab, sub-mode, dial and sideband."));
+    auto *blank = new QPushButton(tr("New..."));
+    blank->setToolTip(tr("Add a memory by typing it in (frequency, tab, classes ...)."));
     auto *add = new QPushButton(tr("Add current..."));
     add->setToolTip(tr("Save the frequency, sideband, tab and sub-mode now in use as a memory."));
     auto *edit = new QPushButton(tr("Edit..."));
@@ -143,6 +148,7 @@ MemoriesDialog::MemoriesDialog(QSettings *settings, const QStringList &tabNames,
     row->addWidget(go);
     row->addWidget(m_singleClick);
     row->addStretch(1);
+    row->addWidget(blank);
     row->addWidget(add);
     row->addWidget(edit);
     row->addWidget(del);
@@ -159,6 +165,7 @@ MemoriesDialog::MemoriesDialog(QSettings *settings, const QStringList &tabNames,
     connect(m_search, &QLineEdit::textChanged, this, &MemoriesDialog::fill);
     connect(go, &QPushButton::clicked, this, &MemoriesDialog::tuneSelected);
     connect(add, &QPushButton::clicked, this, &MemoriesDialog::addCurrent);
+    connect(blank, &QPushButton::clicked, this, &MemoriesDialog::addNew);
     connect(edit, &QPushButton::clicked, this, &MemoriesDialog::editSelected);
     connect(del, &QPushButton::clicked, this, &MemoriesDialog::deleteSelected);
     connect(builtin, &QPushButton::clicked, this, &MemoriesDialog::addMissingBuiltIn);
@@ -311,12 +318,14 @@ bool MemoriesDialog::passes(const memories::Memory &m) const
         tab = m_mainTab;
     if (!tab.isEmpty() && q(m.tab).compare(tab, Qt::CaseInsensitive) != 0)
         return false;
-    const unsigned bit = kClassBits[std::clamp(m_classFilter->currentIndex(), 0, 5)];
+    const unsigned bit = kClassBits[std::clamp(m_classFilter->currentIndex(), 0, kClassChoices - 1)];
     if (bit)
     {
         memories::Emission e;
         const bool rxOnly = !memories::emissionForTab(m.tab, e);
-        if (!rxOnly && !(memories::parseClasses(memories::classesText(m)) & bit))
+        const unsigned mask = memories::parseClasses(memories::classesText(m));
+        const bool other = bit == memories::Other && ((mask & memories::Other) || mask == 0);
+        if (!rxOnly && !other && !(mask & bit))
             return false;
     }
     const QString needle = m_search->text().trimmed();
@@ -409,8 +418,38 @@ bool MemoriesDialog::editDialog(memories::Memory &m, const QString &title)
     side->addItem(QStringLiteral("LSB"), QStringLiteral("LSB"));
     side->addItem(QStringLiteral("AM"), QStringLiteral("AM"));
     side->setCurrentIndex(std::max(0, side->findData(q(m.sideband))));
-    auto *cls = new QLineEdit(q(m.classes));
-    cls->setPlaceholderText(tr("Blank: worked out from FCC Part 97"));
+    // License classes: tick boxes; none ticked = worked out from FCC Part 97.
+    auto *clsRow = new QWidget();
+    auto *clsLay = new QHBoxLayout(clsRow);
+    clsLay->setContentsMargins(0, 0, 0, 0);
+    struct ClsName
+    {
+        unsigned bit;
+        QString name;
+    };
+    const ClsName clsNames[] = {{memories::Novice, tr("Novice")},
+                                {memories::Technician, tr("Technician")},
+                                {memories::General, tr("General")},
+                                {memories::Advanced, tr("Advanced")},
+                                {memories::Extra, tr("Extra")},
+                                {memories::Other, tr("Other")}};
+    QList<QPair<QCheckBox *, unsigned>> clsBoxes;
+    const unsigned start
+        = memories::parseClasses(m.classes.empty() && m.dialHz > 0 ? memories::classesText(m) : m.classes);
+    for (const ClsName &c : clsNames)
+    {
+        auto *cb = new QCheckBox(c.name);
+        cb->setChecked(start & c.bit);
+        if (c.bit == memories::Other)
+            cb->setToolTip(tr("Your own class for things outside the US amateur rules: 11 m, MARS, another "
+                              "country's bands ..."));
+        clsLay->addWidget(cb);
+        clsBoxes << qMakePair(cb, c.bit);
+    }
+    auto *fromRules = new QPushButton(tr("From the rules"));
+    fromRules->setToolTip(tr("Tick the classes FCC Part 97 allows for this tab, frequency and sideband."));
+    clsLay->addWidget(fromRules);
+    clsLay->addStretch(1);
     auto *comment = new QLineEdit(q(m.comment));
     comment->setMinimumWidth(380);
     form->addRow(tr("Name"), name);
@@ -418,11 +457,24 @@ bool MemoriesDialog::editDialog(memories::Memory &m, const QString &title)
     form->addRow(tr("Sub-mode"), sub);
     form->addRow(tr("Dial MHz"), dial);
     form->addRow(tr("Sideband"), side);
-    form->addRow(tr("License classes"), cls);
+    form->addRow(tr("License classes"), clsRow);
     form->addRow(tr("Comment"), comment);
     auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     form->addRow(bb);
     connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    connect(fromRules,
+            &QPushButton::clicked,
+            &dlg,
+            [&]()
+            {
+                memories::Memory t;
+                t.tab = s(tab->currentText());
+                t.dialHz = memories::parseDial(s(dial->text()));
+                t.sideband = s(side->currentData().toString());
+                const unsigned mask = memories::parseClasses(memories::classesText(t));
+                for (const auto &b : clsBoxes)
+                    b.first->setChecked(mask & b.second);
+            });
     connect(bb,
             &QDialogButtonBox::accepted,
             &dlg,
@@ -444,9 +496,12 @@ bool MemoriesDialog::editDialog(memories::Memory &m, const QString &title)
     m.sideband = s(side->currentData().toString());
     m.band = memories::bandName(m.dialHz);
     m.comment = s(comment->text().trimmed());
-    m.classes = s(cls->text().trimmed());
-    if (m.classes.empty())
-        m.classes = memories::classesText(m); // written out, so the file shows it too
+    unsigned mask = 0;
+    for (const auto &b : clsBoxes)
+        if (b.first->isChecked())
+            mask |= b.second;
+    // Written out (worked out from the rules when nothing is ticked), so the file shows it too.
+    m.classes = mask ? memories::classNames(mask) : memories::classesText(m);
     return true;
 }
 
@@ -460,6 +515,19 @@ void MemoriesDialog::addCurrent()
     }
     m.name = s(QStringLiteral("%1 %2").arg(q(m.tab), q(memories::bandName(m.dialHz))).trimmed());
     if (!editDialog(m, tr("Add memory")))
+        return;
+    m_list.push_back(m);
+    if (save())
+        m_status->setText(tr("Added %1.").arg(q(m.name)));
+    fill();
+}
+
+void MemoriesDialog::addNew()
+{
+    memories::Memory m;
+    m.tab = s(m_mainTab);
+    m.sideband = "USB";
+    if (!editDialog(m, tr("New memory")))
         return;
     m_list.push_back(m);
     if (save())

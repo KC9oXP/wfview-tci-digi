@@ -17,10 +17,12 @@
 #include "OliviaPanel.h"
 #include "PskEngine.h"
 #include "PskPanel.h"
+#include "PskReporter.h"
 #include "QsoLog.h"
 #include "RadioModes.h"
 #include "RttyEngine.h"
 #include "RttyPanel.h"
+#include "RxText.h"
 #include "SessionLog.h"
 #include "SpectrumEngine.h"
 #include "SstvEngine.h"
@@ -45,11 +47,13 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QDockWidget>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFormLayout>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
@@ -219,6 +223,15 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     statusBar()->addWidget(m_diag, 1);
     m_audioState = new QLabel();
     statusBar()->addPermanentWidget(m_audioState);
+    m_pskr = new PskReporter(m_settings, this);
+    m_pskrBtn = new QPushButton(tr("PSKR"));
+    m_pskrBtn->setFlat(true);
+    m_pskrBtn->setFocusPolicy(Qt::NoFocus);
+    m_pskrBtn->setCursor(Qt::PointingHandCursor);
+    statusBar()->addPermanentWidget(m_pskrBtn);
+    connect(m_pskrBtn, &QPushButton::clicked, this, &MainWindow::togglePskReporter);
+    m_pskrBtn->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_pskrBtn, &QWidget::customContextMenuRequested, this, [this](const QPoint &) { editPskReporter(); });
 
     buildLogDock();
     m_update = new UpdateCheck(m_settings, this);
@@ -624,9 +637,10 @@ QWidget *MainWindow::buildConnectionBar()
     }
 
     m_freq = new FreqEdit();
-    m_freq->setToolTip(tr("Receiver frequency in Hz. Over a digit: mouse wheel steps it, click the top half "
-                          "to step up, the bottom half to step down.\nTo type one (e.g. 14.080 or 14080k), click "
-                          "beside the digits, type and press Enter."));
+    m_freq->setToolTip(tr("Receiver frequency in Hz (all 9 digits, so you can step from 1.8 to 10 MHz in one "
+                          "turn). Over a digit: mouse wheel steps it, click the top half to step up, the bottom "
+                          "half to step down.\nTo type one (e.g. 14.080 or 14080k): right-click > Type a "
+                          "frequency..., type and press Enter (Esc cancels)."));
     QFont ff = m_freq->font();
     ff.setPointSizeF(ff.pointSizeF() * 1.3);
     ff.setBold(true);
@@ -658,8 +672,9 @@ QWidget *MainWindow::buildConnectionBar()
                 const qint64 hz = parseFreq(m_freq->text());
                 if (hz > 0)
                     m_client->setFrequency(hz);
-                m_freq->setText(formatFreq(m_client->frequencyHz()));
                 m_freq->clearFocus();
+                if (hz > 0)
+                    m_freq->setText(FreqEdit::format(hz)); // until the radio reports it
             });
     connect(m_freq, &FreqEdit::tuneRequested, m_client, &TciClient::setFrequency);
     connect(m_mode, &QComboBox::activated, this, [this](int) { m_client->setModulation(m_mode->currentText()); });
@@ -782,6 +797,7 @@ void MainWindow::buildMenus()
                 });
     }
     opts->addAction(tr("Memories..."), this, &MainWindow::showMemories);
+    opts->addAction(tr("PSK Reporter..."), this, &MainWindow::editPskReporter);
     opts->addAction(tr("ALC warning..."), this, &MainWindow::editAlcLimit);
     opts->addAction(tr("Tune tone and CW ID..."), this, [this]() { m_tools->editSettings(this); });
     opts->addSeparator();
@@ -1404,6 +1420,20 @@ void MainWindow::wireLogs()
             });
     connect(m_psk, &ModemEngine::settingsChanged, this, &MainWindow::updateQsoMode);
     connect(m_olivia, &ModemEngine::settingsChanged, this, &MainWindow::updateQsoMode);
+
+    // A callsign double-clicked (or "Log <call>") in any receive pane goes to the QSO log.
+    connect(RxCalls::instance(),
+            &RxCalls::callPicked,
+            this,
+            [this](const QString &call, const QString &)
+            {
+                m_qso->setCall(call);
+                m_qso->show();
+                m_qso->raise();
+                statusBar()->showMessage(
+                    tr("%1 in the QSO log: Log QSO (Ctrl+L) writes it to the ADIF file.").arg(call), 6000);
+            });
+    wirePskReporter();
 }
 
 void MainWindow::updateQsoMode()
@@ -1824,4 +1854,204 @@ void MainWindow::applyMemory(const memories::Memory &m)
     p.hz = m.dialHz;
     p.sideband = QString::fromStdString(m.sideband);
     applyPreset(p, tr("Memory"));
+}
+
+// ---------------------------------------------------------------------------
+// PSK Reporter
+// ---------------------------------------------------------------------------
+
+qint64 MainWindow::rfHz(double audioHz) const
+{
+    const qint64 dial = m_client->frequencyHz();
+    if (dial <= 0)
+        return 0;
+    const qint64 a = qRound64(audioHz);
+    return RadioModes::isLsb(m_client->modulation()) ? dial - a : dial + a;
+}
+
+void MainWindow::feedPskr(const QString &tab, const QString &subMode, const QString &text, double audioHz)
+{
+    if (!m_pskr->enabled() || !m_pskr->autoDetect())
+        return;
+    // Only what was received: our own sent text (and anything while keyed) is skipped.
+    if (anyTransmitting() || m_client->radioTransmitting() || text.contains(QLatin1String("[TX]")))
+        return;
+    m_pskr->feedText(tab, PskReporter::modeFor(tab, subMode), text, rfHz(audioHz));
+}
+
+void MainWindow::wirePskReporter()
+{
+    connect(m_cw,
+            &CwDecoder::textAppended,
+            this,
+            [this](const QString &t) { feedPskr(QStringLiteral("CW"), QString(), t, m_cw->currentPitchHz()); });
+    connect(m_rtty,
+            &RttyEngine::textAppended,
+            this,
+            [this](const QString &t)
+            { feedPskr(QStringLiteral("RTTY"), QString(), t, m_rtty->markHz() - m_rtty->shift() / 2.0); });
+    connect(m_psk,
+            &ModemEngine::textAppended,
+            this,
+            [this](const QString &t) {
+                feedPskr(
+                    QStringLiteral("PSK"), QString::fromLatin1(psk::speedName(m_psk->speed())), t, m_psk->carrierHz());
+            });
+    connect(m_olivia,
+            &ModemEngine::textAppended,
+            this,
+            [this](const QString &t)
+            { feedPskr(QStringLiteral("Olivia"), m_olivia->modeName(), t, m_olivia->carrierHz()); });
+    connect(m_amtor,
+            &ModemEngine::textAppended,
+            this,
+            [this](const QString &t) { feedPskr(QStringLiteral("AMTOR"), QString(), t, m_amtor->carrierHz()); });
+
+    // Every logged QSO is reported (when PSK Reporter is on).
+    connect(m_qso,
+            &QsoLogDock::qsoLogged,
+            this,
+            [this](const Qso &q)
+            {
+                QString mode = q.mode;
+                if (q.mode == QLatin1String("PSK") && !q.submode.isEmpty())
+                    mode = q.submode; // PSK31 / PSK63 / PSK125
+                else if (q.mode == QLatin1String("TOR"))
+                    mode = QStringLiteral("AMTORFEC");
+                // The RF frequency of the signal on the tab in use, else the dial.
+                double audio = 0;
+                QWidget *w = m_tabs->currentWidget();
+                if (w == m_cwPanel)
+                    audio = m_cw->currentPitchHz();
+                else if (w == m_rttyPanel)
+                    audio = m_rtty->markHz() - m_rtty->shift() / 2.0;
+                else if (w == m_pskPanel)
+                    audio = m_psk->carrierHz();
+                else if (w == m_oliviaPanel)
+                    audio = m_olivia->carrierHz();
+                else if (w == m_amtorPanel)
+                    audio = m_amtor->carrierHz();
+                const qint64 hz = audio > 0 ? rfHz(audio) : q.freqHz;
+                m_pskr->addSpot(q.call, hz > 0 ? hz : q.freqHz, mode);
+            });
+
+    // Station: the call from the tabs' My call boxes, the grid from the QSO log.
+    m_pskr->setMyCall(m_psk->myCall().isEmpty() ? m_rtty->myCall() : m_psk->myCall());
+    connect(m_rtty, &RttyEngine::settingsChanged, this, [this]() { m_pskr->setMyCall(m_rtty->myCall()); });
+    for (ModemEngine *e : m_modems)
+        connect(e, &ModemEngine::settingsChanged, this, [this, e]() { m_pskr->setMyCall(e->myCall()); });
+    connect(m_qso, &QsoLogDock::myGridChanged, m_pskr, &PskReporter::setMyGrid);
+
+    connect(m_pskr, &PskReporter::statusChanged, this, &MainWindow::updatePskrButton);
+    connect(m_pskr, &PskReporter::message, this, &MainWindow::log);
+    m_pskrRefresh.setInterval(15000); // the tooltip shows when the next send is
+    connect(&m_pskrRefresh, &QTimer::timeout, this, &MainWindow::updatePskrButton);
+    m_pskrRefresh.start();
+    updatePskrButton();
+}
+
+void MainWindow::updatePskrButton()
+{
+    if (!m_pskrBtn)
+        return;
+    const bool on = m_pskr->enabled();
+    const bool problem = on && (!m_pskr->configured() || !m_pskr->lastError().isEmpty());
+    QString text = on ? tr("PSKR %1").arg(m_pskr->spotsSent()) : tr("PSKR off");
+    if (on && m_pskr->testServer())
+        text += tr(" (test)");
+    m_pskrBtn->setText(text);
+    // green on, amber on with a problem, grey off
+    const QString bg = !on ? QStringLiteral("transparent")
+        : problem          ? QStringLiteral("#d08a00")
+                           : QStringLiteral("#2e8b3a");
+    const QString fg = on ? QStringLiteral("white") : palette().color(QPalette::Disabled, QPalette::WindowText).name();
+    m_pskrBtn->setStyleSheet(
+        QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 6px; "
+                       "font-weight: %3; }")
+            .arg(bg, fg, on ? QStringLiteral("bold") : QStringLiteral("normal")));
+    m_pskrBtn->setToolTip(m_pskr->statusText() + tr("\nRight-click or Options > PSK Reporter... for settings."));
+}
+
+void MainWindow::togglePskReporter()
+{
+    if (m_pskr->enabled())
+    {
+        m_pskr->setEnabled(false);
+        return;
+    }
+    if (!m_pskr->configured())
+    {
+        editPskReporter(); // asks for the call and grid, then turns it on
+        return;
+    }
+    m_pskr->setEnabled(true);
+}
+
+void MainWindow::editPskReporter()
+{
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("PSK Reporter"));
+    auto *form = new QFormLayout(&dlg);
+    auto *intro = new QLabel(tr("Sends the callsigns this station hears to pskreporter.info, where they show on "
+                                "the map. Reports go out at most every 5 minutes."));
+    intro->setWordWrap(true);
+    form->addRow(intro);
+    auto *enable = new QCheckBox(tr("Report to PSK Reporter"));
+    enable->setChecked(m_pskr->enabled() || !m_pskr->configured());
+    form->addRow(enable);
+    auto *autoDet = new QCheckBox(tr("Auto-detect callsigns in the decoded text"));
+    autoDet->setChecked(m_pskr->autoDetect());
+    autoDet->setToolTip(tr("Off: only QSOs you log are reported.\nOn: also any call seen 3 times right after DE or CQ "
+                           "(\"CQ CQ DE W1AW W1AW W1AW\") within 10 minutes near the same frequency, in the CW, "
+                           "RTTY, PSK, Olivia/Contestia and AMTOR tabs."));
+    form->addRow(autoDet);
+    const QString call = m_pskr->myCall();
+    auto *callLabel = new QLabel(call.isEmpty() ? tr("<i>not set: type it in any tab's My call box</i>") : call);
+    form->addRow(tr("Your call"), callLabel);
+    auto *grid = new QLineEdit(m_pskr->myGrid());
+    grid->setPlaceholderText(tr("e.g. EN71ar"));
+    grid->setToolTip(tr("Your Maidenhead grid, 4 or 6 characters (also the QSO log's My grid)."));
+    form->addRow(tr("Your grid"), grid);
+    auto *ant = new QLineEdit(m_pskr->antenna());
+    ant->setPlaceholderText(tr("optional, e.g. 314 ft random wire"));
+    form->addRow(tr("Antenna"), ant);
+    auto *test = new QCheckBox(tr("Send to the PSK Reporter test server (nothing shows on the map)"));
+    test->setChecked(m_pskr->testServer());
+    test->setToolTip(tr("pskreporter.info port 14739: the packets are checked, see "
+                        "https://pskreporter.info/cgi-bin/psk-analysis.pl"));
+    form->addRow(test);
+    auto *status = new QLabel(m_pskr->statusText());
+    status->setWordWrap(true);
+    form->addRow(status);
+    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    form->addRow(bb);
+    connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    connect(bb,
+            &QDialogButtonBox::accepted,
+            &dlg,
+            [&]()
+            {
+                if (enable->isChecked() && !callspot::isCallsign(call.toStdString()))
+                {
+                    QMessageBox::information(&dlg,
+                                             dlg.windowTitle(),
+                                             tr("Type your call sign in the My call box of any transmit tab first."));
+                    return;
+                }
+                if (enable->isChecked() && !PskReporter::validGrid(grid->text()))
+                {
+                    QMessageBox::information(&dlg, dlg.windowTitle(), tr("Your grid should look like EN71 or EN71ar."));
+                    return;
+                }
+                dlg.accept();
+            });
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+    m_pskr->setMyGrid(grid->text());
+    m_qso->setMyGrid(grid->text());
+    m_pskr->setAntenna(ant->text());
+    m_pskr->setTestServer(test->isChecked());
+    m_pskr->setAutoDetect(autoDet->isChecked());
+    m_pskr->setEnabled(enable->isChecked());
+    updatePskrButton();
 }

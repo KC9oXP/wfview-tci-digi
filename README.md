@@ -250,9 +250,12 @@ lamps tune the radio there in AM; the one you are on is green.
 - The mode check accepts every data-mode name servers use (DIGU/DIGL, DATA-U/DATA-L,
   USB-D/LSB-D, PKTUSB ...) and plain USB/LSB.
 
-**Frequency box** (top bar): point at a digit and turn the mouse wheel to step it, or click
-the top half of the digit to step up and the bottom half to step down. To type a frequency
-(14.080, 14080k), click beside the digits, type and press Enter.
+**Frequency box** (top bar): always 9 digits with leading zeros (`001.810.000`), so every digit
+up to 100 MHz can be stepped: on 160 m, turn the 10 MHz digit up to go straight to 10 MHz. Point
+at a digit and turn the mouse wheel to step it, or click the top half of the digit to step up
+and the bottom half to step down. Clicks only step: they never put a text cursor in the box. To
+type a frequency (14.080, 14080k): right-click > *Type a frequency...* (or Tab into the box),
+type and press Enter; Esc cancels.
 
 **Transmit safety**
 - Options > *TX time limit* (default 5 minutes; off, 1-10): the transmitter is released
@@ -278,7 +281,9 @@ the top half of the digit to step up and the bottom half to step down. To type a
   license classes and a comment. Click one and the app switches to that tab, sets the
   sub-mode and tunes the dial and sideband over TCI (untick *Tune on click* to use
   double-click or Go instead). Filter by tab, by license class (Novice, Technician,
-  General, Advanced, Extra) or by text; *Add current...* saves what you are on now.
+  General, Advanced, Extra, Other) or by text; *New...* adds one by typing it in, *Add
+  current...* saves what you are on now. *Other* is a class of your own for things outside the
+  US amateur rules (11 m, MARS, another country's bands).
   - The list is `memories.csv` in the data folder, so it can also be edited in Excel or a
     text editor; changes saved there show in the window straight away. Columns: `Name,
     Tab, Sub-mode, Dial MHz, Sideband, Band, Classes, Comment` (Dial MHz also takes Hz or
@@ -293,12 +298,28 @@ the top half of the digit to step up and the bottom half to step down. To type a
     to every class, Novice and Technician have CW only on 80, 40 and 15 m. 60 m is not
     covered (channel rules). This is a guide: check the current rules before transmitting.
 
+**PSK Reporter** (status bar button, Options > *PSK Reporter...*): sends the callsigns this
+station hears to [pskreporter.info](https://pskreporter.info), where they show on the map.
+- Off until you turn it on. The button shows *PSKR off*, or *PSKR* and the number of spots sent
+  (green; amber when something needs attention, e.g. no grid). Click it to turn reporting on or
+  off; the first time it asks for your grid (your call comes from the tabs' My call box).
+  Right-click for the settings.
+- What is reported: every QSO you log, and, with *Auto-detect* ticked, any call seen 3 times
+  right after DE or CQ (`CQ CQ DE W1AW W1AW W1AW`) within 10 minutes near the same frequency
+  in the CW, RTTY, PSK, Olivia/Contestia and AMTOR tabs. Text you send is never read.
+- As the PSK Reporter developer page asks: at most one report every 5 minutes (timed from when
+  you turn it on, not the clock), each call at most once per 5 minutes and otherwise once an
+  hour unless it moves band; mode names are ADIF (CW, RTTY, PSK31, OLIVIA, CONTESTI,
+  AMTORFEC). A *test server* option sends to PSK Reporter's packet checker instead of the map.
+
 **Logs, scrollback, screenshots, recordings**
 - *Session log*: everything decoded and sent, a text file per mode per UTC day, with a
   header line for each change of frequency or settings.
 - *QSO log* (View > QSO log, Ctrl+Shift+Q): Call / RST / Name / QTH / Grid / Comment with
   frequency, band, mode and times filled in; *Log QSO* (Ctrl+L) appends an ADIF record
-  (`wfview-tci-digi.adi`).
+  (`wfview-tci-digi.adi` in the logs folder, for QRZ, LoTW via TQSL, or any logger that imports
+  ADIF). Double-click a callsign in any receive pane (or right-click > *Log <call>*) to put it
+  in the QSO log's Call box.
 - Receive panes keep a long history: scroll back and the view stays put while new text
   arrives (*Live* returns), Ctrl+F finds text, right-click saves it.
 - Waterfalls keep the last few minutes: Shift+wheel or PgUp/PgDn scrolls back, Esc
@@ -402,6 +423,9 @@ g++ -std=c++17 -O2 -Iengine tests/test_txlevel.cpp -o test_txlevel
 g++ -std=c++17 -O2 -Iengine tests/test_freqdigits.cpp -o test_freqdigits
 # Memories file format and license-class rules (the argument also checks the built-in list)
 g++ -std=c++17 -O2 -Iengine tests/test_memories.cpp -o test_memories && ./test_memories resources/memories-builtin.csv
+# PSK Reporter datagrams (checked byte for byte against the sample on pskreporter.info/pskdev)
+# and callsign spotting in decoded text
+g++ -std=c++17 -O2 -Iengine tests/test_pskreporter.cpp -o test_pskreporter
 
 # End to end against a mock of wfview's TCI server (~3 min); --new runs only the
 # newer parts (WAV playback into the newer decoders, logs, Olivia / SSTV / AMTOR

@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.6.0
+VERSION = 0.7.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -71,6 +71,9 @@ HEADERS += \
     src/ClockSet.h \
     src/UpdateCheck.h \
     src/MemoriesDialog.h \
+    src/PskReporter.h \
+    engine/callspot.h \
+    engine/pskreporter.h \
     src/MainWindow.h \
     engine/memories.h \
     engine/audioresampler.h \
@@ -143,6 +146,7 @@ SOURCES += \
     src/ClockSet.cpp \
     src/UpdateCheck.cpp \
     src/MemoriesDialog.cpp \
+    src/PskReporter.cpp \
     src/MainWindow.cpp \
     engine/sstvcore.cpp \
     engine/wefaxcore.cpp \

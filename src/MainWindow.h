@@ -29,6 +29,7 @@ class CwTxEngine;
 class HellEngine;
 class HellPanel;
 class MemoriesDialog;
+class PskReporter;
 class ModemEngine;
 class PskEngine;
 class PskPanel;
@@ -89,6 +90,13 @@ private:
     void applyMemory(const memories::Memory &m);
     memories::Memory currentMemory() const;
     QString applySubMode(const QString &tab, const QString &sub);
+    // PSK Reporter (status bar button, Options > PSK Reporter...)
+    void wirePskReporter();
+    void updatePskrButton();
+    void editPskReporter();
+    void togglePskReporter();
+    qint64 rfHz(double audioHz) const; // RF frequency of a tone at audioHz in the passband
+    void feedPskr(const QString &tab, const QString &subMode, const QString &text, double audioHz);
     void addCurrentPreset();
     void editPresets();
     void abortAllTx(const QString &why);
@@ -163,6 +171,9 @@ private:
     QComboBox *m_presetBox = nullptr;
     QPushButton *m_memBtn = nullptr;
     MemoriesDialog *m_memories = nullptr;
+    PskReporter *m_pskr = nullptr;
+    QPushButton *m_pskrBtn = nullptr;
+    QTimer m_pskrRefresh;
     QTimer m_txLimit;
     int m_txLimitMin = 5;
     TxPowerWatch *m_powerWatch = nullptr;

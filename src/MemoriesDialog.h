@@ -53,6 +53,7 @@ private:
     int selectedIndex() const;
     void tuneSelected();
     void addCurrent();
+    void addNew();
     void editSelected();
     void deleteSelected();
     void addMissingBuiltIn();

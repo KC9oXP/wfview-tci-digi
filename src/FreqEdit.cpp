@@ -2,12 +2,18 @@
 
 #include "freqdigits.h"
 
+#include <QClipboard>
+#include <QContextMenuEvent>
 #include <QDateTime>
+#include <QGuiApplication>
+#include <QKeyEvent>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QStyle>
 #include <QStyleOptionFrame>
 #include <QWheelEvent>
+#include <cstdlib>
 
 namespace
 {
@@ -19,24 +25,53 @@ FreqEdit::FreqEdit(QWidget *parent)
 {
     setMouseTracking(true);
     setAlignment(Qt::AlignRight);
+    // A click must not give the box the keyboard (that put a text cursor in and stopped the
+    // digit stepping). Tab still reaches it for typing.
+    setFocusPolicy(Qt::TabFocus);
+    m_pendingTimer.setSingleShot(true);
+    connect(&m_pendingTimer,
+            &QTimer::timeout,
+            this,
+            [this]()
+            {
+                if (m_lastHz > 0)
+                    showHz(m_lastHz);
+            });
+    setContextMenuPolicy(Qt::DefaultContextMenu);
 }
 
 QString FreqEdit::format(qint64 hz)
 {
-    // 14074000 -> "14.074.000"
-    QString s = QString::number(hz);
-    for (int i = s.size() - 3; i > 0; i -= 3)
-        s.insert(i, QLatin1Char('.'));
-    return s;
+    return QString::fromStdString(freqdigits::format(hz));
 }
 
 void FreqEdit::showHz(qint64 hz)
 {
-    if (hasFocus() || hz <= 0 || QDateTime::currentMSecsSinceEpoch() < m_holdUntilMs)
+    if (hz > 0)
+        m_lastHz = hz;
+    if (hasFocus() || hz <= 0)
         return;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now < m_holdUntilMs)
+    {
+        // Just stepped: the radio's report may lag behind. Show the newest one once the
+        // hold is over (so a change made elsewhere is not missed).
+        if (!m_pendingTimer.isActive())
+            m_pendingTimer.start(int(m_holdUntilMs - now) + 10);
+        return;
+    }
     const QString t = format(hz);
     if (t != text())
         setText(t);
+}
+
+void FreqEdit::startTyping()
+{
+    if (!isEnabled())
+        return;
+    setHover(-1);
+    setFocus(Qt::OtherFocusReason);
+    selectAll();
 }
 
 bool FreqEdit::digitMode() const
@@ -81,13 +116,35 @@ int FreqEdit::indexAt(const QPoint &p) const
     return -1;
 }
 
+int FreqEdit::nearestDigit(const QPoint &p) const
+{
+    // A click on a dot or just beside the digits goes to the closest digit.
+    const int exact = indexAt(p);
+    if (exact >= 0)
+        return exact;
+    const QString t = text();
+    const std::string s = t.toStdString();
+    int best = -1, bestD = 1 << 30;
+    for (int i = 0; i < t.size(); ++i)
+        if (freqdigits::placeAt(s, i) > 0)
+        {
+            const int d = std::abs(charRect(i).center().x() - p.x());
+            if (d < bestD)
+            {
+                bestD = d;
+                best = i;
+            }
+        }
+    return best;
+}
+
 void FreqEdit::setHover(int index)
 {
     if (index == m_hover)
         return;
     m_hover = index;
     m_wheelAccum = 0;
-    setCursor(index >= 0 ? Qt::PointingHandCursor : Qt::IBeamCursor);
+    setCursor(index >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
     update();
 }
 
@@ -100,26 +157,45 @@ void FreqEdit::tune(int index, int steps)
     const qint64 nhz = freqdigits::step(hz, place, steps);
     if (nhz == hz)
         return;
-    const int fromRight = text().size() - index; // keep the mouse on the same digit if a digit is added/lost
-    setText(format(nhz));
+    setText(format(nhz)); // fixed width: the mouse stays on the same digit
     m_holdUntilMs = QDateTime::currentMSecsSinceEpoch() + kHoldMs;
-    const int ni = text().size() - fromRight;
-    m_hover = (ni >= 0 && freqdigits::placeAt(text().toStdString(), ni) > 0) ? ni : -1;
     update();
     emit tuneRequested(nhz);
 }
 
 void FreqEdit::paintEvent(QPaintEvent *e)
 {
-    QLineEdit::paintEvent(e);
-    if (!digitMode() || m_hover < 0 || m_hover >= text().size())
+    if (hasFocus())
+    {
+        QLineEdit::paintEvent(e); // typing: a plain text box
         return;
+    }
+    // Not typing: draw the frame and the digits ourselves so the leading zeros can be
+    // dimmer than the real digits.
+    const QString t = text();
+    const QColor full = palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled, QPalette::Text);
     QPainter p(this);
+    {
+        QStyleOptionFrame opt;
+        initStyleOption(&opt);
+        style()->drawPrimitive(QStyle::PE_PanelLineEdit, &opt, &p, this);
+    }
+    p.setFont(font());
+    const int dim = freqdigits::leadingZeros(t.toStdString());
+    QColor faint = full;
+    faint.setAlphaF(0.35);
+    for (int i = 0; i < t.size(); ++i)
+    {
+        const QRect r = charRect(i);
+        p.setPen(i < dim ? faint : full);
+        p.drawText(r, Qt::AlignCenter, t.at(i));
+    }
+    if (!digitMode() || m_hover < 0 || m_hover >= t.size())
+        return;
     const QRect r = charRect(m_hover).adjusted(-1, 1, 1, -1);
     QColor c = palette().color(QPalette::Highlight);
     c.setAlpha(110);
     p.fillRect(r, c);
-    // a small mark in the half the click would act on is not needed: up = top, down = bottom
     p.setPen(palette().color(QPalette::HighlightedText));
     p.drawLine(r.left() + 1, r.center().y(), r.right() - 1, r.center().y());
 }
@@ -127,31 +203,43 @@ void FreqEdit::paintEvent(QPaintEvent *e)
 void FreqEdit::mouseMoveEvent(QMouseEvent *e)
 {
     if (digitMode())
-        setHover(indexAt(e->position().toPoint()));
-    else
-        setHover(-1);
+    {
+        setHover(nearestDigit(e->position().toPoint()));
+        e->accept();
+        return; // no text selection by dragging
+    }
+    setHover(-1);
     QLineEdit::mouseMoveEvent(e);
 }
 
 void FreqEdit::mousePressEvent(QMouseEvent *e)
 {
-    if (digitMode() && e->button() == Qt::LeftButton)
+    if (hasFocus())
     {
-        const int i = indexAt(e->position().toPoint());
-        if (i >= 0)
-        {
-            tune(i, e->position().y() < charRect(i).center().y() ? 1 : -1);
-            e->accept();
-            return; // no focus: stays in digit mode
-        }
+        QLineEdit::mousePressEvent(e); // typing: place the cursor as usual
+        return;
     }
-    QLineEdit::mousePressEvent(e);
+    if (e->button() == Qt::LeftButton && digitMode())
+    {
+        const int i = nearestDigit(e->position().toPoint());
+        if (i >= 0)
+            tune(i, e->position().y() < charRect(i).center().y() ? 1 : -1);
+    }
+    e->accept(); // never start typing from a click
+}
+
+void FreqEdit::mouseReleaseEvent(QMouseEvent *e)
+{
+    if (hasFocus())
+        QLineEdit::mouseReleaseEvent(e);
+    else
+        e->accept();
 }
 
 void FreqEdit::mouseDoubleClickEvent(QMouseEvent *e)
 {
-    // The second click of a fast double click on a digit is another step, not a word selection.
-    if (digitMode() && e->button() == Qt::LeftButton && indexAt(e->position().toPoint()) >= 0)
+    // The second click of a fast double click is another step, not a word selection.
+    if (!hasFocus())
     {
         mousePressEvent(e);
         return;
@@ -166,12 +254,14 @@ void FreqEdit::wheelEvent(QWheelEvent *e)
         QLineEdit::wheelEvent(e);
         return;
     }
-    const int i = indexAt(e->position().toPoint());
+    const int i = nearestDigit(e->position().toPoint());
     if (i < 0)
     {
         e->ignore();
         return;
     }
+    if (i != m_hover)
+        setHover(i);
     m_wheelAccum += e->angleDelta().y();
     const int steps = m_wheelAccum / 120; // one notch = one step; touchpads add up
     m_wheelAccum -= steps * 120;
@@ -190,4 +280,46 @@ void FreqEdit::focusInEvent(QFocusEvent *e)
     setHover(-1);
     m_holdUntilMs = 0;
     QLineEdit::focusInEvent(e);
+    update();
+}
+
+void FreqEdit::focusOutEvent(QFocusEvent *e)
+{
+    QLineEdit::focusOutEvent(e);
+    // Left without Enter: show the radio's frequency again.
+    if (m_lastHz > 0)
+        setText(format(m_lastHz));
+    update();
+}
+
+void FreqEdit::keyPressEvent(QKeyEvent *e)
+{
+    if (e->key() == Qt::Key_Escape)
+    {
+        if (m_lastHz > 0)
+            setText(format(m_lastHz));
+        clearFocus();
+        emit typingCancelled();
+        e->accept();
+        return;
+    }
+    QLineEdit::keyPressEvent(e);
+}
+
+void FreqEdit::contextMenuEvent(QContextMenuEvent *e)
+{
+    if (hasFocus())
+    {
+        QLineEdit::contextMenuEvent(e);
+        return;
+    }
+    QMenu menu(this);
+    QAction *type = menu.addAction(tr("Type a frequency..."));
+    type->setEnabled(isEnabled());
+    QAction *copy = menu.addAction(tr("Copy"));
+    QAction *a = menu.exec(e->globalPos());
+    if (a == type)
+        startTyping();
+    else if (a == copy && shownHz() > 0)
+        QGuiApplication::clipboard()->setText(QString::number(shownHz())); // 14074000, no dots or zeros
 }

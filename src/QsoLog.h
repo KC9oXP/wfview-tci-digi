@@ -48,9 +48,12 @@ public slots:
     void setMode(const QString &mode, const QString &submode, const QString &shown);
     void setCall(const QString &call);
     void setMyCall(const QString &call);
+    void setMyGrid(const QString &grid);
 
 signals:
     void logged(const QString &line); // for the TCI log / status bar
+    void qsoLogged(const Qso &q); // the record just written (PSK Reporter)
+    void myGridChanged(const QString &grid);
 
 private slots:
     void logQso();

@@ -258,7 +258,8 @@ enum Class : unsigned
     Technician = 2,
     General = 4,
     Advanced = 8,
-    Extra = 16
+    Extra = 16,
+    Other = 32 // the user's own class: nothing in the US amateur rules (11 m, MARS, other countries ...)
 };
 
 namespace detail
@@ -423,8 +424,12 @@ inline std::string classNames(unsigned mask)
     {
         unsigned bit;
         const char *name;
-    } names[] = {
-        {Novice, "Novice"}, {Technician, "Technician"}, {General, "General"}, {Advanced, "Advanced"}, {Extra, "Extra"}};
+    } names[] = {{Novice, "Novice"},
+                 {Technician, "Technician"},
+                 {General, "General"},
+                 {Advanced, "Advanced"},
+                 {Extra, "Extra"},
+                 {Other, "Other"}};
     std::string out;
     for (const auto &n : names)
         if (mask & n.bit)
@@ -457,6 +462,8 @@ inline unsigned parseClasses(const std::string &text)
             out |= Advanced;
         else if (w == "e" || w.rfind("ext", 0) == 0)
             out |= Extra;
+        else if (w == "other")
+            out |= Other;
         else if (w == "all")
             out |= Novice | Technician | General | Advanced | Extra;
     };

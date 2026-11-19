@@ -1,6 +1,7 @@
 #include "RxText.h"
 
 #include "AppPaths.h"
+#include "callspot.h"
 
 #include <QAction>
 #include <QContextMenuEvent>
@@ -12,10 +13,12 @@
 #include <QKeyEvent>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QShortcut>
+#include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QToolButton>
@@ -42,6 +45,26 @@ void append(QPlainTextEdit *edit, const QString &text, int maxChars)
         sb->setValue(sb->maximum());
 }
 } // namespace RxText
+
+RxCalls *RxCalls::instance()
+{
+    static RxCalls *calls = new RxCalls();
+    return calls;
+}
+
+QString RxCalls::callAt(QPlainTextEdit *edit, const QPoint &pos)
+{
+    const QTextCursor c = edit->cursorForPosition(pos);
+    const QString line = c.block().text();
+    int a = c.positionInBlock(), b = a;
+    const auto part = [](QChar ch) { return ch.isLetterOrNumber() || ch == QLatin1Char('/'); };
+    while (a > 0 && part(line.at(a - 1)))
+        --a;
+    while (b < line.size() && part(line.at(b)))
+        ++b;
+    const QString w = line.mid(a, b - a).toUpper();
+    return callspot::isCallsign(w.toStdString()) ? w : QString();
+}
 
 RxScrollback *RxScrollback::attach(QPlainTextEdit *edit, const QString &name)
 {
@@ -105,6 +128,17 @@ RxScrollback::RxScrollback(QPlainTextEdit *edit, const QString &name)
             [this](const QPoint &pos)
             {
                 QMenu *menu = m_edit->createStandardContextMenu(pos);
+                const QString call = RxCalls::callAt(m_edit, pos);
+                if (!call.isEmpty())
+                {
+                    QAction *log = menu->addAction(tr("Log %1 (QSO log)").arg(call));
+                    connect(log,
+                            &QAction::triggered,
+                            this,
+                            [this, call]() { emit RxCalls::instance() -> callPicked(call, m_name); });
+                    menu->insertAction(menu->actions().value(0), log);
+                    menu->insertSeparator(menu->actions().value(1));
+                }
                 menu->addSeparator();
                 menu->addAction(tr("Find...\tCtrl+F"), this, &RxScrollback::openFind);
                 menu->addAction(tr("Save text as..."), this, &RxScrollback::saveAs);
@@ -117,6 +151,7 @@ RxScrollback::RxScrollback(QPlainTextEdit *edit, const QString &name)
     connect(sb, &QScrollBar::valueChanged, this, &RxScrollback::updateLive);
     connect(sb, &QScrollBar::rangeChanged, this, &RxScrollback::updateLive);
     edit->installEventFilter(this);
+    edit->viewport()->installEventFilter(this); // double-click on a callsign
     place();
 }
 
@@ -186,6 +221,13 @@ bool RxScrollback::eventFilter(QObject *obj, QEvent *event)
 {
     if (obj == m_edit && (event->type() == QEvent::Resize || event->type() == QEvent::Show))
         place();
+    if (obj == m_edit->viewport() && event->type() == QEvent::MouseButtonDblClick)
+    {
+        auto *m = static_cast<QMouseEvent *>(event);
+        const QString call = RxCalls::callAt(m_edit, m->position().toPoint());
+        if (!call.isEmpty())
+            emit RxCalls::instance() -> callPicked(call, m_name); // the word is still selected as usual
+    }
     if (obj == m_findText && event->type() == QEvent::KeyPress)
     {
         auto *k = static_cast<QKeyEvent *>(event);

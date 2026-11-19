@@ -1,0 +1,273 @@
+// Callsigns in decoded text, for PSK Reporter spots and click-to-log. Qt-free so it can
+// be tested with g++.
+//
+// isCallsign(): amateur callsign shape (prefix, a digit, a suffix ending in a letter),
+// with optional /P, /QRP, VE3/ ... parts.
+// Spotter: counts "sightings" of a callsign right after DE or CQ in the decoded text of
+// each source (tab) and reports a call once it has been seen `needed` times within
+// `windowSec` near the same frequency. "CQ CQ DE W1AW W1AW W1AW K" is three sightings.
+#pragma once
+
+#include <cstdint>
+#include <cstdlib>
+#include <map>
+#include <string>
+#include <vector>
+
+namespace callspot
+{
+inline std::string upper(std::string s)
+{
+    for (char &c : s)
+        if (c >= 'a' && c <= 'z')
+            c = char(c - 'a' + 'A');
+    return s;
+}
+
+inline bool isAlpha(char c)
+{
+    return c >= 'A' && c <= 'Z';
+}
+inline bool isDigit(char c)
+{
+    return c >= '0' && c <= '9';
+}
+
+// The part of a callsign without /P etc.: [digit]? letter{1,2} | letter digit, then a
+// digit, then 0-3 letters/digits ending in a letter. W1AW, KC9OXP, 2E0ABC, 9A1A, 3DA0XY, E73Y.
+inline bool isBaseCall(const std::string &s)
+{
+    const int n = int(s.size());
+    if (n < 3 || n > 8)
+        return false;
+    for (char c : s)
+        if (!isAlpha(c) && !isDigit(c))
+            return false;
+    if (!isAlpha(s[size_t(n - 1)]))
+        return false;
+    // Try each prefix shape; the separating digit follows it.
+    auto tryPrefix = [&](int plen) -> bool
+    {
+        if (plen >= n - 1)
+            return false;
+        if (!isDigit(s[size_t(plen)]))
+            return false;
+        const int suffix = n - plen - 1;
+        return suffix >= 1 && suffix <= 4;
+    };
+    // letter{1,2}
+    if (isAlpha(s[0]) && tryPrefix(1))
+        return true;
+    if (n > 1 && isAlpha(s[0]) && isAlpha(s[1]) && tryPrefix(2))
+        return true;
+    // letter digit (E7, T7 ...)
+    if (n > 1 && isAlpha(s[0]) && isDigit(s[1]) && tryPrefix(2))
+        return true;
+    // digit letter{1,2} (2E, 9A, 3DA ...)
+    if (isDigit(s[0]) && n > 1 && isAlpha(s[1]))
+    {
+        if (tryPrefix(2))
+            return true;
+        if (n > 2 && isAlpha(s[2]) && tryPrefix(3))
+            return true;
+    }
+    return false;
+}
+
+inline bool isCallsign(const std::string &in)
+{
+    const std::string s = upper(in);
+    if (s.empty() || s.size() > 16 || s.front() == '/' || s.back() == '/')
+        return false;
+    std::vector<std::string> parts;
+    std::string cur;
+    for (char c : s)
+    {
+        if (c == '/')
+        {
+            parts.push_back(cur);
+            cur.clear();
+        }
+        else if (isAlpha(c) || isDigit(c))
+            cur += c;
+        else
+            return false;
+    }
+    parts.push_back(cur);
+    if (parts.size() > 3)
+        return false;
+    int bases = 0;
+    for (const std::string &p : parts)
+    {
+        if (p.empty() || p.size() > 8)
+            return false;
+        if (isBaseCall(p))
+            ++bases;
+        else if (p.size() > 4)
+            return false; // /P, /M, /QRP, /MM, VE3/, /7 ...
+    }
+    return bases >= 1;
+}
+
+// Splits text into words: letters, digits and '/', anything else separates.
+inline std::vector<std::string> words(const std::string &text)
+{
+    std::vector<std::string> out;
+    std::string w;
+    for (char c0 : text)
+    {
+        const char c = (c0 >= 'a' && c0 <= 'z') ? char(c0 - 'a' + 'A') : c0;
+        if (isAlpha(c) || isDigit(c) || c == '/')
+            w += c;
+        else if (!w.empty())
+        {
+            out.push_back(w);
+            w.clear();
+        }
+    }
+    if (!w.empty())
+        out.push_back(w);
+    return out;
+}
+
+struct Spot
+{
+    std::string source; // tab
+    std::string call;
+    std::int64_t hz = 0; // RF frequency when it was seen
+    std::int64_t timeSec = 0;
+};
+
+class Spotter
+{
+public:
+    int needed = 3; // sightings before a call is reported
+    int windowSec = 600; // ... within this long
+    std::int64_t maxSpreadHz = 1500; // ... and this close in frequency
+    std::string myCall; // never reported
+
+    // Decoded text as it arrives (any size of piece). hz: RF frequency of the signal now.
+    // Returns the calls that reached `needed` sightings with this text.
+    std::vector<Spot> feed(const std::string &source, const std::string &text, std::int64_t hz, std::int64_t nowSec)
+    {
+        std::vector<Spot> out;
+        Stream &st = m_streams[source];
+        // Only whole words: the last piece may be the start of a word still arriving.
+        std::string all = st.partial + text;
+        size_t cut = all.size();
+        while (cut > 0)
+        {
+            const char c = all[cut - 1];
+            const char u = (c >= 'a' && c <= 'z') ? char(c - 'a' + 'A') : c;
+            if (!(isAlpha(u) || isDigit(u) || u == '/'))
+                break;
+            --cut;
+        }
+        st.partial = all.substr(cut);
+        if (st.partial.size() > 32)
+            st.partial.clear(); // a run of noise with no spaces
+        for (const std::string &w : words(all.substr(0, cut)))
+            word(source, st, w, hz, nowSec, out);
+        return out;
+    }
+
+    // Number of sightings of call (for tests and the status line).
+    int sightings(const std::string &call, std::int64_t nowSec) const
+    {
+        auto it = m_seen.find(upper(call));
+        if (it == m_seen.end())
+            return 0;
+        int n = 0;
+        for (const Seen &s : it->second.list)
+            if (nowSec - s.t <= windowSec)
+                ++n;
+        return n;
+    }
+
+    void clear()
+    {
+        m_streams.clear();
+        m_seen.clear();
+    }
+
+private:
+    struct Stream
+    {
+        std::string partial;
+        int after = 0; // 1 = last keyword DE, 2 = CQ
+        std::string lastCall; // for "DE W1AW W1AW"
+        int skips = 0; // words skipped after CQ (CQ DX, CQ TEST, CQ POTA ...)
+    };
+    struct Seen
+    {
+        std::int64_t t, hz;
+    };
+    struct Track
+    {
+        std::vector<Seen> list;
+        std::int64_t reportedAt = -1;
+    };
+
+    void word(const std::string &source,
+              Stream &st,
+              const std::string &w,
+              std::int64_t hz,
+              std::int64_t now,
+              std::vector<Spot> &out)
+    {
+        if (w == "DE")
+        {
+            st.after = 1;
+            st.lastCall.clear();
+            return;
+        }
+        if (w == "CQ")
+        {
+            st.after = 2;
+            st.skips = 0;
+            st.lastCall.clear();
+            return;
+        }
+        if (st.after == 0)
+            return;
+        if (isCallsign(w))
+        {
+            if (st.lastCall.empty() || st.lastCall == w)
+            {
+                st.lastCall = w;
+                sighting(source, w, hz, now, out);
+                return; // "DE W1AW W1AW": stay after the keyword for repeats
+            }
+            st.after = 0; // a different call: "DE W1AW K1ABC" is not two sightings of either
+            return;
+        }
+        if (st.after == 2 && st.lastCall.empty() && ++st.skips <= 2 && w.size() <= 5)
+            return; // "CQ DX W1AW", "CQ TEST W1AW", "CQ POTA W1AW"
+        st.after = 0;
+    }
+
+    void sighting(
+        const std::string &source, const std::string &call, std::int64_t hz, std::int64_t now, std::vector<Spot> &out)
+    {
+        if (!myCall.empty() && upper(myCall) == call)
+            return;
+        Track &t = m_seen[call];
+        // keep recent sightings near this frequency
+        std::vector<Seen> keep;
+        for (const Seen &s : t.list)
+            if (now - s.t <= windowSec && std::llabs(s.hz - hz) <= maxSpreadHz)
+                keep.push_back(s);
+        keep.push_back({now, hz});
+        t.list = keep;
+        if (int(t.list.size()) >= needed && (t.reportedAt < 0 || now - t.reportedAt > windowSec))
+        {
+            t.reportedAt = now;
+            out.push_back({source, call, hz, now});
+            t.list.clear();
+        }
+    }
+
+    std::map<std::string, Stream> m_streams;
+    std::map<std::string, Track> m_seen;
+};
+} // namespace callspot

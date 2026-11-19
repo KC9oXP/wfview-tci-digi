@@ -9,9 +9,11 @@
 // RxScrollback::attach() adds to a QPlainTextEdit:
 //   - a "Live" button while scrolled back, to jump to the newest text
 //   - Ctrl+F: a find bar (Enter = next older, Shift+Enter = newer, Esc closes)
-//   - context menu: Find..., Save text as..., Clear
+//   - context menu: Find..., Save text as..., Clear, and "Log <call>" over a callsign
+//   - double-click on a callsign: RxCalls::instance()->callPicked (fills the QSO log)
 
 #include <QObject>
+#include <QPoint>
 #include <QString>
 
 class QLineEdit;
@@ -25,6 +27,20 @@ namespace RxText
 // reader follows the newest text, so a scrolled-back view does not jump).
 void append(QPlainTextEdit *edit, const QString &text, int maxChars = 400000);
 } // namespace RxText
+
+// Callsigns picked in any receive pane (double-click, or the context menu).
+class RxCalls : public QObject
+{
+    Q_OBJECT
+
+public:
+    static RxCalls *instance();
+    // The callsign at pos (viewport coordinates) in edit, or empty.
+    static QString callAt(QPlainTextEdit *edit, const QPoint &pos);
+
+signals:
+    void callPicked(const QString &call, const QString &source);
+};
 
 class RxScrollback : public QObject
 {

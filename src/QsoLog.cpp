@@ -252,7 +252,11 @@ QsoLogDock::QsoLogDock(QSettings *settings, QWidget *parent)
     connect(m_myGrid,
             &QLineEdit::editingFinished,
             this,
-            [this]() { m_settings->setValue(QStringLiteral("Station/MyGrid"), m_myGrid->text().trimmed()); });
+            [this]()
+            {
+                m_settings->setValue(QStringLiteral("Station/MyGrid"), m_myGrid->text().trimmed());
+                emit myGridChanged(m_myGrid->text().trimmed());
+            });
 
     QFile f(logPath());
     if (f.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -365,6 +369,7 @@ void QsoLogDock::logQso()
     f.close();
     addRow(q, true);
     emit logged(tr("Logged %1 %2 %3").arg(q.call, q.submode.isEmpty() ? q.mode : q.submode, Adif::band(q.freqHz)));
+    emit qsoLogged(q);
     m_info->setText(tr("Logged %1 at %2Z.").arg(q.call, q.off.toString(QStringLiteral("HH:mm"))));
     clearForm();
 }
@@ -382,4 +387,10 @@ void QsoLogDock::addRow(const Qso &q, bool top)
                                q.name};
     for (int c = 0; c < cells.size(); ++c)
         m_table->setItem(row, c, new QTableWidgetItem(cells.at(c)));
+}
+
+void QsoLogDock::setMyGrid(const QString &grid)
+{
+    if (m_myGrid && m_myGrid->text().trimmed() != grid.trimmed())
+        m_myGrid->setText(grid.trimmed());
 }

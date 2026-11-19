@@ -146,6 +146,10 @@ int main(int argc, char **argv)
         CHECK(parseClasses("Amateur Extra") == Extra);
         CHECK(parseClasses("all") == ALL);
         CHECK(parseClasses("Receive only") == 0);
+        CHECK(parseClasses("Other") == Other);
+        CHECK(parseClasses("General, Other") == (General | Other));
+        CHECK(classNames(General | Other) == "General, Other");
+        CHECK(parseClasses("all") == ALL); // "all" is the five licence classes, not Other
     }
 
     if (argc > 1)

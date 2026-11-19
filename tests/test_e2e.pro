@@ -61,6 +61,9 @@ HEADERS += \
     ../src/ClockSet.h \
     ../src/UpdateCheck.h \
     ../src/MemoriesDialog.h \
+    ../src/PskReporter.h \
+    ../engine/callspot.h \
+    ../engine/pskreporter.h \
     ../engine/memories.h \
     ../src/MainWindow.h
 
@@ -110,6 +113,7 @@ SOURCES += \
     ../src/ClockSet.cpp \
     ../src/UpdateCheck.cpp \
     ../src/MemoriesDialog.cpp \
+    ../src/PskReporter.cpp \
     ../src/MainWindow.cpp \
     ../engine/sstvcore.cpp \
     ../engine/wefaxcore.cpp \

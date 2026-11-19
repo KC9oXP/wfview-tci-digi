@@ -57,6 +57,8 @@ jobs:
           ./test_freqdigits
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_memories.cpp -o test_memories
           ./test_memories resources/memories-builtin.csv
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_pskreporter.cpp -o test_pskreporter
+          ./test_pskreporter
       - name: Build app
         run: |
           mkdir build && cd build

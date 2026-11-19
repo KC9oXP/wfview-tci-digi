@@ -41,6 +41,20 @@ int main()
     CHECK(step(500, 1000, -1) == 1); // never 0 or below
     CHECK(step(999999000, 1000000, 1) == kMaxHz);
 
+    std::printf("format (zero filled)\n");
+    CHECK(format(1810000) == "001.810.000");
+    CHECK(format(14074000) == "014.074.000");
+    CHECK(format(144200000) == "144.200.000");
+    CHECK(format(0) == "000.000.000");
+    CHECK(format(2000000000) == "999.999.999");
+    CHECK(placeAt(format(1810000), 1) == 10000000); // the 10 MHz digit is there to turn
+    CHECK(step(1810000, placeAt(format(1810000), 1), 1) == 11810000);
+    CHECK(leadingZeros("001.810.000") == 2);
+    CHECK(leadingZeros("014.074.000") == 1);
+    CHECK(leadingZeros("000.517.000") == 4); // "000." dim
+    CHECK(leadingZeros("144.200.000") == 0);
+    CHECK(leadingZeros("000.000.000") == 11);
+
     std::printf(g_fail ? "\n%d FAILED\n" : "\nall passed\n", g_fail);
     return g_fail ? 1 : 0;
 }

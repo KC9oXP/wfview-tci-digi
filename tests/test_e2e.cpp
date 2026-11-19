@@ -10,6 +10,7 @@
 #include "AudioHub.h"
 #include "CwDecoder.h"
 #include "CwTxEngine.h"
+#include "FreqEdit.h"
 #include "HellEngine.h"
 #include "MainWindow.h"
 #include "MemoriesDialog.h"
@@ -17,8 +18,10 @@
 #include "NavtexEngine.h"
 #include "OliviaEngine.h"
 #include "PskEngine.h"
+#include "PskReporter.h"
 #include "QsoLog.h"
 #include "RttyEngine.h"
+#include "RxText.h"
 #include "SstvEngine.h"
 #include "TciClient.h"
 #include "TxPowerWatch.h"
@@ -41,14 +44,19 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QHostAddress>
 #include <QLineEdit>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTemporaryDir>
+#include <QTextCursor>
 #include <QTimer>
+#include <QUdpSocket>
+#include <QWheelEvent>
 #include <cmath>
 #include <cstdio>
 
@@ -818,7 +826,159 @@ static void runMemories()
     CHECK(olivia->tones() == 16 && olivia->bandwidth() == 500 && !olivia->contestia());
     const int netRow = rowOf(QStringLiteral("My net"));
     CHECK(netRow >= 0 && table->item(netRow, 6)->text() == QStringLiteral("General, Advanced, Extra"));
+
+    // 0.7.0: the Other class (outside the US amateur rules)
+    {
+        QFile f(path);
+        CHECK(f.open(QIODevice::Append));
+        f.write("CB 19,SSTV,,27.185,AM,,Other,11 m\r\n");
+    }
+    CHECK(waitFor([&] { return rowOf(QStringLiteral("CB 19")) >= 0; }, 5000));
+    if (classBox)
+    {
+        CHECK(classBox->findText(QStringLiteral("Other")) >= 0);
+        classBox->setCurrentIndex(classBox->findText(QStringLiteral("Other")));
+        CHECK(rowOf(QStringLiteral("CB 19")) >= 0);
+        CHECK(rowOf(QStringLiteral("PSK31 20 m")) < 0);
+        classBox->setCurrentIndex(classBox->findText(QStringLiteral("General")));
+        CHECK(rowOf(QStringLiteral("CB 19")) < 0);
+        classBox->setCurrentIndex(0);
+    }
+    bool hasNew = false;
+    for (QPushButton *b : dlg->findChildren<QPushButton *>())
+        if (b->text() == QStringLiteral("New..."))
+            hasNew = true;
+    CHECK(hasNew);
     dlg->close();
+}
+
+static void runPskReporterAndFreqBox()
+{
+    std::printf("\n=== 0.7.0: frequency box, click-to-log, PSK Reporter datagram ===\n");
+    MockTciServer server;
+    server.listen();
+    QUdpSocket fake; // stands in for report.pskreporter.info
+    CHECK(fake.bind(QHostAddress::LocalHost, 0));
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("TCI/Port"), server.port());
+    settings.setValue(QStringLiteral("TCI/ConnectOnStart"), true);
+    settings.setValue(QStringLiteral("Station/MyCall"), QStringLiteral("KC9OXP"));
+    settings.setValue(QStringLiteral("Station/MyGrid"), QStringLiteral("EN71ar"));
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    settings.setValue(QStringLiteral("PskReporter/DebugHost"), QStringLiteral("127.0.0.1"));
+    settings.setValue(QStringLiteral("PskReporter/DebugPort"), fake.localPort());
+    MainWindow w(&settings);
+    w.show();
+    auto *client = w.findChild<TciClient *>();
+    CHECK(waitFor([&] { return client->isReady(); }, 5000));
+    pump(500);
+
+    // Frequency box: 9 digits with leading zeros; a click steps a digit and never starts typing.
+    auto *freq = w.findChild<FreqEdit *>();
+    CHECK(freq != nullptr);
+    if (freq)
+    {
+        CHECK(waitFor([&] { return freq->text() == QStringLiteral("014.080.000"); }, 3000));
+        std::printf("  box shows %s\n", qPrintable(freq->text()));
+        const qint64 before = server.freq;
+        const QPointF mid(freq->width() / 2.0, 3); // top half of a middle digit: step up
+        QMouseEvent press(
+            QEvent::MouseButtonPress, mid, freq->mapToGlobal(mid), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(freq, &press);
+        QMouseEvent release(
+            QEvent::MouseButtonRelease, mid, freq->mapToGlobal(mid), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(freq, &release);
+        CHECK(!freq->hasFocus()); // no text cursor
+        CHECK(waitFor([&] { return server.freq > before; }, 2000));
+        std::printf("  click: %lld -> %lld Hz\n", (long long)before, (long long)server.freq);
+        const qint64 after = server.freq;
+        QWheelEvent wheel(mid,
+                          freq->mapToGlobal(mid),
+                          QPoint(),
+                          QPoint(0, -120),
+                          Qt::NoButton,
+                          Qt::NoModifier,
+                          Qt::NoScrollPhase,
+                          false);
+        QApplication::sendEvent(freq, &wheel);
+        CHECK(waitFor([&] { return server.freq < after; }, 2000));
+        CHECK(!freq->hasFocus());
+        // 160 m: the 10 MHz digit is a 0 that can be turned up
+        client->setFrequency(1810000);
+        CHECK(waitFor([&] { return freq->text() == QStringLiteral("001.810.000"); }, 3000));
+    }
+
+    // Click-to-log: the callsign under a point in a receive pane, and picking it fills the QSO log.
+    {
+        QPlainTextEdit pane;
+        pane.setPlainText(QStringLiteral("CQ CQ DE W1AW/P W1AW/P K"));
+        pane.resize(500, 100);
+        pane.show();
+        pump(100);
+        QTextCursor c(pane.document());
+        c.setPosition(QStringLiteral("CQ CQ DE W1").size());
+        const QPoint at = pane.cursorRect(c).center();
+        CHECK(RxCalls::callAt(&pane, at) == QStringLiteral("W1AW/P"));
+        c.setPosition(1);
+        CHECK(RxCalls::callAt(&pane, pane.cursorRect(c).center()).isEmpty()); // "CQ"
+        emit RxCalls::instance() -> callPicked(QStringLiteral("W1AW/P"), QStringLiteral("PSK"));
+        auto *qso = w.findChild<QsoLogDock *>();
+        bool shown = false;
+        for (QLineEdit *e : qso->findChildren<QLineEdit *>())
+            if (e->text() == QStringLiteral("W1AW/P"))
+                shown = true;
+        CHECK(shown && qso->isVisible());
+    }
+
+    // PSK Reporter: off at first; turned on with auto-detect; a call seen 3 times is sent.
+    auto *pskr = w.findChild<PskReporter *>();
+    CHECK(pskr != nullptr);
+    if (!pskr)
+        return;
+    QPushButton *pskrBtn = nullptr;
+    for (QPushButton *b : w.findChildren<QPushButton *>())
+        if (b->text().startsWith(QStringLiteral("PSKR")))
+            pskrBtn = b;
+    CHECK(pskrBtn && pskrBtn->text() == QStringLiteral("PSKR off"));
+    CHECK(!pskr->enabled());
+    CHECK(pskr->configured());
+    pskr->setAutoDetect(true);
+    pskrBtn->click(); // configured: turns straight on
+    CHECK(pskr->enabled());
+    CHECK(pskrBtn->text() == QStringLiteral("PSKR 0"));
+    client->setFrequency(14070000);
+    CHECK(waitFor([&] { return client->frequencyHz() == 14070000; }, 3000));
+    pskr->feedText(QStringLiteral("PSK"),
+                   PskReporter::modeFor(QStringLiteral("PSK"), QStringLiteral("BPSK31")),
+                   QStringLiteral("CQ CQ DE W1AW W1AW W1AW PSE K "),
+                   14071000);
+    CHECK(pskr->waiting() == 1);
+    pskr->sendNow();
+    CHECK(waitFor([&] { return fake.hasPendingDatagrams(); }, 3000));
+    QByteArray d(int(fake.pendingDatagramSize()), 0);
+    fake.readDatagram(d.data(), d.size());
+    std::printf("  datagram %d bytes\n", int(d.size()));
+    CHECK(d.size() > 16 && quint8(d[0]) == 0x00 && quint8(d[1]) == 0x0A);
+    CHECK(((quint8(d[2]) << 8) | quint8(d[3])) == d.size());
+    CHECK(d.contains("KC9OXP") && d.contains("EN71ar") && d.contains("W1AW") && d.contains("PSK31"));
+    CHECK(d.contains("wfview TCI Digi"));
+    CHECK(pskr->spotsSent() == 1 && pskr->waiting() == 0);
+    CHECK(waitFor([&] { return pskrBtn->text() == QStringLiteral("PSKR 1"); }, 1000));
+    // the same call again straight away: not reported twice
+    pskr->feedText(QStringLiteral("PSK"), QStringLiteral("PSK31"), QStringLiteral("CQ DE W1AW W1AW W1AW K "), 14071000);
+    CHECK(pskr->waiting() == 0);
+    // my own call never; logged QSOs are reported
+    pskr->addSpot(QStringLiteral("KC9OXP"), 14070000, QStringLiteral("PSK31"));
+    CHECK(pskr->waiting() == 0);
+    auto *qso = w.findChild<QsoLogDock *>();
+    qso->setCall(QStringLiteral("K3WW"));
+    for (QPushButton *b : qso->findChildren<QPushButton *>())
+        if (b->text() == QStringLiteral("Log QSO"))
+            b->click();
+    CHECK(pskr->waiting() == 1);
+    pskrBtn->click(); // off
+    CHECK(!pskr->enabled() && pskrBtn->text() == QStringLiteral("PSKR off"));
 }
 
 int main(int argc, char *argv[])
@@ -849,6 +1009,7 @@ int main(int argc, char *argv[])
     runNewModesTx();
     runWwv();
     runMemories();
+    runPskReporterAndFreqBox();
     const int screens = args.indexOf(QStringLiteral("--screens"));
     if (screens >= 0)
         renderScreens(args.value(screens + 1, QStringLiteral(".")));
