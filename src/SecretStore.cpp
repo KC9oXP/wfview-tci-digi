@@ -5,9 +5,11 @@
 #include <cstring>
 
 #ifdef Q_OS_WIN
+// clang-format off: windows.h must come first (the formatter would sort it last)
+#include <windows.h>
 #include <dpapi.h>
 #include <wincred.h>
-#include <windows.h>
+// clang-format on
 #else
 #include <sys/mman.h>
 #include <unistd.h>
