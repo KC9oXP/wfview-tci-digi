@@ -134,6 +134,18 @@ public:
         std::lock_guard<std::mutex> lock(mutex());
         return m_enc.totalSeconds();
     }
+    // Image line on the air (-1 in the VIS header) and the picture height.
+    int lineSending() const
+    {
+        std::lock_guard<std::mutex> lock(mutex());
+        return m_enc.lineSending();
+    }
+    int imageLines() const
+    {
+        std::lock_guard<std::mutex> lock(mutex());
+        const int m = m_enc.mode();
+        return m >= 0 ? sstv::info(m).height : 0;
+    }
 
 protected:
     void modClear() override

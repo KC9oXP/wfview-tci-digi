@@ -80,6 +80,15 @@ QRect ImageView::target() const
     return QRect((width() - w) / 2, (height() - h) / 2, w, h);
 }
 
+void ImageView::setMarkerLine(double fraction)
+{
+    const double v = fraction < 0.0 ? -1.0 : fraction;
+    if (qFuzzyCompare(v + 2.0, m_marker + 2.0))
+        return;
+    m_marker = v;
+    update();
+}
+
 void ImageView::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
@@ -95,6 +104,14 @@ void ImageView::paintEvent(QPaintEvent *)
     if (m_fit == Fit::Window)
     {
         p.drawImage(t, m_img);
+        if (m_marker >= 0.0)
+        {
+            // Sent part stays as is, the rest is dimmed; the line is yellow on a black edge so it shows on any picture.
+            const int y = t.top() + int(std::min(m_marker, 1.0) * t.height());
+            p.fillRect(QRect(t.left(), y, t.width(), t.bottom() - y + 1), QColor(0, 0, 0, 90));
+            p.fillRect(QRect(t.left(), y - 3, t.width(), 7), QColor(0, 0, 0));
+            p.fillRect(QRect(t.left(), y - 2, t.width(), 5), QColor(255, 230, 0));
+        }
         return;
     }
     const QImage shown = shownImage();

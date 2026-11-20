@@ -282,6 +282,13 @@ public:
         return m_done;
     }
     double progress() const; // 0..1
+    // Image line being sent now: -1 during the VIS header (or idle), height when done.
+    // For PD modes (two lines per sync period) it is the first line of the pair.
+    int lineSending() const;
+    int mode() const
+    {
+        return m_mode;
+    }
     double totalSeconds() const
     {
         return m_total;

@@ -36,6 +36,7 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QSplitter>
+#include <QTextLayout>
 #include <QTimer>
 #include <QToolButton>
 #include <QUrl>
@@ -93,6 +94,29 @@ QFont fitFont(const QString &text, int width, int maxPx)
     }
     return f;
 }
+// Splits text into lines no wider than width: at spaces where possible, inside a word only when the
+// word alone is wider than the picture.
+QStringList wrapLines(const QString &text, const QFont &font, int width)
+{
+    QTextLayout layout(text, font);
+    QTextOption opt;
+    opt.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    layout.setTextOption(opt);
+    QStringList out;
+    layout.beginLayout();
+    for (;;)
+    {
+        QTextLine line = layout.createLine();
+        if (!line.isValid())
+            break;
+        line.setLineWidth(width);
+        out << text.mid(line.textStart(), line.textLength()).trimmed();
+    }
+    layout.endLayout();
+    if (out.isEmpty())
+        out << text;
+    return out;
+}
 } // namespace
 
 SstvPanel::SstvPanel(SstvEngine *engine, QSettings *settings, QWidget *parent)
@@ -128,11 +152,19 @@ SstvPanel::SstvPanel(SstvEngine *engine, QSettings *settings, QWidget *parent)
     connect(m_sstv,
             &SstvEngine::imageStarted,
             this,
-            [this](int mode, bool)
+            [this](int mode, bool noVis)
             {
                 const int i = m_manualMode->findData(mode);
                 if (i >= 0)
                     m_manualMode->setCurrentIndex(i);
+                // Answer in the mode the other station used: only on a real VIS header (sync timing alone can
+                // mistake one mode family member for another), never mid-transmission.
+                if (!noVis && m_txFollow && m_txFollow->isChecked() && !m_sstv->transmitting()
+                    && mode != m_sstv->txMode())
+                {
+                    m_sstv->setTxMode(mode);
+                    m_status->setText(tr("Send mode set to %1 (received).").arg(QLatin1String(sstv::info(mode).name)));
+                }
             });
 
     // previously received pictures
@@ -148,7 +180,7 @@ SstvPanel::SstvPanel(SstvEngine *engine, QSettings *settings, QWidget *parent)
         loadTxImage(QImage());
 
     auto *poll = new QTimer(this);
-    poll->setInterval(250);
+    poll->setInterval(100); // the TX line marker moves smoothly
     connect(poll,
             &QTimer::timeout,
             this,
@@ -158,8 +190,19 @@ SstvPanel::SstvPanel(SstvEngine *engine, QSettings *settings, QWidget *parent)
                 {
                     const double total = m_sstv->txSeconds();
                     const double pr = m_sstv->txProgress();
+                    const int line = m_sstv->txLine();
+                    const int lines = m_sstv->txLines();
                     m_progress->setValue(int(pr * 1000));
-                    m_progress->setFormat(tr("%1 s left").arg(qRound(total * (1.0 - pr))));
+                    const QString left = tr("%1 s left").arg(qRound(total * (1.0 - pr)));
+                    if (lines > 0 && line < 0)
+                        m_progress->setFormat(tr("VIS header   %1").arg(left));
+                    else if (lines > 0)
+                        m_progress->setFormat(
+                            tr("line %1 / %2   %3").arg(std::min(line + 1, lines)).arg(lines).arg(left));
+                    else
+                        m_progress->setFormat(left);
+                    // Bright line on the picture at the line on the air.
+                    m_preview->setMarkerLine(lines > 0 ? std::max(0, line) / double(lines) : 0.0);
                 }
             });
     poll->start();
@@ -355,6 +398,15 @@ QWidget *SstvPanel::buildTx()
                               .arg(qRound(sstv::imageSeconds(i) + 0.9)),
                           i);
     r2->addWidget(m_txMode, 1);
+    m_txFollow = new QCheckBox(tr("Follow received"));
+    m_txFollow->setToolTip(tr("When a picture comes in with a VIS header (Robot 36, Scottie 1, ...), the send mode "
+                              "changes to that mode, so you answer in the mode the other station used."));
+    m_txFollow->setChecked(m_settings->value(QStringLiteral("SSTV/TxFollowRx"), true).toBool());
+    connect(m_txFollow,
+            &QCheckBox::toggled,
+            this,
+            [this](bool on) { m_settings->setValue(QStringLiteral("SSTV/TxFollowRx"), on); });
+    r2->addWidget(m_txFollow);
     v->addLayout(r2);
 
     // Picture text: a choice of the usual SSTV exchanges, each one editable.
@@ -671,13 +723,42 @@ QImage SstvPanel::composeTx() const
     p.setRenderHint(QPainter::TextAntialiasing);
     if (!text.isEmpty())
     {
-        // Big and bold along the bottom; shrunk to fit a long line.
-        const QFont f = fitFont(text, out.width() - 8, std::max(10, out.height() / 11));
+        // Big and bold along the bottom, always at the normal size: a long message wraps onto more
+        // lines and the band grows upward. Only past half the picture does the size step down a little
+        // (never below 75%), and anything still left over is cut with "...".
+        const int normalPx = std::max(10, out.height() / 11);
+        const int textW = out.width() - 8;
+        const int maxBand = out.height() / 2;
+        QFont f(QStringLiteral("Arial"));
+        f.setBold(true);
+        QStringList lines;
+        int lineH = 1;
+        for (int px = normalPx; px >= normalPx * 3 / 4; --px)
+        {
+            f.setPixelSize(px);
+            lines = wrapLines(text, f, textW);
+            lineH = QFontMetrics(f).lineSpacing();
+            if (int(lines.size()) * lineH + 6 <= maxBand)
+                break;
+        }
+        const int maxLines = std::max(1, (maxBand - 6) / lineH);
+        if (int(lines.size()) > maxLines)
+        {
+            // Still too long: keep what fits and end the last line with "...".
+            const QFontMetrics fm(f);
+            lines = lines.mid(0, maxLines);
+            lines.last() = fm.elidedText(lines.last() + QStringLiteral(" ..."), Qt::ElideRight, textW);
+        }
         p.setFont(f);
-        const int band = QFontMetrics(f).height() + 6;
+        const int band = int(lines.size()) * lineH + 6;
         p.fillRect(0, out.height() - band, out.width(), band, QColor(0, 0, 0, 170));
         p.setPen(Qt::white);
-        p.drawText(QRect(0, out.height() - band, out.width(), band), Qt::AlignCenter, text);
+        int y = out.height() - band + 3;
+        for (const QString &l : lines)
+        {
+            p.drawText(QRect(4, y, textW, lineH), Qt::AlignHCenter | Qt::AlignVCenter, l);
+            y += lineH;
+        }
     }
     if (stamp)
     {
@@ -763,7 +844,10 @@ void SstvPanel::syncTx(bool on)
     {
         m_progress->setValue(0);
         m_progress->setFormat(QString());
+        m_preview->setMarkerLine(-1.0);
     }
+    else
+        m_preview->setMarkerLine(0.0);
     m_wf->setTransmitting(on);
 }
 

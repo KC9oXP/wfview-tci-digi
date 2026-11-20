@@ -511,8 +511,49 @@ static void offsetTests()
     }
 }
 
+// The TX progress line: -1 in the VIS header, then climbing to the picture height in step with the audio.
+static void txLineTests()
+{
+    std::printf("TX line being sent\n");
+    const double fs = 48000.0;
+    for (int mode : {int(sstv::Robot36), int(sstv::PD90)})
+    {
+        const sstv::ModeInfo &m = sstv::info(mode);
+        SstvEncoder enc;
+        CHECK(enc.lineSending() == -1); // idle
+        enc.start(mode, testImage(m.width, m.height));
+        std::vector<float> block(480); // 10 ms
+        enc.render(block.data(), block.size(), fs);
+        CHECK(enc.lineSending() == -1); // VIS header
+        int last = -1, maxStep = 0;
+        double t = 0.01;
+        bool halfwayOk = false;
+        while (!enc.done())
+        {
+            enc.render(block.data(), block.size(), fs);
+            t += 0.01;
+            const int line = enc.lineSending();
+            CHECK(line >= last); // never goes back
+            if (last >= 0)
+                maxStep = std::max(maxStep, line - last);
+            last = line;
+            // Halfway through the picture's time the line is about halfway down.
+            const double pic = (t - 0.910) / sstv::imageSeconds(mode);
+            if (!halfwayOk && pic >= 0.5)
+            {
+                halfwayOk = std::abs(line - m.height / 2) <= m.linesPerPeriod + 2;
+                std::printf(" %-8s at 50%% of the picture: line %d of %d\n", m.name, line, m.height);
+                CHECK(halfwayOk);
+            }
+        }
+        CHECK(enc.lineSending() == m.height);
+        CHECK(maxStep <= m.linesPerPeriod);
+    }
+}
+
 int main()
 {
+    txLineTests();
     referenceTests();
     noVisTests();
     offsetTests();

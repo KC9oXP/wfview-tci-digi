@@ -838,6 +838,19 @@ double SstvEncoder::progress() const
     return std::clamp(m_t / m_total, 0.0, 1.0);
 }
 
+int SstvEncoder::lineSending() const
+{
+    if (m_mode < 0)
+        return -1;
+    const ModeInfo &m = info(m_mode);
+    if (m_done)
+        return m.height;
+    // nextSegments() bumps m_stage as it builds a period, so period m_stage - 2 is on the air.
+    if (m_stage < 2)
+        return -1;
+    return std::clamp((m_stage - 2) * m.linesPerPeriod, 0, m.height);
+}
+
 void SstvEncoder::lineYcc(int y, std::vector<float> &yv, std::vector<float> &cr, std::vector<float> &cb) const
 {
     const ModeInfo &m = info(m_mode);

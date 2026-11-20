@@ -114,6 +114,8 @@ public:
     }
     double txProgress() const;
     double txSeconds() const;
+    int txLine() const; // image line on the air, -1 in the VIS header
+    int txLines() const; // lines in the picture being sent
 
     // Scales img to the mode's size (filling it, cropped to fit).
     static QImage fitToMode(const QImage &img, int mode);

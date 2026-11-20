@@ -32,6 +32,9 @@ public:
         return m_shift;
     }
     void setPlaceholder(const QString &text);
+    // A bright line across the picture at this fraction of its height (0..1), e.g. the
+    // line being transmitted; negative hides it. Kept across setImage().
+    void setMarkerLine(double fraction);
     // The picture as shown (shift applied, cropped to rowsShown).
     QImage shownImage() const;
 
@@ -57,4 +60,5 @@ private:
     int m_rows = -1;
     int m_shift = 0;
     QString m_placeholder;
+    double m_marker = -1.0;
 };

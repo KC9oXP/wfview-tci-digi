@@ -400,6 +400,16 @@ double SstvEngine::txSeconds() const
     return std::static_pointer_cast<SstvTxSource>(txSource())->totalSeconds();
 }
 
+int SstvEngine::txLine() const
+{
+    return std::static_pointer_cast<SstvTxSource>(txSource())->lineSending();
+}
+
+int SstvEngine::txLines() const
+{
+    return std::static_pointer_cast<SstvTxSource>(txSource())->imageLines();
+}
+
 QString SstvEngine::saveImage(const QImage &img, int mode, const QString &note)
 {
     if (img.isNull())

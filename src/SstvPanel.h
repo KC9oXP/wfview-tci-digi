@@ -85,6 +85,7 @@ private:
 
     QImage m_txSource;
     QComboBox *m_txMode = nullptr;
+    QCheckBox *m_txFollow = nullptr;
     QButtonGroup *m_msgGroup = nullptr;
     QLineEdit *m_overlay = nullptr;
     QLineEdit *m_rst = nullptr;
