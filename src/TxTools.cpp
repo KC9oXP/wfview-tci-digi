@@ -208,10 +208,10 @@ TxTools::TxTools(QSettings *settings, QObject *parent)
             this,
             [this](bool on)
             {
-                // Stopped from elsewhere (Abort, TX time limit, connection lost): keep the old level.
+                // Stopped from elsewhere (Abort, TX time limit, the radio or wfview dropping PTT,
+                // connection lost): say why (the tune engine's status), keep the best level found.
                 if (!on && m_al)
-                    finishAutoLevel(
-                        tr("Auto TX level stopped before it finished; the TX level was not changed."), false, 0.0);
+                    finishWithBest(tr("transmit stopped: %1").arg(m_tune->status()));
             });
     connect(m_cwId,
             &ModemEngine::statusChanged,
@@ -288,8 +288,9 @@ namespace
 {
 constexpr qint64 kSettleMs = 700; // after a level change: TX audio buffering + the meter's response
 constexpr qint64 kKeyTimeoutMs = 5000; // the radio must be transmitting by then
-constexpr qint64 kNoReadingsMs = 3000; // settled but no ALC reports
-constexpr qint64 kMaxMs = 45000;
+constexpr qint64 kNoReadingsMs = 3000; // keyed and settled, but no ALC report at all yet
+constexpr qint64 kStaleMs = 1500; // settled, no new report: some servers only send on a change
+constexpr qint64 kMaxMs = 60000;
 constexpr size_t kReadingsPerStep = 2; // the meter peak of two reports
 } // namespace
 
@@ -312,6 +313,9 @@ void TxTools::startAutoLevel(double level, const TestSignal &sig, std::function<
     m_al = std::make_unique<autolevel::Search>(txlevel::levelToDb(level), m_alTarget);
     m_alApply = std::move(apply);
     m_alReadings.clear();
+    m_alReports = 0;
+    m_alHaveAlc = false;
+    m_alLastAlc = 0.0;
     m_tune->startTune(txlevel::dbToLevel(m_al->currentDb()), sig.hz, sig.hz2, sig.holdSec);
     if (!m_tune->transmitting())
     {
@@ -322,6 +326,8 @@ void TxTools::startAutoLevel(double level, const TestSignal &sig, std::function<
     }
     m_alTotal.start();
     m_alSince.start();
+    if (m_radioTx || !m_alTxSince.isValid())
+        m_alTxSince.start(); // reset again when the radio reports transmit
     m_alTimer.start();
     emit autoLevelChanged(true);
     emit message(tr("Auto TX level step 1: trying %1 dB, looking for ALC %2 (click Auto TX level again to stop)...")
@@ -332,7 +338,7 @@ void TxTools::startAutoLevel(double level, const TestSignal &sig, std::function<
 void TxTools::cancelAutoLevel()
 {
     if (m_al)
-        finishAutoLevel(tr("Auto TX level cancelled; the TX level was not changed."), false, 0.0);
+        finishAutoLevel(tr("Auto TX level cancelled; the TX level was not changed."), false, 0.0, false);
 }
 
 void TxTools::setRadioTransmitting(bool on)
@@ -346,9 +352,42 @@ void TxTools::onTxSensors(double alc, double, double)
 {
     if (!m_al || !m_radioTx)
         return;
+    ++m_alReports;
+    m_alHaveAlc = true;
+    m_alLastAlc = alc; // the meter now, also used when no new report comes (send-on-change servers)
     if (m_alSince.elapsed() < kSettleMs || !m_alTxSince.isValid() || m_alTxSince.elapsed() < kSettleMs)
         return;
     m_alReadings.push_back(alc);
+}
+
+QString TxTools::autoLevelDetails() const
+{
+    if (!m_al)
+        return QString();
+    return tr("step %1 at %2 dB, %3 ALC reports, last ALC %4")
+        .arg(m_al->steps() + 1)
+        .arg(m_al->currentDb(), 0, 'f', 1)
+        .arg(m_alReports)
+        .arg(m_alHaveAlc ? QString::number(m_alLastAlc, 'f', 2) : tr("none"));
+}
+
+void TxTools::finishWithBest(const QString &why)
+{
+    if (!m_al)
+        return;
+    const QString details = autoLevelDetails();
+    if (m_al->haveResult())
+        finishAutoLevel(tr("Auto TX level stopped (%1; %2). TX level set to %3 dB, the highest level found with ALC "
+                           "at or below the target (ALC %4).")
+                            .arg(why, details)
+                            .arg(m_al->resultDb(), 0, 'f', 1)
+                            .arg(m_al->resultAlc(), 0, 'f', 2),
+                        true,
+                        m_al->resultDb(),
+                        true);
+    else
+        finishAutoLevel(
+            tr("Auto TX level stopped (%1; %2). The TX level was not changed.").arg(why, details), false, 0.0, true);
 }
 
 void TxTools::autoLevelTick()
@@ -360,32 +399,34 @@ void TxTools::autoLevelTick()
     }
     if (m_alTotal.elapsed() > kMaxMs)
     {
-        finishAutoLevel(
-            tr("Auto TX level took too long (no steady ALC reading); the TX level was not changed."), false, 0.0);
+        finishWithBest(tr("it ran out of time (%1 s)").arg(kMaxMs / 1000));
         return;
     }
     if (!m_radioTx)
     {
         if (m_alTotal.elapsed() > kKeyTimeoutMs)
-            finishAutoLevel(tr("Auto TX level: the radio did not go to transmit."), false, 0.0);
+            finishWithBest(tr("the radio did not go to transmit"));
         return;
     }
     const qint64 settled = std::min(m_alSince.elapsed(), m_alTxSince.elapsed()) - kSettleMs;
-    if (settled > kNoReadingsMs && m_alReadings.empty())
+    if (settled < 0)
+        return;
+    if (!m_alHaveAlc)
     {
-        finishAutoLevel(tr("Auto TX level: the server sends no ALC readings (tx_sensors), so the level cannot be "
-                           "set automatically."),
-                        false,
-                        0.0);
+        if (settled > kNoReadingsMs)
+            finishWithBest(tr("wfview sends no ALC readings (TCI tx_sensors)"));
         return;
     }
-    if (m_alReadings.size() < kReadingsPerStep)
+    // Two fresh reports, or (a server that only reports changes) none new for a while: the
+    // meter is still where it last said.
+    if (m_alReadings.size() < kReadingsPerStep && settled < kStaleMs)
         return;
+    if (m_alReadings.empty())
+        m_alReadings.push_back(m_alLastAlc);
 
     // The meter's peak over the step.
     const double alc = *std::max_element(m_alReadings.begin(), m_alReadings.end());
     m_alReadings.clear();
-    m_alLastAlc = alc;
     using St = autolevel::Search::State;
     const double triedDb = m_al->currentDb();
     const St st = m_al->feed(alc);
@@ -408,24 +449,27 @@ void TxTools::autoLevelTick()
                             .arg(target)
                             .arg(m_al->steps()),
                         true,
-                        m_al->resultDb());
+                        m_al->resultDb(),
+                        false);
     else if (st == St::AtMaxBelow)
         finishAutoLevel(
             tr("Auto TX level: ALC stays at or below %1 even at full level, so the TX level is set to 0 dB. "
                "For more drive raise wfview's TX audio gain or the radio's data input (MOD) level.")
                 .arg(target),
             true,
-            0.0);
+            0.0,
+            false);
     else
         finishAutoLevel(tr("Auto TX level: ALC is over %1 even at %2 dB. Lower wfview's TX audio gain or the radio's "
                            "data input (MOD) level, then try again. The TX level was not changed.")
                             .arg(target)
                             .arg(txlevel::kMinDb, 0, 'f', 0),
                         false,
-                        0.0);
+                        0.0,
+                        true);
 }
 
-void TxTools::finishAutoLevel(const QString &text, bool applyResult, double resultDb)
+void TxTools::finishAutoLevel(const QString &text, bool applyResult, double resultDb, bool problem)
 {
     if (!m_al)
         return;
@@ -438,6 +482,8 @@ void TxTools::finishAutoLevel(const QString &text, bool applyResult, double resu
         apply(txlevel::dbToLevel(resultDb));
     emit autoLevelChanged(false);
     emit message(text);
+    if (problem)
+        emit autoLevelProblem(text); // shown in a box: the status bar line is easy to miss
 }
 
 void TxTools::setCwId(const QString &text, int wpm, double pitchHz)

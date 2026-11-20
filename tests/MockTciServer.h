@@ -53,6 +53,7 @@ public:
     // ALC follows the TX audio peak like a radio: none below alcKneeDb (dBFS), then
     // 0.08 per dB, read to one decimal. Off: a fixed 1.5.
     bool alcFromLevel = false;
+    bool alcOnChangeOnly = false; // like a server that only reports a changed reading
     double alcKneeDb = -12.0;
     bool txSensorsEnabled = false; // the client sent tx_sensors_enable (wfview style)
     int txSensorReports = 0;
@@ -63,6 +64,7 @@ private slots:
     void onBinary(const QByteArray &frame);
     void tick();
     void sendTxSensors();
+    double m_lastAlc = -1.0;
 
 private:
     void sendRxPacket();

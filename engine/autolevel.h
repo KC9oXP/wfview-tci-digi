@@ -2,8 +2,9 @@
 // from short ALC measurements of a steady tone. Qt-free so it can be tested with g++.
 //
 // The search works in dB on the TX level scale (engine/txlevel.h, 0 dB = full level):
-//   1. Step up 3 dB at a time while the ALC is at or below the target, until it goes
-//      over (or full level is reached).
+//   1. Step up while the ALC is at or below the target, until it goes over (or full
+//      level is reached): 6 dB at a time while it reads 0 (no hint how far off it is),
+//      3 dB once it shows.
 //   2. Step down 3 dB at a time while the ALC is over the target, until it is at or
 //      below (or the bottom of the scale is reached).
 //   3. Halve the gap between the highest level known to be at/below the target and
@@ -19,6 +20,7 @@
 namespace autolevel
 {
 constexpr double kStepDb = 3.0; // search step before the bracket is found
+constexpr double kZeroStepDb = 6.0; // step up while the ALC still reads 0
 constexpr double kResolutionDb = 0.5; // one TX level slider step
 constexpr double kZeroAlc = 0.005; // readings at or below this count as no ALC
 
@@ -65,6 +67,11 @@ public:
     {
         return m_loAlc;
     }
+    // A level at or below the target has been found (resultDb() is usable).
+    bool haveResult() const
+    {
+        return m_haveLo;
+    }
     bool okAt(double alc) const
     {
         return m_target <= 0.0 ? alc <= kZeroAlc : alc <= m_target + 1e-9;
@@ -92,7 +99,7 @@ public:
         {
             if (m_cur >= 0.0)
                 return m_state = State::AtMaxBelow;
-            m_cur = snap(std::fmin(0.0, m_cur + kStepDb));
+            m_cur = snap(std::fmin(0.0, m_cur + (alc <= kZeroAlc ? kZeroStepDb : kStepDb)));
             return m_state;
         }
         if (!m_haveLo)

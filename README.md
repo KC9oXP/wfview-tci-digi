@@ -264,8 +264,10 @@ lamps tune the radio there in AM; the one you are on is green.
   finds the highest level whose ALC reading is at or below the target (0.1 by default,
   Options > Tune tone, CW ID and Auto TX level; the scale is whatever wfview reports for the
   radio). With a target of 0 it first raises the level until ALC shows, then backs off
-  until it reads 0. Usually 5-15 s; click again to stop. Needs ALC reports (tx_sensors)
-  from the server.
+  until it reads 0. Usually 5-20 s; click again to stop. Needs ALC reports (tx_sensors)
+  from the server (a server that only reports changed readings is fine). If it is stopped
+  or runs out of time it keeps the highest level it found at or below the target, and a
+  box says why it stopped.
 - The TX level is in dB below full level (0 to -40 dB, 0.5 dB steps; Page Up/Down 3 dB),
   kept per mode, and per sub-mode for PSK31/63/125 and each Olivia / Contestia setting.
 - The mode check accepts every data-mode name servers use (DIGU/DIGL, DATA-U/DATA-L,

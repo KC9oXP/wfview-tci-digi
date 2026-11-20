@@ -264,6 +264,9 @@ void MockTciServer::sendTxSensors()
         const double peakDb = 20.0 * std::log10(std::max(1e-9, rms * std::sqrt(2.0)));
         alc = std::round(std::max(0.0, (peakDb - alcKneeDb) * 0.08) * 10.0) / 10.0;
     }
+    if (alcOnChangeOnly && std::fabs(alc - m_lastAlc) < 1e-9 && txSensorReports > 0)
+        return;
+    m_lastAlc = alc;
     ++txSensorReports;
     m_client->sendTextMessage(
         QStringLiteral("tx_sensors:0,%1,%2,%2,%3;").arg(alc, 0, 'f', 1).arg(power, 0, 'f', 1).arg(1.1, 0, 'f', 1));

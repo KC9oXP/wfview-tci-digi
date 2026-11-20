@@ -170,6 +170,8 @@ public slots:
 signals:
     void tuningChanged(bool on);
     void autoLevelChanged(bool on);
+    // Auto TX level stopped early or could not reach the target: the reason, for a message box.
+    void autoLevelProblem(QString text);
     void message(QString text); // for the status bar
 
 private:
@@ -182,7 +184,13 @@ private:
     double m_cwIdPitch = 800.0;
 
     void autoLevelTick();
-    void finishAutoLevel(const QString &text, bool applyResult, double resultDb);
+    // problem: also emit autoLevelProblem (it did not finish normally).
+    void finishAutoLevel(const QString &text, bool applyResult, double resultDb, bool problem);
+    // Stopped early: keep the highest level found at or below the target, if any; say why.
+    void finishWithBest(const QString &why);
+    QString autoLevelDetails() const;
+    int m_alReports = 0; // ALC reports since the start
+    bool m_alHaveAlc = false;
     std::unique_ptr<autolevel::Search> m_al;
     std::function<void(double)> m_alApply;
     double m_alTarget = 0.1;

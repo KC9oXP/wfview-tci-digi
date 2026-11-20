@@ -44,7 +44,7 @@ int main()
         CHECK(s.state() == St::Done);
         CHECK(radioAlc(s.resultDb(), -12.0) <= 0.1 + 1e-9);
         CHECK(radioAlc(s.resultDb() + 0.5, -12.0) > 0.1); // the next slider step up is over
-        CHECK(s.steps() <= 12);
+        CHECK(s.steps() <= 10);
     }
     std::printf("target 0.1, starting far above the knee\n");
     {
@@ -80,6 +80,16 @@ int main()
     {
         const auto s = run(-10.0, 0.1, -60.0);
         CHECK(s.state() == St::AtMinOver);
+    }
+    std::printf("from the bottom with the knee near full level: 6 dB steps while ALC reads 0\n");
+    {
+        const auto s = run(-40.0, 0.1, -2.0);
+        std::printf("  result %.1f dB, %d steps\n", s.resultDb(), s.steps());
+        CHECK(s.state() == St::Done);
+        CHECK(s.haveResult());
+        CHECK(radioAlc(s.resultDb(), -2.0) <= 0.1 + 1e-9);
+        CHECK(radioAlc(s.resultDb() + 0.5, -2.0) > 0.1);
+        CHECK(s.steps() <= 10);
     }
     std::printf("a level of 0 (bottom) starts from -20 dB\n");
     {

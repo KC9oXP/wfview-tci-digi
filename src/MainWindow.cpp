@@ -458,6 +458,16 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
         connect(e, &ModemEngine::cwIdRequested, m_tools, &TxTools::sendCwId);
     connect(m_tools, &TxTools::message, this, [this](const QString &t) { statusBar()->showMessage(t, 8000); });
     connect(m_tools, &TxTools::message, this, &MainWindow::log);
+    connect(m_tools,
+            &TxTools::autoLevelProblem,
+            this,
+            [this](const QString &t)
+            {
+                // Not modal: the result stays on screen until read, nothing waits on it.
+                auto *box = new QMessageBox(QMessageBox::Warning, tr("Auto TX level"), t, QMessageBox::Ok, this);
+                box->setAttribute(Qt::WA_DeleteOnClose);
+                box->open();
+            });
 
     // Transmit time limit: everything stops after this long keyed.
     m_txLimit.setSingleShot(true);

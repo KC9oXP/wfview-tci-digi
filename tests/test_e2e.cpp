@@ -638,7 +638,17 @@ static void runNewModesTx()
     std::printf("  RTTY TX level for ALC 0: %.1f dB\n", db0);
     CHECK(db0 >= -13.0 && db0 <= -11.0); // ALC 0 below about -11.4 dB
     CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
+    std::printf("  from full level (0 dB), server reporting ALC only when it changes\n");
+    server.alcOnChangeOnly = true;
+    rtty->setTxLevel(1.0);
     tools->setAutoLevelTarget(0.1);
+    tools->startAutoLevel(rtty->txLevel(), sig, [rtty](double level) { rtty->setTxLevel(level); });
+    CHECK(waitFor([&] { return !tools->autoLeveling(); }, 70000));
+    const double dbc = 20.0 * std::log10(rtty->txLevel());
+    std::printf("  RTTY TX level: %.1f dB\n", dbc);
+    CHECK(dbc >= -11.5 && dbc <= -10.0);
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
+    server.alcOnChangeOnly = false;
     server.alcFromLevel = false;
 }
 
