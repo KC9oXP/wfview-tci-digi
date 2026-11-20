@@ -97,6 +97,8 @@ private:
     void editPskReporter();
     void togglePskReporter();
     qint64 rfHz(double audioHz) const; // RF frequency of a tone at audioHz in the passband
+    qint64 currentSignalHz() const;
+    QString currentSubMode() const;
     void feedPskr(const QString &tab, const QString &subMode, const QString &text, double audioHz);
     void addCurrentPreset();
     void editPresets();

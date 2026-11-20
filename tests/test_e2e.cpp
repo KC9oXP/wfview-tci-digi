@@ -984,6 +984,9 @@ static void runPskReporterAndFreqBox()
         if (b->text() == QStringLiteral("Log QSO"))
             b->click();
     CHECK(pskr->waiting() == 1);
+    // a call picked from a receive pane is reported too
+    emit RxCalls::instance() -> callPicked(QStringLiteral("K1ABC"), QStringLiteral("CW"));
+    CHECK(pskr->waiting() == 2);
     pskrBtn->click(); // off
     CHECK(!pskr->enabled() && pskrBtn->text() == QStringLiteral("PSKR off"));
 }

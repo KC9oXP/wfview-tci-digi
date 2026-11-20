@@ -1446,8 +1446,18 @@ void MainWindow::wireLogs()
                 m_qso->setCall(call);
                 m_qso->show();
                 m_qso->raise();
+                // You picked it from what you received: you heard it, so report it.
+                QString note;
+                const QString mode = PskReporter::modeFor(currentTabKey(), currentSubMode());
+                if (m_pskr->enabled() && !mode.isEmpty())
+                {
+                    const int before = m_pskr->waiting();
+                    m_pskr->addSpot(call, currentSignalHz(), mode);
+                    note = m_pskr->waiting() > before ? tr(" Queued for PSK Reporter.")
+                                                      : tr(" (Already reported to PSK Reporter recently.)");
+                }
                 statusBar()->showMessage(
-                    tr("%1 in the QSO log: Log QSO (Ctrl+L) writes it to the ADIF file.").arg(call), 6000);
+                    tr("%1 in the QSO log: Log QSO (Ctrl+L) writes it to the ADIF file.%2").arg(call, note), 8000);
             });
     wirePskReporter();
     // Each logged QSO: to another program, QRZ and/or LoTW as set in Logging and uploads.
@@ -1938,19 +1948,7 @@ void MainWindow::wirePskReporter()
                 else if (q.mode == QLatin1String("TOR"))
                     mode = QStringLiteral("AMTORFEC");
                 // The RF frequency of the signal on the tab in use, else the dial.
-                double audio = 0;
-                QWidget *w = m_tabs->currentWidget();
-                if (w == m_cwPanel)
-                    audio = m_cw->currentPitchHz();
-                else if (w == m_rttyPanel)
-                    audio = m_rtty->markHz() - m_rtty->shift() / 2.0;
-                else if (w == m_pskPanel)
-                    audio = m_psk->carrierHz();
-                else if (w == m_oliviaPanel)
-                    audio = m_olivia->carrierHz();
-                else if (w == m_amtorPanel)
-                    audio = m_amtor->carrierHz();
-                const qint64 hz = audio > 0 ? rfHz(audio) : q.freqHz;
+                const qint64 hz = currentSignalHz();
                 m_pskr->addSpot(q.call, hz > 0 ? hz : q.freqHz, mode);
             });
 
@@ -2108,4 +2106,34 @@ void MainWindow::updateUploadButtons()
           m_uploader->lotwState(),
           m_uploader->lotwWaiting(),
           m_uploader->lotwText());
+}
+
+// RF frequency of the signal being decoded on the tab in use (dial + its audio offset);
+// the dial if the tab has no single signal frequency.
+qint64 MainWindow::currentSignalHz() const
+{
+    double audio = 0;
+    QWidget *w = m_tabs->currentWidget();
+    if (w == m_cwPanel)
+        audio = m_cw->currentPitchHz();
+    else if (w == m_rttyPanel)
+        audio = m_rtty->markHz() - m_rtty->shift() / 2.0;
+    else if (w == m_pskPanel)
+        audio = m_psk->carrierHz();
+    else if (w == m_oliviaPanel)
+        audio = m_olivia->carrierHz();
+    else if (w == m_amtorPanel)
+        audio = m_amtor->carrierHz();
+    return audio > 0 ? rfHz(audio) : m_client->frequencyHz();
+}
+
+// The sub-mode of the tab in use, as the PSK Reporter / ADIF mode needs it.
+QString MainWindow::currentSubMode() const
+{
+    QWidget *w = m_tabs->currentWidget();
+    if (w == m_pskPanel)
+        return QString::fromLatin1(psk::speedName(m_psk->speed()));
+    if (w == m_oliviaPanel)
+        return m_olivia->modeName();
+    return QString();
 }
