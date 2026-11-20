@@ -4,6 +4,7 @@
 #include "AmtorPanel.h"
 #include "AppPaths.h"
 #include "AudioHub.h"
+#include "CallLookup.h"
 #include "CwDecoder.h"
 #include "CwPanel.h"
 #include "CwTxEngine.h"
@@ -24,6 +25,7 @@
 #include "RttyEngine.h"
 #include "RttyPanel.h"
 #include "RxText.h"
+#include "SecretStore.h"
 #include "SessionLog.h"
 #include "SpectrumEngine.h"
 #include "SstvEngine.h"
@@ -39,6 +41,7 @@
 #include "WwvPanel.h"
 #include "modemtxsource.h"
 #include "rttytxsource.h"
+#include "signalreport.h"
 
 #include <QAction>
 #include <QApplication>
@@ -250,7 +253,18 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     buildLogDock();
     m_update = new UpdateCheck(m_settings, this);
     connect(m_update, &UpdateCheck::logLine, this, &MainWindow::log);
+    connect(m_update,
+            &UpdateCheck::noticeShown,
+            this,
+            [this](const QString &v)
+            {
+                statusBar()->showMessage(
+                    tr("Version %1 is available: click the amber Update badge (bottom right).").arg(v), 20000);
+            });
     m_qso = new QsoLogDock(m_settings, this);
+    m_lookup = new CallLookup(m_settings, this);
+    m_qso->setLookup(m_lookup);
+    m_qso->setSignalNote([this]() { return signalNote(); });
     addDockWidget(Qt::RightDockWidgetArea, m_qso);
     m_qso->hide();
     buildFileMenu();
@@ -275,6 +289,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_audio, &AudioHub::audio, m_wefax, &WefaxEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_wwv, &WwvEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_spectrum, &SpectrumEngine::pushAudio);
+    connect(m_spectrum, &SpectrumEngine::line, this, &MainWindow::trackSnr);
     connect(m_audio,
             &AudioHub::playbackChanged,
             this,
@@ -814,6 +829,7 @@ void MainWindow::buildMenus()
     opts->addAction(tr("PSK Reporter..."), this, &MainWindow::editPskReporter);
     opts->addAction(
         tr("Logging and uploads (GridTracker, QRZ, LoTW)..."), this, [this]() { m_uploader->editSettings(this); });
+    opts->addAction(tr("Callsign lookup (QRZ / HamQTH)..."), this, &MainWindow::editCallLookup);
     opts->addAction(tr("ALC warning..."), this, &MainWindow::editAlcLimit);
     opts->addAction(tr("Tune tone and CW ID..."), this, [this]() { m_tools->editSettings(this); });
     opts->addSeparator();
@@ -2022,9 +2038,11 @@ void MainWindow::editPskReporter()
                            "(\"CQ CQ DE W1AW W1AW W1AW\") within 10 minutes near the same frequency, in the CW, "
                            "RTTY, PSK, Olivia/Contestia and AMTOR tabs."));
     form->addRow(autoDet);
-    const QString call = m_pskr->myCall();
-    auto *callLabel = new QLabel(call.isEmpty() ? tr("<i>not set: type it in any tab's My call box</i>") : call);
-    form->addRow(tr("Your call"), callLabel);
+    auto *callEdit = new QLineEdit(m_pskr->myCall());
+    callEdit->setPlaceholderText(tr("e.g. KC9OXP"));
+    callEdit->setToolTip(tr("Your call sign. It is the same My call that every transmit tab and the QSO log use."));
+    callEdit->setMaxLength(16);
+    form->addRow(tr("Your call"), callEdit);
     auto *grid = new QLineEdit(m_pskr->myGrid());
     grid->setPlaceholderText(tr("e.g. EN71ar"));
     grid->setToolTip(tr("Your Maidenhead grid, 4 or 6 characters (also the QSO log's My grid)."));
@@ -2048,11 +2066,15 @@ void MainWindow::editPskReporter()
             &dlg,
             [&]()
             {
-                if (enable->isChecked() && !callspot::isCallsign(call.toStdString()))
+                const QString c = callEdit->text().trimmed().toUpper();
+                if (!c.isEmpty() && !callspot::isCallsign(c.toStdString()))
                 {
-                    QMessageBox::information(&dlg,
-                                             dlg.windowTitle(),
-                                             tr("Type your call sign in the My call box of any transmit tab first."));
+                    QMessageBox::information(&dlg, dlg.windowTitle(), tr("%1 does not look like a call sign.").arg(c));
+                    return;
+                }
+                if (enable->isChecked() && c.isEmpty())
+                {
+                    QMessageBox::information(&dlg, dlg.windowTitle(), tr("Type your call sign to turn reporting on."));
                     return;
                 }
                 if (enable->isChecked() && !PskReporter::validGrid(grid->text()))
@@ -2064,6 +2086,11 @@ void MainWindow::editPskReporter()
             });
     if (dlg.exec() != QDialog::Accepted)
         return;
+    // One My call for the whole app: setting it on one engine shares it with every tab, the QSO log and PSKR.
+    const QString newCall = callEdit->text().trimmed().toUpper();
+    if (!newCall.isEmpty() && newCall != m_psk->myCall())
+        m_psk->setMyCall(newCall);
+    m_pskr->setMyCall(newCall.isEmpty() ? m_pskr->myCall() : newCall);
     m_pskr->setMyGrid(grid->text());
     m_qso->setMyGrid(grid->text());
     m_pskr->setAntenna(ant->text());
@@ -2112,19 +2139,168 @@ void MainWindow::updateUploadButtons()
 // the dial if the tab has no single signal frequency.
 qint64 MainWindow::currentSignalHz() const
 {
-    double audio = 0;
+    QWidget *w = m_tabs->currentWidget();
+    const double audio = w == m_sstvPanel ? 0.0 : currentAudioHz();
+    return audio > 0 ? rfHz(audio) : m_client->frequencyHz();
+}
+
+double MainWindow::currentAudioHz(double *halfWidthHz) const
+{
+    double audio = 0, half = 60;
     QWidget *w = m_tabs->currentWidget();
     if (w == m_cwPanel)
+    {
         audio = m_cw->currentPitchHz();
+        half = 40;
+    }
     else if (w == m_rttyPanel)
+    {
         audio = m_rtty->markHz() - m_rtty->shift() / 2.0;
+        half = m_rtty->shift() / 2.0 + 40;
+    }
     else if (w == m_pskPanel)
         audio = m_psk->carrierHz();
     else if (w == m_oliviaPanel)
+    {
         audio = m_olivia->carrierHz();
+        half = m_olivia->bandwidth() / 2.0;
+    }
     else if (w == m_amtorPanel)
+    {
         audio = m_amtor->carrierHz();
-    return audio > 0 ? rfHz(audio) : m_client->frequencyHz();
+        half = 150;
+    }
+    else if (w == m_sstvPanel)
+    {
+        audio = 1900.0 + m_sstv->offsetHz(); // middle of the 1500..2300 Hz picture tones
+        half = 420;
+    }
+    if (halfWidthHz)
+        *halfWidthHz = half;
+    return audio;
+}
+
+// SNR of the signal on the tab in use, from each receive spectrum line, smoothed over a few
+// seconds; not while transmitting (the receive audio is then our own signal or nothing).
+void MainWindow::trackSnr(const QVector<float> &db, double hzPerBin)
+{
+    if (anyTransmitting() || (m_client && m_client->radioTransmitting()))
+        return;
+    double half = 60;
+    const double hz = currentAudioHz(&half);
+    const double s = sigrep::snrDb(db.constData(), int(db.size()), hzPerBin, hz, half);
+    if (std::isnan(s))
+        return;
+    // A new signal frequency starts fresh rather than averaging two stations.
+    if (std::isnan(m_snr) || std::abs(hz - m_snrHz) > half || !m_snrAge.isValid() || m_snrAge.elapsed() > 10000)
+        m_snr = s;
+    else
+        m_snr += 0.15 * (s - m_snr);
+    m_snrHz = hz;
+    m_snrAge.start();
+}
+
+QString MainWindow::signalNote() const
+{
+    // Measured within the last minute of receiving (you may have transmitted since).
+    const double snr = (m_snrAge.isValid() && m_snrAge.elapsed() < 60000) ? m_snr : std::nan("");
+    return QString::fromStdString(sigrep::note(snr, m_client ? m_client->sMeterDbm() : std::nan("")));
+}
+
+void MainWindow::editCallLookup()
+{
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("Callsign lookup"));
+    auto *form = new QFormLayout(&dlg);
+    auto *intro = new QLabel(tr("Fills in Name, QTH and Grid in the QSO log when you enter a call (only boxes that "
+                                "are empty). <b>QRZ</b> uses your QRZ.com username and password (not the logbook "
+                                "API key); without a QRZ XML subscription QRZ gives name and address but no grid. "
+                                "<b>HamQTH</b> is free with a hamqth.com account."));
+    intro->setWordWrap(true);
+    intro->setTextFormat(Qt::RichText);
+    form->addRow(intro);
+    auto *svc = new QComboBox();
+    svc->addItem(tr("Off"), int(CallLookup::Service::Off));
+    svc->addItem(tr("QRZ.com (XML)"), int(CallLookup::Service::Qrz));
+    svc->addItem(tr("HamQTH (free)"), int(CallLookup::Service::HamQth));
+    svc->setCurrentIndex(svc->findData(int(m_lookup->service())));
+    form->addRow(tr("Look up on"), svc);
+    auto *user = new QLineEdit(m_lookup->user());
+    user->setPlaceholderText(tr("your login name (usually your call)"));
+    form->addRow(tr("Username"), user);
+    auto *pass = new QLineEdit();
+    pass->setEchoMode(QLineEdit::Password);
+    const auto passHint = [pass, svc]()
+    {
+        const auto s = CallLookup::Service(svc->currentData().toInt());
+        pass->setEnabled(s != CallLookup::Service::Off);
+        pass->setPlaceholderText(s != CallLookup::Service::Off && SecretStore::has(CallLookup::secretName(s))
+                                     ? tr("saved (type to change)")
+                                     : tr("password"));
+    };
+    passHint();
+    connect(svc, &QComboBox::currentIndexChanged, &dlg, passHint);
+    form->addRow(tr("Password"), pass);
+    auto *store = new QLabel(tr("The password is kept in Windows Credential Manager (encrypted under your Windows "
+                                "login), never in a file. It is sent only to the callbook you choose, over HTTPS."));
+    store->setWordWrap(true);
+    form->addRow(store);
+    auto *testRow = new QHBoxLayout();
+    auto *test = new QPushButton(tr("Save and test"));
+    auto *forget = new QPushButton(tr("Forget password"));
+    testRow->addWidget(test);
+    testRow->addWidget(forget);
+    testRow->addStretch(1);
+    form->addRow(testRow);
+    auto *result = new QLabel(m_lookup->statusText());
+    result->setWordWrap(true);
+    form->addRow(result);
+    const auto apply = [this, svc, user, pass]()
+    {
+        QString pw = pass->text();
+        pass->clear();
+        m_lookup->setConfig(CallLookup::Service(svc->currentData().toInt()), user->text(), pw); // wipes pw
+    };
+    connect(test,
+            &QPushButton::clicked,
+            &dlg,
+            [this, apply, result, passHint]()
+            {
+                apply();
+                passHint();
+                result->setStyleSheet(QString());
+                result->setText(tr("Testing..."));
+                m_lookup->test(m_psk->myCall());
+            });
+    connect(forget,
+            &QPushButton::clicked,
+            &dlg,
+            [this, passHint, result]()
+            {
+                m_lookup->forgetPassword();
+                passHint();
+                result->setText(m_lookup->statusText());
+            });
+    connect(m_lookup,
+            &CallLookup::testResult,
+            &dlg,
+            [result](bool pass, const QString &text)
+            {
+                result->setStyleSheet(pass ? QStringLiteral("color: white; background: #2e8b3a; padding: 2px;")
+                                           : QStringLiteral("color: white; background: #b03030; padding: 2px;"));
+                result->setText(text);
+            });
+    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    form->addRow(bb);
+    connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    if (dlg.exec() == QDialog::Accepted
+        && (CallLookup::Service(svc->currentData().toInt()) != m_lookup->service()
+            || user->text().trimmed() != m_lookup->user() || !pass->text().isEmpty()))
+        apply();
+    QString leftover = pass->text();
+    wipe(leftover);
+    pass->clear();
 }
 
 // The sub-mode of the tab in use, as the PSK Reporter / ADIF mode needs it.

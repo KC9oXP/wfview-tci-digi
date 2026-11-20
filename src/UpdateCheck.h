@@ -42,6 +42,7 @@ public slots:
 
 signals:
     void logLine(const QString &line);
+    void noticeShown(const QString &version); // the status bar badge went up
 
 private:
     void request(bool manual);

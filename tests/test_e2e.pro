@@ -64,6 +64,9 @@ HEADERS += \
     ../src/PskReporter.h \
     ../src/SecretStore.h \
     ../src/LogUploader.h \
+    ../src/CallLookup.h \
+    ../engine/lookupcore.h \
+    ../engine/signalreport.h \
     ../engine/uploadcore.h \
     ../engine/callspot.h \
     ../engine/pskrcore.h \
@@ -119,6 +122,7 @@ SOURCES += \
     ../src/PskReporter.cpp \
     ../src/SecretStore.cpp \
     ../src/LogUploader.cpp \
+    ../src/CallLookup.cpp \
     ../src/MainWindow.cpp \
     ../engine/sstvcore.cpp \
     ../engine/wefaxcore.cpp \

@@ -9,7 +9,10 @@
 #include <QDockWidget>
 #include <QList>
 #include <QString>
+#include <functional>
 
+class CallLookup;
+class QCheckBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -50,6 +53,16 @@ public slots:
     void setMyCall(const QString &call);
     void setMyGrid(const QString &grid);
 
+public:
+    // Name / QTH / Grid filled from QRZ or HamQTH when a call is entered (blank fields only).
+    void setLookup(CallLookup *lookup);
+    // "SNR 18 dB, S7" for the signal being received now (empty if not known); added to the
+    // comment when the QSO is logged, if "Add signal report" is ticked.
+    void setSignalNote(std::function<QString()> note)
+    {
+        m_signalNote = std::move(note);
+    }
+
 signals:
     void logged(const QString &line); // for the TCI log / status bar
     void qsoLogged(const Qso &q); // the record just written (PSK Reporter)
@@ -62,6 +75,7 @@ private slots:
 private:
     void addRow(const Qso &q, bool top);
     QString defaultRst() const;
+    void startLookup();
 
     QSettings *m_settings;
     qint64 m_hz = 0;
@@ -80,4 +94,7 @@ private:
     QLabel *m_info = nullptr;
     QPushButton *m_log = nullptr;
     QTableWidget *m_table = nullptr;
+    QCheckBox *m_addSignal = nullptr;
+    CallLookup *m_lookup = nullptr;
+    std::function<QString()> m_signalNote;
 };

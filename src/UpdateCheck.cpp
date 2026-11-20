@@ -278,8 +278,14 @@ void UpdateCheck::showNotice(const QString &tag, const QString &url)
         m_window->statusBar()->addPermanentWidget(m_notice);
     }
     const QString ver = QString::fromStdString(versioncheck::toString(versioncheck::parse(tag.toStdString())));
-    m_notice->setText(tr("<a href=\"open\">Version %1 is available</a> &nbsp; <a href=\"skip\">skip</a>").arg(ver));
+    // A bold amber badge, so it stands out among the other status bar items.
+    m_notice->setStyleSheet(QStringLiteral("QLabel { background: #d08a00; border-radius: 3px; padding: 1px 6px; }"));
+    m_notice->setText(tr("<a href=\"open\" style=\"color:white; font-weight:bold; text-decoration:none\">"
+                         "&#x2B06; Update: version %1 is available</a> &nbsp; "
+                         "<a href=\"skip\" style=\"color:white\">skip</a>")
+                          .arg(ver));
     m_notice->show();
+    emit noticeShown(ver);
 }
 
 void UpdateCheck::hideNotice()

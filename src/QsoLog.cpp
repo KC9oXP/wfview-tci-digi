@@ -1,7 +1,9 @@
 #include "QsoLog.h"
 
 #include "AppPaths.h"
+#include "CallLookup.h"
 
+#include <QCheckBox>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -209,6 +211,18 @@ QsoLogDock::QsoLogDock(QSettings *settings, QWidget *parent)
     g->addWidget(m_comment, r, 1, 1, 5);
     v->addLayout(g);
 
+    m_addSignal = new QCheckBox(tr("Add signal report to the comment (SNR, S-meter)"));
+    m_addSignal->setToolTip(
+        tr("When you log, adds e.g. \"SNR 18 dB, S7\" to the comment: the SNR of the signal you are decoding "
+           "(its peak over the noise floor in the receive spectrum) and the radio's S-meter if wfview reports it. "
+           "Measured while receiving, never while you transmit."));
+    m_addSignal->setChecked(m_settings->value(QStringLiteral("QsoLog/AddSignal"), true).toBool());
+    connect(m_addSignal,
+            &QCheckBox::toggled,
+            this,
+            [this](bool on) { m_settings->setValue(QStringLiteral("QsoLog/AddSignal"), on); });
+    v->addWidget(m_addSignal);
+
     m_info = new QLabel();
     m_info->setWordWrap(true);
     v->addWidget(m_info);
@@ -249,6 +263,8 @@ QsoLogDock::QsoLogDock(QSettings *settings, QWidget *parent)
                 if (!t.isEmpty() && !m_start.isValid())
                     m_start = QDateTime::currentDateTimeUtc();
             });
+    // Look the call up once it is typed in (Enter or leaving the box).
+    connect(m_call, &QLineEdit::editingFinished, this, &QsoLogDock::startLookup);
     connect(m_myGrid,
             &QLineEdit::editingFinished,
             this,
@@ -313,6 +329,47 @@ void QsoLogDock::setCall(const QString &call)
         return;
     m_call->setText(call.toUpper());
     m_start = QDateTime::currentDateTimeUtc();
+    // A new station: clear what was looked up for the last one, then look this one up.
+    m_name->clear();
+    m_qth->clear();
+    m_grid->clear();
+    startLookup();
+}
+
+void QsoLogDock::setLookup(CallLookup *lookup)
+{
+    m_lookup = lookup;
+    connect(m_lookup,
+            &CallLookup::found,
+            this,
+            [this](const QString &call, const CallLookup::Info &info)
+            {
+                if (call.compare(m_call->text().trimmed(), Qt::CaseInsensitive) != 0)
+                    return; // the form has moved on to another call
+                // Only blank fields: never overwrite what you typed.
+                if (m_name->text().trimmed().isEmpty())
+                    m_name->setText(info.name);
+                if (m_qth->text().trimmed().isEmpty())
+                    m_qth->setText(info.qth);
+                if (m_grid->text().trimmed().isEmpty())
+                    m_grid->setText(info.grid);
+                m_info->setText(tr("%1 looked up on %2.").arg(call, m_lookup->serviceName()));
+            });
+    connect(m_lookup,
+            &CallLookup::notFound,
+            this,
+            [this](const QString &call, const QString &why)
+            {
+                if (call.compare(m_call->text().trimmed(), Qt::CaseInsensitive) == 0)
+                    m_info->setText(tr("%1 lookup: %2").arg(m_lookup->serviceName(), why));
+            });
+}
+
+void QsoLogDock::startLookup()
+{
+    const QString call = m_call->text().trimmed();
+    if (m_lookup && call.size() >= 3)
+        m_lookup->lookup(call);
 }
 
 void QsoLogDock::setMyCall(const QString &call)
@@ -352,6 +409,12 @@ void QsoLogDock::logQso()
     q.qth = m_qth->text().trimmed();
     q.grid = m_grid->text().trimmed();
     q.comment = m_comment->text().trimmed();
+    if (m_addSignal->isChecked() && m_signalNote && !q.comment.contains(QLatin1String("SNR")))
+    {
+        const QString note = m_signalNote();
+        if (!note.isEmpty())
+            q.comment = q.comment.isEmpty() ? note : q.comment + QStringLiteral("  ") + note;
+    }
     q.freqHz = m_hz;
     q.myCall = m_myCall;
     q.myGrid = m_myGrid->text().trimmed();

@@ -3,8 +3,10 @@
 #include "TciClient.h"
 #include "memories.h"
 
+#include <QElapsedTimer>
 #include <QMainWindow>
 #include <QTimer>
+#include <cmath>
 
 class AmtorEngine;
 class AmtorPanel;
@@ -49,6 +51,7 @@ class RttyPanel;
 class SpectrumEngine;
 class TxPowerWatch;
 class TxTools;
+class CallLookup;
 class UpdateCheck;
 
 class MainWindow : public QMainWindow
@@ -98,6 +101,11 @@ private:
     void togglePskReporter();
     qint64 rfHz(double audioHz) const; // RF frequency of a tone at audioHz in the passband
     qint64 currentSignalHz() const;
+    // Audio frequency of the signal on the tab in use and how wide it is (for its SNR); 0 if none.
+    double currentAudioHz(double *halfWidthHz = nullptr) const;
+    void trackSnr(const QVector<float> &db, double hzPerBin);
+    QString signalNote() const;
+    void editCallLookup();
     QString currentSubMode() const;
     void feedPskr(const QString &tab, const QString &subMode, const QString &text, double audioHz);
     void addCurrentPreset();
@@ -149,6 +157,10 @@ private:
     AmtorPanel *m_amtorPanel = nullptr;
     TxTools *m_tools = nullptr;
     UpdateCheck *m_update = nullptr;
+    CallLookup *m_lookup = nullptr;
+    double m_snr = std::nan(""); // smoothed SNR of the signal being decoded
+    double m_snrHz = 0.0; // audio frequency it was measured at
+    QElapsedTimer m_snrAge;
     QList<ModemEngine *> m_txEngines; // m_modems + tune tone + CW ID
     AudioHub *m_audio = nullptr;
     SessionLog *m_session = nullptr;

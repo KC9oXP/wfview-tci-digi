@@ -168,7 +168,9 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
 - Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD50/90/120/160/180/240.
 - Pictures start on their VIS header. Joined late? *Start without VIS* starts the picture
   when the sync pulses repeat at one mode's line timing (as MMSSTV does), or pick the
-  mode and *Start now*. The mode list follows each picture received.
+  mode and *Start now*. The mode list follows each picture received, and with *Follow
+  received* ticked (beside the send mode) the send mode changes to the mode of a picture
+  that came in with its VIS header, so you answer in the mode the other station used.
 - Tuning: click the middle of the signal on the small waterfall (or drag, or the wheel
   for 1 Hz steps); markers show sync, black and white. *Auto* offset refines it from the
   1900 Hz VIS leader and the 1200 Hz sync pulses.
@@ -178,13 +180,17 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
   errors: the note beside it says how many pixels it changes in the chosen mode).
 - Pictures are saved as PNG (in 4:3) and shown in a strip to click through.
 - Transmit: open or paste a picture (or *Use shown* to send back the one received), pick
-  the mode, preview, progress, abort, *CW ID after picture*. *Tune* sends a steady
+  the mode, preview, progress, abort, *CW ID after picture*. While sending, a bright
+  yellow line moves down the preview at the line on the air (the part still to go is
+  dimmed) and the progress bar reads `line 120 / 240  42 s left`. *Tune* sends a steady
   1750 Hz tone to set the level.
 - *Picture text*: pick the line drawn along the bottom of the picture - None, CQ
   (`CQ SSTV de {MYCALL} {GRID}`), Answer (`{CALL} de {MYCALL}`), Report
   (`{CALL} de {MYCALL} UR {RST}`), Thanks, 73, Test or Custom. Each text can be edited
   and is kept (*Default* puts it back). `{MYCALL}` `{CALL}` `{RST}` `{GRID}` `{DATE}`
-  `{TIME}` are filled in; a long line is shrunk to fit.
+  `{TIME}` are filled in. The text keeps its normal size: a long message wraps onto more
+  lines and the dark band grows upward (up to half the picture; only past that does the
+  size step down a little, and what still does not fit ends in "...").
 - *Timestamp*: date and time (UTC or local) in a top corner, taken when Send is pressed.
 
 ### AMTOR FEC (receive and transmit)
@@ -302,7 +308,8 @@ type and press Enter; Esc cancels.
 station hears to [pskreporter.info](https://pskreporter.info), where they show on the map.
 - Off until you turn it on. The button shows *PSKR off*, or *PSKR* and the number of spots sent
   (green; amber when something needs attention, e.g. no grid). Click it to turn reporting on or
-  off; the first time it asks for your grid (your call comes from the tabs' My call box).
+  off; the first time it asks for your call and grid (the call is the same My call that every
+  transmit tab and the QSO log use, so it can be typed here on a fresh install).
   Right-click for the settings.
 - What is reported: every QSO you log, and, with *Auto-detect* ticked, any call seen 3 times
   right after DE or CQ (`CQ CQ DE W1AW W1AW W1AW`) within 10 minutes near the same frequency
@@ -342,6 +349,17 @@ logged QSO is always written to the ADIF file. Each one can also go, as soon as 
   (`wfview-tci-digi.adi` in the logs folder, for QRZ, LoTW via TQSL, or any logger that imports
   ADIF). Double-click a callsign in any receive pane (or right-click > *Log <call>*) to put it
   in the QSO log's Call box.
+- *Callsign lookup* (Options > *Callsign lookup (QRZ / HamQTH)...*, off until set up): when a
+  call is entered, Name, QTH and Grid are filled in from QRZ.com (your QRZ username and password,
+  not the logbook API key; without a QRZ XML subscription QRZ gives name and address but no grid)
+  or from HamQTH (free account). Only empty boxes are filled. *Save and test* logs in and looks up
+  your own call. The password is kept like the other secrets (Windows Credential Manager); each
+  call is looked up once per session.
+- *Add signal report to the comment* (on by default): logging adds e.g. `SNR 18 dB, S7` to the
+  comment. The SNR is the signal's peak over the noise floor in the receive spectrum, at the
+  frequency of the tab in use, smoothed over a few seconds and never measured while you transmit
+  (it is not WSJT-X's 2500 Hz-referenced SNR). The S-meter is asked from wfview (TCI `rx_smeter`,
+  dBm, S9 = -73 dBm); if wfview does not answer, only the SNR is added.
 - Receive panes keep a long history: scroll back and the view stays put while new text
   arrives (*Live* returns), Ctrl+F finds text, right-click saves it.
 - Waterfalls keep the last few minutes: Shift+wheel or PgUp/PgDn scrolls back, Esc

@@ -82,6 +82,10 @@ public:
     {
         return m_modulations;
     }
+    // Receive S-meter from the server (TCI rx_smeter, dBm), NaN if none in the last 5 s or
+    // while transmitting. Asked for every second; if the server never answers, after a
+    // few tries it is no longer asked.
+    double sMeterDbm() const;
 
     void setModulation(const QString &mode);
     void setFrequency(qint64 hz);
@@ -139,6 +143,10 @@ private:
     QString m_device;
     QStringList m_modulations;
     bool m_receiveOnly = false;
+    double m_smeterDbm = 0.0;
+    QElapsedTimer m_smeterAge; // since the last rx_smeter
+    int m_smeterAsks = 0; // unanswered requests
+    bool m_smeterSeen = false;
     qint64 m_freqHz = 0;
     QString m_mode;
     bool m_radioTx = false;

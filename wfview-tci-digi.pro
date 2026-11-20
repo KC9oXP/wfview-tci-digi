@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.8.0
+VERSION = 0.9.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -74,6 +74,9 @@ HEADERS += \
     src/PskReporter.h \
     src/SecretStore.h \
     src/LogUploader.h \
+    src/CallLookup.h \
+    engine/lookupcore.h \
+    engine/signalreport.h \
     engine/uploadcore.h \
     engine/callspot.h \
     engine/pskrcore.h \
@@ -152,6 +155,7 @@ SOURCES += \
     src/PskReporter.cpp \
     src/SecretStore.cpp \
     src/LogUploader.cpp \
+    src/CallLookup.cpp \
     src/MainWindow.cpp \
     engine/sstvcore.cpp \
     engine/wefaxcore.cpp \

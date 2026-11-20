@@ -82,6 +82,9 @@ void TciClient::onConnected()
     m_announcedRate = 0;
     m_isWfview = false;
     m_headerMismatchLogged = false;
+    m_smeterAsks = 0;
+    m_smeterSeen = false;
+    m_smeterAge.invalidate();
     resetStreamStats();
     m_diagTimer.start();
     setState(State::Connected, tr("Connected, waiting for the radio state..."));
@@ -145,6 +148,21 @@ void TciClient::handleCommand(const std::string &name, const std::vector<std::st
     {
         m_device = qarg(0);
         emit radioInfoChanged();
+    }
+    else if (name == "rx_smeter" && args.size() >= 3)
+    {
+        // rx_smeter:receiver,channel,dBm;
+        bool ok = false;
+        const double dbm = qarg(2).toDouble(&ok);
+        if (ok && arg(0) == "0" && arg(1) == "0")
+        {
+            if (!m_smeterSeen)
+                emit logLine(tr("S-meter: the server reports rx_smeter (%1 dBm).\n").arg(dbm, 0, 'f', 0));
+            m_smeterDbm = dbm;
+            m_smeterSeen = true;
+            m_smeterAsks = 0;
+            m_smeterAge.start();
+        }
     }
     else if (name == "receive_only")
     {
@@ -384,4 +402,20 @@ void TciClient::onDiagTimer()
     }
     emit diagnostics(t);
     resetStreamStats();
+
+    // S-meter: ask once a second while receiving. A server that never answers is asked
+    // 5 times and then left alone (until the next connection).
+    if (m_state != State::Disconnected && !m_txOn && !m_radioTx && (m_smeterSeen || m_smeterAsks < 5))
+    {
+        if (!m_smeterSeen)
+            ++m_smeterAsks;
+        sendText(QStringLiteral("rx_smeter:0,0;"));
+    }
+}
+
+double TciClient::sMeterDbm() const
+{
+    if (!m_smeterSeen || m_txOn || m_radioTx || !m_smeterAge.isValid() || m_smeterAge.elapsed() > 5000)
+        return std::nan("");
+    return m_smeterDbm;
 }
