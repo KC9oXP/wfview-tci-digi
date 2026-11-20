@@ -16,7 +16,7 @@ int main(int argc, char **argv)
     const int status = st ? std::atoi(st) : 0;
     if (log)
     {
-        std::ofstream out(log, std::ios::app);
+        std::ofstream out(log, std::ios::app | std::ios::binary); // \n, not \r\n, on Windows too
         out << "=== run\n";
         for (int i = 1; i < argc; ++i)
             out << "arg: " << argv[i] << "\n";

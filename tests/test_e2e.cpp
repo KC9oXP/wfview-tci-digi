@@ -1146,7 +1146,8 @@ static void runUploads()
     {
         CHECK(waitFor([&] { return up->lotwWaiting() == 0 && up->lotwState() == LogUploader::State::Ok; }, 10000));
         QFile f(tqslLog);
-        const QString t = f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+        QString t = f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+        t.remove(QLatin1Char('\r')); // line endings as written on Windows
         std::printf("  fake TQSL saw:\n%s", qPrintable(t.left(600)));
         CHECK(t.contains(QStringLiteral("arg: -p\narg: ") + pwText + QLatin1Char('\n')));
         CHECK(t.contains(QStringLiteral("arg: -l\narg: Home EN71ar\n")));
