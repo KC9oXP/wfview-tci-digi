@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.9.2
+VERSION = 0.9.3
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -92,6 +92,7 @@ HEADERS += \
     engine/wavfile.h \
     engine/versioncheck.h \
     engine/txlevel.h \
+    engine/autolevel.h \
     engine/freqdigits.h \
     engine/jalocha/pj_mfsk.h \
     engine/cwdecodercore.h \

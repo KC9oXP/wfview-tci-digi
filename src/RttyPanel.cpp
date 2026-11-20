@@ -419,7 +419,17 @@ QWidget *RttyPanel::buildTx()
     btns->addWidget(m_abort);
     btns->addWidget(m_hold);
     btns->addWidget(m_diddle);
-    m_tools = new TxToolButtons([this]() { return m_rtty->txLevel(); });
+    m_tools = new TxToolButtons([this]() { return m_rtty->txLevel(); },
+                                [this](double level) { m_rtty->setTxLevel(level); },
+                                [this]()
+                                {
+                                    // Mark and space alternating at the baud rate: RTTY's own signal.
+                                    TxTools::TestSignal s;
+                                    s.hz = m_rtty->markHz();
+                                    s.hz2 = m_rtty->spaceHz();
+                                    s.holdSec = 1.0 / std::max(10.0, m_rtty->baud());
+                                    return s;
+                                });
     btns->addWidget(m_tools);
     btns->addStretch(1);
     btns->addWidget(new QLabel(tr("TX level")));

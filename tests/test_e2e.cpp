@@ -608,6 +608,38 @@ static void runNewModesTx()
     QObject::disconnect(c);
     std::printf("  PTT drops during PSK + CW ID: %d\n", pttDrops);
     CHECK(pttDrops == 1);
+
+    std::printf("\n=== 0.9.3: Auto level sets the RTTY TX level for ALC 0.1 ===\n");
+    // Mock radio: ALC from -12 dBFS peak, 0.08 per dB, one decimal -> highest level
+    // reading 0.1 is -10.5 dB.
+    server.alcFromLevel = true;
+    auto *rtty = w.findChild<RttyEngine *>();
+    CHECK(rtty != nullptr);
+    rtty->setTxLevel(std::pow(10.0, -30.0 / 20.0));
+    tools->setAutoLevelTarget(0.1);
+    TxTools::TestSignal sig;
+    sig.hz = rtty->markHz();
+    sig.hz2 = rtty->spaceHz();
+    sig.holdSec = 1.0 / rtty->baud();
+    tools->startAutoLevel(rtty->txLevel(), sig, [rtty](double level) { rtty->setTxLevel(level); });
+    CHECK(tools->autoLeveling());
+    CHECK(waitFor([&] { return !tools->autoLeveling(); }, 60000));
+    const double db = 20.0 * std::log10(rtty->txLevel());
+    std::printf("  RTTY TX level after Auto level: %.1f dB\n", db);
+    CHECK(db >= -11.5 && db <= -10.0);
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
+
+    std::printf("  target 0: first finds ALC, then backs off to none\n");
+    rtty->setTxLevel(std::pow(10.0, -30.0 / 20.0));
+    tools->setAutoLevelTarget(0.0);
+    tools->startAutoLevel(rtty->txLevel(), sig, [rtty](double level) { rtty->setTxLevel(level); });
+    CHECK(waitFor([&] { return !tools->autoLeveling(); }, 60000));
+    const double db0 = 20.0 * std::log10(rtty->txLevel());
+    std::printf("  RTTY TX level for ALC 0: %.1f dB\n", db0);
+    CHECK(db0 >= -13.0 && db0 <= -11.0); // ALC 0 below about -11.4 dB
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
+    tools->setAutoLevelTarget(0.1);
+    server.alcFromLevel = false;
 }
 
 // WWV Time: 200 s of synthesized WWV straight into the engine (its own worker thread).

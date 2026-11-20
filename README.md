@@ -250,7 +250,15 @@ lamps tune the radio there in AM; the one you are on is green.
 - Macros F1-F8 with `{MYCALL}` / `{CALL}`, a type-ahead box (text typed while
   transmitting is added to the queue), *Hold TX*, *TX level*, Esc to abort.
 - *CW ID*: "DE <your call>" as keyed audio CW. `{CWID}` at the end of a macro sends it
-  after the text without dropping PTT (Options > Tune tone and CW ID).
+  after the text without dropping PTT (Options > Tune tone, CW ID and Auto level).
+- *Auto level*: sets the tab's TX level from the radio's ALC. It transmits a short test
+  signal shaped like the mode (RTTY and AMTOR: mark and space alternating at the baud
+  rate; other modes: one tone at the tab's audio frequency, which has the same peaks) and
+  finds the highest level whose ALC reading is at or below the target (0.1 by default,
+  Options > Tune tone, CW ID and Auto level; the scale is whatever wfview reports for the
+  radio). With a target of 0 it first raises the level until ALC shows, then backs off
+  until it reads 0. Usually 5-15 s; click again to stop. Needs ALC reports (tx_sensors)
+  from the server.
 - The TX level is in dB below full level (0 to -40 dB, 0.5 dB steps; Page Up/Down 3 dB),
   kept per mode, and per sub-mode for PSK31/63/125 and each Olivia / Contestia setting.
 - The mode check accepts every data-mode name servers use (DIGU/DIGL, DATA-U/DATA-L,

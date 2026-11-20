@@ -49,6 +49,14 @@ public:
     {
         return m_carrierHz;
     }
+    // Test signal for Auto level with the same peaks as this mode: one tone at the
+    // carrier, or (hz2 > 0) two tones alternating every holdSec like an FSK mode.
+    virtual void autoLevelTones(double &hz, double &hz2, double &holdSec) const
+    {
+        hz = m_carrierHz;
+        hz2 = 0.0;
+        holdSec = 0.0;
+    }
     // Audio passband the carrier may be set in.
     static constexpr double kMinHz = 200.0;
     static constexpr double kMaxHz = 3000.0;

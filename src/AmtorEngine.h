@@ -35,6 +35,13 @@ public:
     {
         return m_levelDb;
     }
+    // 100 baud FSK, 170 Hz shift around the centre.
+    void autoLevelTones(double &hz, double &hz2, double &holdSec) const override
+    {
+        hz = m_carrierHz - 85.0;
+        hz2 = m_carrierHz + 85.0;
+        holdSec = 0.01;
+    }
 
 public slots:
     void pushAudio(const QVector<float> &mono, float sampleRate) override;

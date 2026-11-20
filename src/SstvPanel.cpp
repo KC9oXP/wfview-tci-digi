@@ -582,11 +582,19 @@ QWidget *SstvPanel::buildTx()
     r6->addWidget(m_txLevel, 1);
     v->addLayout(r6);
     auto *r7 = new QHBoxLayout();
-    m_tools = new TxToolButtons([this]() { return m_sstv->txLevel(); }, true);
+    m_tools = new TxToolButtons([this]() { return m_sstv->txLevel(); },
+                                [this](double level) { m_sstv->setTxLevel(level); },
+                                []()
+                                {
+                                    TxTools::TestSignal s;
+                                    s.hz = 1900.0; // middle of the 1500-2300 Hz picture tones
+                                    return s;
+                                },
+                                true);
     r7->addWidget(m_tools);
     m_cwIdAfter = new QCheckBox(tr("CW ID after picture"));
     m_cwIdAfter->setToolTip(tr("Send your CW ID right after each picture, without dropping PTT (like MMSSTV). "
-                               "Text, speed and pitch: Options > Tune tone and CW ID."));
+                               "Text, speed and pitch: Options > Tune tone, CW ID and Auto level."));
     r7->addWidget(m_cwIdAfter);
     r7->addStretch(1);
     v->addLayout(r7);

@@ -257,9 +257,14 @@ void MockTciServer::sendTxSensors()
     m_txRms = 0.0;
     m_txRmsN = 0;
     const double power = muteTx ? 0.0 : std::min(100.0, 200.0 * rms * rms);
+    double alc = muteTx ? 0.0 : 1.5;
+    if (alcFromLevel && !muteTx)
+    {
+        // a steady tone's peak is rms * sqrt(2)
+        const double peakDb = 20.0 * std::log10(std::max(1e-9, rms * std::sqrt(2.0)));
+        alc = std::round(std::max(0.0, (peakDb - alcKneeDb) * 0.08) * 10.0) / 10.0;
+    }
     ++txSensorReports;
-    m_client->sendTextMessage(QStringLiteral("tx_sensors:0,%1,%2,%2,%3;")
-                                  .arg(muteTx ? 0.0 : 1.5, 0, 'f', 1)
-                                  .arg(power, 0, 'f', 1)
-                                  .arg(1.1, 0, 'f', 1));
+    m_client->sendTextMessage(
+        QStringLiteral("tx_sensors:0,%1,%2,%2,%3;").arg(alc, 0, 'f', 1).arg(power, 0, 'f', 1).arg(1.1, 0, 'f', 1));
 }

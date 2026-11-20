@@ -409,6 +409,8 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
         connect(wf, &WaterfallWidget::saveRequested, this, [this, wf]() { saveWaterfallShot(wf); });
     connect(m_client, &TciClient::diagnostics, m_diag, &QLabel::setText);
     connect(m_client, &TciClient::txSensors, m_powerWatch, &TxPowerWatch::onSensors);
+    connect(m_client, &TciClient::txSensors, m_tools, &TxTools::onTxSensors);
+    connect(m_client, &TciClient::radioTransmitChanged, m_tools, &TxTools::setRadioTransmitting);
     connect(m_client, &TciClient::radioTransmitChanged, m_powerWatch, &TxPowerWatch::setRadioTransmitting);
     connect(m_powerWatch, &TxPowerWatch::readout, m_txMeter, &QLabel::setText);
     connect(m_powerWatch,
@@ -838,7 +840,7 @@ void MainWindow::buildMenus()
         tr("Logging and uploads (GridTracker, QRZ, LoTW)..."), this, [this]() { m_uploader->editSettings(this); });
     opts->addAction(tr("Callsign lookup (QRZ / HamQTH)..."), this, &MainWindow::editCallLookup);
     opts->addAction(tr("ALC warning..."), this, &MainWindow::editAlcLimit);
-    opts->addAction(tr("Tune tone and CW ID..."), this, [this]() { m_tools->editSettings(this); });
+    opts->addAction(tr("Tune tone, CW ID and Auto level..."), this, [this]() { m_tools->editSettings(this); });
     opts->addSeparator();
     QMenu *ring = opts->addMenu(tr("Audio kept for \"Save last...\""));
     for (int sec : {60, 120, 300, 600})

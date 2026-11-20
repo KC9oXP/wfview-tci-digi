@@ -103,7 +103,14 @@ ModemTxBox::ModemTxBox(ModemEngine *engine, const QString &name, QWidget *parent
     btns->addWidget(m_rxBtn);
     btns->addWidget(m_abort);
     btns->addWidget(m_hold);
-    m_tools = new TxToolButtons([this]() { return m_engine->txLevel(); });
+    m_tools = new TxToolButtons([this]() { return m_engine->txLevel(); },
+                                [this](double level) { m_engine->setTxLevel(level); },
+                                [this]()
+                                {
+                                    TxTools::TestSignal s;
+                                    m_engine->autoLevelTones(s.hz, s.hz2, s.holdSec);
+                                    return s;
+                                });
     btns->addWidget(m_tools);
     btns->addStretch(1);
     btns->addWidget(new QLabel(tr("TX level")));

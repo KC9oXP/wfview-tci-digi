@@ -53,6 +53,8 @@ jobs:
           ./test_version
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_txlevel.cpp -o test_txlevel
           ./test_txlevel
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_autolevel.cpp -o test_autolevel
+          ./test_autolevel
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_freqdigits.cpp -o test_freqdigits
           ./test_freqdigits
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_memories.cpp -o test_memories
