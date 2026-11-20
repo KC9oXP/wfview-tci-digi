@@ -64,7 +64,6 @@ private slots:
     void onBinary(const QByteArray &frame);
     void tick();
     void sendTxSensors();
-    double m_lastAlc = -1.0;
 
 private:
     void sendRxPacket();
@@ -76,6 +75,7 @@ private:
     bool m_streaming = false;
     QTimer m_timer;
     QTimer m_sensorTimer;
+    double m_lastAlc = -1.0; // last ALC sent (alcOnChangeOnly)
     double m_txRms = 0.0; // of the TX audio received since the last report
     quint64 m_txRmsN = 0;
     QElapsedTimer m_clock;
