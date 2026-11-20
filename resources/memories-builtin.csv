@@ -34,8 +34,16 @@ Olivia 80 m,Olivia,Olivia 8/500,3.583,USB,80 m,"General, Advanced, Extra",Common
 Olivia 40 m,Olivia,Olivia 8/500,7.072,USB,40 m,"General, Advanced, Extra","Common Olivia spot (below the ARRL 7.080 RTTY/Data segment, in the FCC data sub-band)"
 Olivia 20 m,Olivia,Olivia 8/500,14.072,USB,20 m,"General, Advanced, Extra",Common Olivia spot; ARRL band plan: 14.070-14.095 RTTY
 Olivia 10 m,Olivia,Olivia 8/500,28.120,USB,10 m,"Novice, Technician, General, Advanced, Extra",ARRL band plan: 28.070-28.150 RTTY; open to all classes
-Hell 80 m,Hell,,3.580,USB,80 m,"General, Advanced, Extra",No set Hell frequency in the ARRL plan; 3.570-3.600 RTTY/Data
-Hell 20 m,Hell,,14.080,USB,20 m,"General, Advanced, Extra",No set Hell frequency in the ARRL plan; 14.070-14.095 RTTY
+Hell 160 m,Hell,,1.842,USB,160 m,"General, Advanced, Extra",Feld Hell Club: 1.843-1.844 (FT8 took the old 1.840). Dial 1 kHz below so the signal is at 1000 Hz audio
+Hell 80 m,Hell,,3.577,USB,80 m,"General, Advanced, Extra",Feld Hell Club: 3.578-3.586 (FT8 took the old 3.573). Dial 1 kHz below so the signal is at 1000 Hz audio
+Hell 40 m,Hell,,7.079,USB,40 m,"General, Advanced, Extra",Feld Hell Club: 7.080-7.090. Dial 1 kHz below so the signal is at 1000 Hz audio
+Hell 30 m,Hell,,10.136,USB,30 m,"General, Advanced, Extra",Feld Hell Club: 10.137-10.143 (10.144 in Region 1). Dial 1 kHz below so the signal is at 1000 Hz audio
+Hell 20 m,Hell,,14.062,USB,20 m,"General, Advanced, Extra","Feld Hell Club calling frequency 14.063 (activity up to 14.069; also 14.072-14.073, clear of FT8). Dial 1 kHz below so the signal is at 1000 Hz audio"
+Hell 17 m,Hell,,18.097,USB,17 m,"General, Advanced, Extra",Feld Hell Club: 18.098-18.105. Dial 1 kHz below so the signal is at 1000 Hz audio
+Hell 15 m,Hell,,21.062,USB,15 m,"General, Advanced, Extra",Feld Hell Club: 21.063. Dial 1 kHz below so the signal is at 1000 Hz audio
+Hell 12 m,Hell,,24.923,USB,12 m,"General, Advanced, Extra",Feld Hell Club: 24.924. Dial 1 kHz below so the signal is at 1000 Hz audio
+Hell 10 m,Hell,,28.062,USB,10 m,"Novice, Technician, General, Advanced, Extra",Feld Hell Club: 28.063. Dial 1 kHz below so the signal is at 1000 Hz audio
+Hell 6 m,Hell,,50.285,USB,6 m,"Technician, General, Advanced, Extra",Feld Hell Club: 50.286. Dial 1 kHz below so the signal is at 1000 Hz audio
 SSTV 80 m,SSTV,,3.845,LSB,80 m,"General, Advanced, Extra",ARRL band plan: 3.845 SSTV
 SSTV 40 m,SSTV,,7.171,LSB,40 m,"Advanced, Extra",ARRL band plan: 7.171 SSTV. Below 7.175: Advanced and Extra only
 SSTV 20 m,SSTV,,14.230,USB,20 m,"General, Advanced, Extra",ARRL band plan: 14.230 SSTV

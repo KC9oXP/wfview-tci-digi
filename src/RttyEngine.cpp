@@ -523,6 +523,26 @@ void RttyEngine::onStatsUpdated(double quality, double markDb, double spaceDb, b
         setStatus(tr("Decoding at %1 Hz audio").arg(static_cast<int>(sampleRate)));
 }
 
+void RttyEngine::setStandard()
+{
+    setBaud(45.45);
+    setShift(170);
+    setSideband(SidebandAuto);
+    setReverse(false);
+    setStopBits(1.5);
+    setUsos(true);
+    setIta2(false);
+    setSquelch(0.5);
+    // 2125/2295 Hz pair: USB puts mark on the higher tone, LSB on the lower.
+    setMarkHz(usbEffective() ? 2295 : 2125);
+    resync();
+    setStatus(tr("Standard settings: 45.45 baud, 170 Hz shift, mark %1 Hz / space %2 Hz (%3), 1.5 stop bits, "
+                 "USOS, US TTY figures.")
+                  .arg(m_markHz)
+                  .arg(spaceHz())
+                  .arg(usbEffective() ? tr("USB") : tr("LSB")));
+}
+
 void RttyEngine::autoTune()
 {
     if (!m_decoding || !m_ready)

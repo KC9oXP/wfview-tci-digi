@@ -243,7 +243,14 @@ QWidget *RttyPanel::buildTop()
                               "DWD (German weather service): 4583, 7646, 10100.8 kHz; tune so the pair sits "
                               "on your mark/space tones, Reverse if needed."));
         g->addWidget(new QLabel(tr("Preset")), row, 0);
-        g->addWidget(preset, row, 1, 1, 3);
+        g->addWidget(preset, row, 1, 1, 2);
+        auto *standard = new QPushButton(tr("Standard"));
+        standard->setToolTip(tr("Back to the amateur standard: 45.45 baud, 170 Hz shift, 2125 / 2295 Hz tones "
+                                "(mark on the higher tone in USB, the lower in LSB), Sideband Auto, Reverse off, "
+                                "1.5 stop bits, USOS on, US TTY figures, squelch 0.50.\n"
+                                "Your call, macros, TX level, Hold TX and Diddle are not changed."));
+        g->addWidget(standard, row, 3);
+        connect(standard, &QPushButton::clicked, m_rtty, &RttyEngine::setStandard);
         connect(preset,
                 &QComboBox::activated,
                 this,

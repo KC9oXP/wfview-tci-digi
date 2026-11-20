@@ -140,7 +140,8 @@ MemoriesDialog::MemoriesDialog(QSettings *settings, const QStringList &tabNames,
                         "show here straight away.\nCSV columns: Name, Tab, Sub-mode, Dial MHz, Sideband, Band, "
                         "Classes, Comment."));
     auto *builtin = new QPushButton(tr("Add built-in..."));
-    builtin->setToolTip(tr("Add any of the built-in memories (ARRL band plan) that are missing from your list. "
+    builtin->setToolTip(tr("Add any of the built-in memories (ARRL band plan, Feld Hell Club frequencies) that are "
+                           "missing from your list. "
                            "Your own memories are not changed."));
     m_singleClick = new QCheckBox(tr("Tune on click"));
     m_singleClick->setToolTip(tr("On: one click on a memory tunes to it. Off: double-click or Go."));
@@ -270,8 +271,8 @@ void MemoriesDialog::load()
         // First time: start from the built-in list.
         m_list = builtIn();
         if (save())
-            m_status->setText(
-                tr("Made %1 from the built-in list (ARRL band plan).").arg(QDir::toNativeSeparators(path)));
+            m_status->setText(tr("Made %1 from the built-in list (ARRL band plan, Feld Hell Club frequencies).")
+                                  .arg(QDir::toNativeSeparators(path)));
         return;
     }
     QFile f(path);

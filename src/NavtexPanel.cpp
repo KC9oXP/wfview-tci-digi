@@ -35,6 +35,17 @@ NavtexPanel::NavtexPanel(NavtexEngine *engine, QWidget *parent)
     m_reverse = new QCheckBox(tr("Reverse"));
     m_reverse->setToolTip(tr("Swap the tones (if you are on LSB, or nothing decodes on a strong signal)."));
     r1->addWidget(m_reverse);
+    auto *standard = new QPushButton(tr("Standard"));
+    standard->setToolTip(tr("Centre 1000 Hz (radio on USB 1 kHz below the NAVTEX frequency), Reverse off."));
+    r1->addWidget(standard);
+    connect(standard,
+            &QPushButton::clicked,
+            this,
+            [this]()
+            {
+                m_nav->setCentreHz(1000.0);
+                m_nav->setReverse(false);
+            });
     m_state = new QLabel();
     r1->addWidget(m_state, 1);
     auto *clear = new QPushButton(tr("Clear"));

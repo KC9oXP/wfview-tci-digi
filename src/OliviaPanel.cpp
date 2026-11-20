@@ -74,6 +74,18 @@ QWidget *OliviaPanel::buildTop()
     m_squelchValue = new QLabel();
     m_squelchValue->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("20.0")) + 4);
     r1->addWidget(m_squelchValue);
+    auto *standard = new QPushButton(tr("Standard"));
+    standard->setToolTip(tr("Back to the most used setting: Olivia 8 tones / 500 Hz, squelch 5.0 (the frequency "
+                            "is not changed)."));
+    r1->addWidget(standard);
+    connect(standard,
+            &QPushButton::clicked,
+            this,
+            [this]()
+            {
+                m_ol->setMode(false, 8, 500);
+                m_ol->setSquelch(5.0);
+            });
     auto *clear = new QPushButton(tr("Clear"));
     r1->addWidget(clear);
     v->addLayout(r1);

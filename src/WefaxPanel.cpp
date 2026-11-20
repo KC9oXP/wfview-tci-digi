@@ -44,6 +44,18 @@ WefaxPanel::WefaxPanel(WefaxEngine *engine, QWidget *parent)
     m_auto = new QCheckBox(tr("Auto start"));
     m_auto->setToolTip(tr("Start on the APT start tone, align on the phasing lines, stop on the stop tone."));
     r1->addWidget(m_auto);
+    auto *standard = new QPushButton(tr("Standard"));
+    standard->setToolTip(tr("120 LPM, IOC 576, Auto start on (the trim is not changed)."));
+    r1->addWidget(standard);
+    connect(standard,
+            &QPushButton::clicked,
+            this,
+            [this]()
+            {
+                m_fax->setLpm(120.0);
+                m_fax->setIoc(576);
+                m_fax->setAutoStart(true);
+            });
     auto *now = new QPushButton(tr("Start now"));
     now->setToolTip(tr("Start a picture now (joined late: then click its left edge to align)."));
     r1->addWidget(now);

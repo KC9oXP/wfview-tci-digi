@@ -85,6 +85,19 @@ QWidget *PskPanel::buildTop()
     m_squelchValue = new QLabel();
     m_squelchValue->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("0.00")) + 4);
     r1->addWidget(m_squelchValue);
+    auto *standard = new QPushButton(tr("Standard"));
+    standard->setToolTip(tr("Back to the usual settings: BPSK31, AFC on, squelch 0.30 (the frequency is not "
+                            "changed)."));
+    r1->addWidget(standard);
+    connect(standard,
+            &QPushButton::clicked,
+            this,
+            [this]()
+            {
+                m_psk->setSpeed(psk::Bpsk31);
+                m_psk->setAfc(true);
+                m_psk->setSquelch(0.3);
+            });
     auto *clear = new QPushButton(tr("Clear"));
     r1->addWidget(clear);
     v->addLayout(r1);

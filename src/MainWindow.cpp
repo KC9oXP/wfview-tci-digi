@@ -290,6 +290,9 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_audio, &AudioHub::audio, m_wwv, &WwvEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_spectrum, &SpectrumEngine::pushAudio);
     connect(m_spectrum, &SpectrumEngine::line, this, &MainWindow::trackSnr);
+    m_snrShow.setInterval(300);
+    connect(&m_snrShow, &QTimer::timeout, this, &MainWindow::updateSnrLabel);
+    m_snrShow.start();
     connect(m_audio,
             &AudioHub::playbackChanged,
             this,
@@ -684,6 +687,10 @@ QWidget *MainWindow::buildConnectionBar()
            "Data 1 input is not the one wfview feeds (LAN or USB), set the data mode in wfview instead."));
     m_mode->setMinimumContentsLength(5);
     h->addWidget(m_mode);
+    m_snrLabel = new QLabel();
+    m_snrLabel->setAlignment(Qt::AlignCenter);
+    m_snrLabel->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("SNR -88 dB")) + 12);
+    h->addWidget(m_snrLabel);
     m_txLamp = new QLabel(tr(" RX "));
     m_txLamp->setAlignment(Qt::AlignCenter);
     m_txLamp->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("  TX  ")) + 8);
@@ -2170,6 +2177,16 @@ double MainWindow::currentAudioHz(double *halfWidthHz) const
         audio = m_amtor->carrierHz();
         half = 150;
     }
+    else if (w == m_hellPanel)
+    {
+        audio = m_hell->carrierHz();
+        half = 150; // Feld Hell is about 245 Hz wide
+    }
+    else if (w == m_navtexPanel)
+    {
+        audio = m_navtex->centreHz();
+        half = 150;
+    }
     else if (w == m_sstvPanel)
     {
         audio = 1900.0 + m_sstv->offsetHz(); // middle of the 1500..2300 Hz picture tones
@@ -2198,6 +2215,48 @@ void MainWindow::trackSnr(const QVector<float> &db, double hzPerBin)
         m_snr += 0.15 * (s - m_snr);
     m_snrHz = hz;
     m_snrAge.start();
+}
+
+// Live readout in the top bar: the same measurement the QSO log uses, shown while it is
+// fresh. Green from 10 dB (solid copy on most modes), amber 3-10 dB, red below 3 dB.
+void MainWindow::updateSnrLabel()
+{
+    if (!m_snrLabel)
+        return;
+    QString text = tr("SNR --");
+    QString style;
+    QString tip;
+    double half = 60;
+    const double hz = currentAudioHz(&half);
+    if (hz <= 0.0)
+        tip = tr("SNR: this tab has no single signal frequency to measure.");
+    else if (anyTransmitting() || (m_client && m_client->radioTransmitting()))
+    {
+        text = tr("SNR (TX)");
+        tip = tr("SNR is measured while receiving.");
+    }
+    else if (!std::isnan(m_snr) && m_snrAge.isValid() && m_snrAge.elapsed() < 2000)
+    {
+        const int snr = int(std::lround(m_snr));
+        text = tr("SNR %1 dB").arg(snr);
+        style = snr >= 10 ? QStringLiteral("color: #50d070; font-weight: bold;")
+            : snr >= 3    ? QStringLiteral("color: #e0a030; font-weight: bold;")
+                          : QStringLiteral("color: #e05040; font-weight: bold;");
+    }
+    if (tip.isEmpty())
+        tip = tr("Signal-to-noise of the signal at %1 Hz (+/- %2 Hz) on this tab: its strongest spectrum bin over "
+                 "the median noise floor of the 300-2700 Hz passband, smoothed over about a second.\n"
+                 "This is not WSJT-X's SNR (which is referred to a 2500 Hz bandwidth and reads much lower).\n"
+                 "Green 10 dB and up, amber 3-10 dB, red below 3 dB. The QSO log's signal report uses the same "
+                 "value.")
+                  .arg(qRound(hz))
+                  .arg(qRound(half));
+    if (m_snrLabel->text() != text)
+        m_snrLabel->setText(text);
+    if (m_snrLabel->styleSheet() != style)
+        m_snrLabel->setStyleSheet(style);
+    if (m_snrLabel->toolTip() != tip)
+        m_snrLabel->setToolTip(tip);
 }
 
 QString MainWindow::signalNote() const

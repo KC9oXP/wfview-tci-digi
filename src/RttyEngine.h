@@ -222,6 +222,10 @@ public slots:
 
     void resync();
     void autoTune();
+    // Amateur standard: 45.45 baud, 170 Hz shift, 2125/2295 Hz tones (mark on the side the
+    // sideband puts it), Sideband Auto, Reverse off, 1.5 stop bits, USOS, US TTY figures,
+    // squelch 0.5. Macros, calls, TX level, Hold TX and Diddle are left alone.
+    void setStandard();
 
     // From the TCI client.
     void setConnected(bool ready, bool canTransmit);

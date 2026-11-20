@@ -105,6 +105,7 @@ private:
     double currentAudioHz(double *halfWidthHz = nullptr) const;
     void trackSnr(const QVector<float> &db, double hzPerBin);
     QString signalNote() const;
+    void updateSnrLabel();
     void editCallLookup();
     QString currentSubMode() const;
     void feedPskr(const QString &tab, const QString &subMode, const QString &text, double audioHz);
@@ -161,6 +162,8 @@ private:
     double m_snr = std::nan(""); // smoothed SNR of the signal being decoded
     double m_snrHz = 0.0; // audio frequency it was measured at
     QElapsedTimer m_snrAge;
+    QLabel *m_snrLabel = nullptr; // live SNR of the signal on the tab in use
+    QTimer m_snrShow;
     QList<ModemEngine *> m_txEngines; // m_modems + tune tone + CW ID
     AudioHub *m_audio = nullptr;
     SessionLog *m_session = nullptr;

@@ -296,7 +296,8 @@ type and press Enter; Esc cancels.
     kHz, e.g. `14070 kHz`).
   - The first time, the file is made from a built-in list: the digital-mode frequencies of
     the ARRL band plan, common PSK31 / Olivia / SSTV spots (marked as such in the
-    comment), and the NAVTEX, WEFAX and WWV receive frequencies. *Add built-in...* adds any
+    comment), the Feld Hell Club's suggested Hell frequencies 160-6 m (dial 1 kHz below,
+    so the signal sits at 1000 Hz audio), and the NAVTEX, WEFAX and WWV receive frequencies. *Add built-in...* adds any
     built-in entries missing from your list later without touching your own.
   - Classes: an empty Classes cell is worked out from FCC Part 97 (ITU Region 2) for the
     tab's emission (CW, RTTY/data or SSTV image) across the 3 kHz the signal can occupy
