@@ -126,7 +126,14 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
 - *Tones*: the classic high pair (2125/2295 Hz) or centred on 1500 Hz (1415/1585 Hz, as
   fldigi), so RTTY sits in the middle of a narrow data passband.
 - Crossed-ellipse tuning scope, mark/space/quality bars, *Auto-tune* (finds the tone pair
-  in the last few seconds and sets Mark).
+  in the last few seconds and sets Mark). While transmitting, the scope shows your own
+  tones with a red *TX* in the corner: the clean "+" of a perfectly tuned signal, to
+  compare received stations with.
+- *Standard*: back to the amateur standard in one click (45.45 baud, 170 Hz, 2125/2295 Hz
+  with mark on the side the sideband puts it, Sideband Auto, Reverse off, 1.5 stop bits,
+  USOS, US TTY figures, squelch 0.50). PSK (BPSK31, AFC, squelch 0.30), Olivia (8/500,
+  squelch 5.0), NAVTEX (1000 Hz, Reverse off) and WEFAX (120 LPM, IOC 576, Auto start)
+  have one too. Frequencies, trims, calls, macros and TX level are not changed.
 - Sideband *Auto* follows the radio (USB/DIGU or LSB/DIGL), so mark lands on the right
   tone without touching Reverse.
 - AFSK transmit: 0.30 s of mark before the first character, 0.15 s after the last,
@@ -286,6 +293,9 @@ type and press Enter; Esc cancels.
 - *Connect*: red when disconnected, amber "Cancel" while trying, green "Disconnect" when
   connected. With *Reconnect* ticked it keeps retrying every 5 s.
 - Frequency and mode, shown and settable.
+- *SNR*: live signal-to-noise of the signal on the tab in use (green 10 dB and up, amber
+  3-10 dB, red below 3 dB; `SNR (TX)` while transmitting). Same measurement as the QSO
+  log's signal report; not WSJT-X's 2500 Hz-referenced SNR.
 - *Log*: the session log on (green) or off, for all modes.
 - *Presets*: frequency presets for the tab showing (SSTV 3.845 LSB / 14.230 ..., WEFAX NMF
   / NMG with the 1.9 kHz offset, NAVTEX 518 kHz, WWV 2.5-25 MHz AM ...). A preset sets the
