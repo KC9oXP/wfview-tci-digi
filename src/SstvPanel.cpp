@@ -592,9 +592,10 @@ QWidget *SstvPanel::buildTx()
                                 },
                                 true);
     r7->addWidget(m_tools);
+    r6->insertWidget(0, m_tools->autoLevelButton()); // left of the TX level slider
     m_cwIdAfter = new QCheckBox(tr("CW ID after picture"));
     m_cwIdAfter->setToolTip(tr("Send your CW ID right after each picture, without dropping PTT (like MMSSTV). "
-                               "Text, speed and pitch: Options > Tune tone, CW ID and Auto level."));
+                               "Text, speed and pitch: Options > Tune tone, CW ID and Auto TX level."));
     r7->addWidget(m_cwIdAfter);
     r7->addStretch(1);
     v->addLayout(r7);

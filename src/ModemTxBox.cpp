@@ -113,6 +113,7 @@ ModemTxBox::ModemTxBox(ModemEngine *engine, const QString &name, QWidget *parent
                                 });
     btns->addWidget(m_tools);
     btns->addStretch(1);
+    btns->addWidget(m_tools->autoLevelButton());
     btns->addWidget(new QLabel(tr("TX level")));
     m_txLevel = new TxLevelSlider();
     m_txLevel->setSliderToolTip(

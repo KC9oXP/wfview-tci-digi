@@ -609,7 +609,7 @@ static void runNewModesTx()
     std::printf("  PTT drops during PSK + CW ID: %d\n", pttDrops);
     CHECK(pttDrops == 1);
 
-    std::printf("\n=== 0.9.3: Auto level sets the RTTY TX level for ALC 0.1 ===\n");
+    std::printf("\n=== 0.9.3: Auto TX level sets the RTTY TX level for ALC 0.1 ===\n");
     // Mock radio: ALC from -12 dBFS peak, 0.08 per dB, one decimal -> highest level
     // reading 0.1 is -10.5 dB.
     server.alcFromLevel = true;
@@ -625,7 +625,7 @@ static void runNewModesTx()
     CHECK(tools->autoLeveling());
     CHECK(waitFor([&] { return !tools->autoLeveling(); }, 60000));
     const double db = 20.0 * std::log10(rtty->txLevel());
-    std::printf("  RTTY TX level after Auto level: %.1f dB\n", db);
+    std::printf("  RTTY TX level after Auto TX level: %.1f dB\n", db);
     CHECK(db >= -11.5 && db <= -10.0);
     CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
 

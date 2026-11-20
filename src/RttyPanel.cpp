@@ -432,6 +432,7 @@ QWidget *RttyPanel::buildTx()
                                 });
     btns->addWidget(m_tools);
     btns->addStretch(1);
+    btns->addWidget(m_tools->autoLevelButton());
     btns->addWidget(new QLabel(tr("TX level")));
     m_txLevel = new TxLevelSlider();
     m_txLevel->setSliderToolTip(tr("AFSK tone level sent to wfview, in dB below full level (0.5 dB steps; "

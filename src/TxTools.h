@@ -5,11 +5,11 @@
 //   Tune  - a steady tone (1750 Hz by default, like MMSSTV's tune tone) at the
 //           tab's TX level, to set the TX level / ALC. Click again to stop.
 //           The button is in the SSTV tab only.
-//   Auto level - keys a short test signal shaped like the tab's mode (RTTY: mark
+//   Auto TX level - keys a short test signal shaped like the tab's mode (RTTY: mark
 //           and space alternating; other modes: one tone at the tab's audio
 //           frequency, which has the same peaks) and searches for the highest
 //           TX level whose ALC reading is at or below a target (0.1 by
-//           default, Options > Tune tone, CW ID and Auto level). Target 0: it
+//           default, Options > Tune tone, CW ID and Auto TX level). Target 0: it
 //           first finds where ALC shows, then backs off until it reads 0.
 //           The result is set on the tab's TX level slider.
 //   CW ID - "DE {MYCALL}" (or your text) as keyed audio CW; also sent after a
@@ -160,7 +160,7 @@ public slots:
     void setTuneLevel(double level);
     void sendCwId(double level);
     void setTuneHz(double hz);
-    // From the TCI client, for Auto level.
+    // From the TCI client, for Auto TX level.
     void onTxSensors(double alc, double power, double swr);
     void setRadioTransmitting(bool on);
     void setCwId(const QString &text, int wpm, double pitchHz);
@@ -203,14 +203,19 @@ class TxToolButtons : public QWidget
     Q_OBJECT
 
 public:
-    // level: the tab's TX level now; setLevel: set it (Auto level's result);
-    // testSignal: the test signal for Auto level, shaped like the tab's mode.
+    // level: the tab's TX level now; setLevel: set it (Auto TX level's result);
+    // testSignal: the test signal for Auto TX level, shaped like the tab's mode.
     TxToolButtons(std::function<double()> level,
                   std::function<void(double)> setLevel,
                   std::function<TxTools::TestSignal()> testSignal,
                   bool withTune = false,
                   QWidget *parent = nullptr);
     void setTransmitAllowed(bool on);
+    // The "Auto TX level" button, for the tab to place next to its TX level slider.
+    QPushButton *autoLevelButton() const
+    {
+        return m_auto;
+    }
 
 public slots:
     // The tab's TX level slider moved: a Tune started here follows it at once.

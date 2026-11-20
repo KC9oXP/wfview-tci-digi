@@ -211,7 +211,7 @@ TxTools::TxTools(QSettings *settings, QObject *parent)
                 // Stopped from elsewhere (Abort, TX time limit, connection lost): keep the old level.
                 if (!on && m_al)
                     finishAutoLevel(
-                        tr("Auto level stopped before it finished; the TX level was not changed."), false, 0.0);
+                        tr("Auto TX level stopped before it finished; the TX level was not changed."), false, 0.0);
             });
     connect(m_cwId,
             &ModemEngine::statusChanged,
@@ -306,7 +306,7 @@ void TxTools::startAutoLevel(double level, const TestSignal &sig, std::function<
         return;
     if (m_tune->transmitting())
     {
-        emit message(tr("Auto level: stop the Tune tone first."));
+        emit message(tr("Auto TX level: stop the Tune tone first."));
         return;
     }
     m_al = std::make_unique<autolevel::Search>(txlevel::levelToDb(level), m_alTarget);
@@ -317,14 +317,14 @@ void TxTools::startAutoLevel(double level, const TestSignal &sig, std::function<
     {
         m_al.reset();
         m_alApply = nullptr;
-        emit message(tr("Auto level: %1").arg(m_tune->status()));
+        emit message(tr("Auto TX level: %1").arg(m_tune->status()));
         return;
     }
     m_alTotal.start();
     m_alSince.start();
     m_alTimer.start();
     emit autoLevelChanged(true);
-    emit message(tr("Auto level step 1: trying %1 dB, looking for ALC %2 (click Auto level again to stop)...")
+    emit message(tr("Auto TX level step 1: trying %1 dB, looking for ALC %2 (click Auto TX level again to stop)...")
                      .arg(m_al->currentDb(), 0, 'f', 1)
                      .arg(m_alTarget, 0, 'f', m_alTarget < 1.0 ? 2 : 1));
 }
@@ -332,7 +332,7 @@ void TxTools::startAutoLevel(double level, const TestSignal &sig, std::function<
 void TxTools::cancelAutoLevel()
 {
     if (m_al)
-        finishAutoLevel(tr("Auto level cancelled; the TX level was not changed."), false, 0.0);
+        finishAutoLevel(tr("Auto TX level cancelled; the TX level was not changed."), false, 0.0);
 }
 
 void TxTools::setRadioTransmitting(bool on)
@@ -361,19 +361,19 @@ void TxTools::autoLevelTick()
     if (m_alTotal.elapsed() > kMaxMs)
     {
         finishAutoLevel(
-            tr("Auto level took too long (no steady ALC reading); the TX level was not changed."), false, 0.0);
+            tr("Auto TX level took too long (no steady ALC reading); the TX level was not changed."), false, 0.0);
         return;
     }
     if (!m_radioTx)
     {
         if (m_alTotal.elapsed() > kKeyTimeoutMs)
-            finishAutoLevel(tr("Auto level: the radio did not go to transmit."), false, 0.0);
+            finishAutoLevel(tr("Auto TX level: the radio did not go to transmit."), false, 0.0);
         return;
     }
     const qint64 settled = std::min(m_alSince.elapsed(), m_alTxSince.elapsed()) - kSettleMs;
     if (settled > kNoReadingsMs && m_alReadings.empty())
     {
-        finishAutoLevel(tr("Auto level: the server sends no ALC readings (tx_sensors), so the level cannot be "
+        finishAutoLevel(tr("Auto TX level: the server sends no ALC readings (tx_sensors), so the level cannot be "
                            "set automatically."),
                         false,
                         0.0);
@@ -394,7 +394,7 @@ void TxTools::autoLevelTick()
     {
         m_tune->setTuneLevel(txlevel::dbToLevel(m_al->currentDb()));
         m_alSince.start();
-        emit message(tr("Auto level step %1: ALC %2 at %3 dB - trying %4 dB...")
+        emit message(tr("Auto TX level step %1: ALC %2 at %3 dB - trying %4 dB...")
                          .arg(m_al->steps() + 1)
                          .arg(alc, 0, 'f', 2)
                          .arg(triedDb, 0, 'f', 1)
@@ -402,7 +402,7 @@ void TxTools::autoLevelTick()
         return;
     }
     if (st == St::Done)
-        finishAutoLevel(tr("Auto level: TX level set to %1 dB (ALC %2, target %3) in %4 steps.")
+        finishAutoLevel(tr("Auto TX level: TX level set to %1 dB (ALC %2, target %3) in %4 steps.")
                             .arg(m_al->resultDb(), 0, 'f', 1)
                             .arg(m_al->resultAlc(), 0, 'f', 2)
                             .arg(target)
@@ -410,13 +410,14 @@ void TxTools::autoLevelTick()
                         true,
                         m_al->resultDb());
     else if (st == St::AtMaxBelow)
-        finishAutoLevel(tr("Auto level: ALC stays at or below %1 even at full level, so the TX level is set to 0 dB. "
-                           "For more drive raise wfview's TX audio gain or the radio's data input (MOD) level.")
-                            .arg(target),
-                        true,
-                        0.0);
+        finishAutoLevel(
+            tr("Auto TX level: ALC stays at or below %1 even at full level, so the TX level is set to 0 dB. "
+               "For more drive raise wfview's TX audio gain or the radio's data input (MOD) level.")
+                .arg(target),
+            true,
+            0.0);
     else
-        finishAutoLevel(tr("Auto level: ALC is over %1 even at %2 dB. Lower wfview's TX audio gain or the radio's "
+        finishAutoLevel(tr("Auto TX level: ALC is over %1 even at %2 dB. Lower wfview's TX audio gain or the radio's "
                            "data input (MOD) level, then try again. The TX level was not changed.")
                             .arg(target)
                             .arg(txlevel::kMinDb, 0, 'f', 0),
@@ -455,7 +456,7 @@ void TxTools::setCwId(const QString &text, int wpm, double pitchHz)
 void TxTools::editSettings(QWidget *parent)
 {
     QDialog dlg(parent);
-    dlg.setWindowTitle(tr("Tune tone, CW ID and Auto level"));
+    dlg.setWindowTitle(tr("Tune tone, CW ID and Auto TX level"));
     auto *form = new QFormLayout(&dlg);
     auto *tuneHz = new QSpinBox();
     tuneHz->setRange(300, 3000);
@@ -480,13 +481,13 @@ void TxTools::editSettings(QWidget *parent)
     alc->setDecimals(2);
     alc->setSingleStep(0.1);
     alc->setValue(m_alTarget);
-    alc->setToolTip(tr("ALC reading Auto level aims for (the highest TX level at or below it). The scale is "
+    alc->setToolTip(tr("ALC reading Auto TX level aims for (the highest TX level at or below it). The scale is "
                        "whatever wfview reports for your radio, as in the TX meter at the top.\n"
-                       "0 = no ALC at all: Auto level first raises the level until ALC shows, then backs off "
+                       "0 = no ALC at all: Auto TX level first raises the level until ALC shows, then backs off "
                        "until it reads 0."));
-    form->addRow(tr("Auto level: target ALC"), alc);
-    auto *note = new QLabel(tr("The Tune button is in the SSTV tab; Auto level and CW ID are in every transmit "
-                               "tab. They use (Auto level: set) the TX level of the tab they are sent from. Put "
+    form->addRow(tr("Auto TX level: target ALC"), alc);
+    auto *note = new QLabel(tr("The Tune button is in the SSTV tab; Auto TX level and CW ID are in every transmit "
+                               "tab. They use (Auto TX level: set) the TX level of the tab they are sent from. Put "
                                "{CWID} at the end of a macro to send the CW ID after it."));
     note->setWordWrap(true);
     form->addRow(note);
@@ -521,15 +522,15 @@ TxToolButtons::TxToolButtons(std::function<double()> level,
                           "level, to set the TX level and ALC. Click again to stop. The TX time limit applies."));
     m_cwId = new QPushButton(tr("CW ID"));
     m_cwId->setToolTip(tr("Send your CW ID (\"DE <your call>\") as keyed audio at this tab's TX level.\n"
-                          "Text, speed and pitch: Options > Tune tone, CW ID and Auto level."));
-    m_auto = new QPushButton(tr("Auto level"));
+                          "Text, speed and pitch: Options > Tune tone, CW ID and Auto TX level."));
+    // Not in this widget's row: the tab puts it next to its TX level slider (autoLevelButton()).
+    m_auto = new QPushButton(tr("Auto TX level"));
     UiStyle::greenWhenOn(m_auto);
     m_auto->setToolTip(tr("Set this tab's TX level from the radio's ALC: sends a short test signal shaped like "
                           "this mode and finds the highest level whose ALC is at or below the target (0.1; "
-                          "Options > Tune tone, CW ID and Auto level). Usually 5-15 s. Click again to stop.\n"
+                          "Options > Tune tone, CW ID and Auto TX level). Usually 5-15 s. Click again to stop.\n"
                           "Use a dummy load or a clear frequency: it transmits."));
     h->addWidget(m_tune);
-    h->addWidget(m_auto);
     h->addWidget(m_cwId);
     m_tune->setVisible(withTune);
 

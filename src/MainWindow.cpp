@@ -840,7 +840,7 @@ void MainWindow::buildMenus()
         tr("Logging and uploads (GridTracker, QRZ, LoTW)..."), this, [this]() { m_uploader->editSettings(this); });
     opts->addAction(tr("Callsign lookup (QRZ / HamQTH)..."), this, &MainWindow::editCallLookup);
     opts->addAction(tr("ALC warning..."), this, &MainWindow::editAlcLimit);
-    opts->addAction(tr("Tune tone, CW ID and Auto level..."), this, [this]() { m_tools->editSettings(this); });
+    opts->addAction(tr("Tune tone, CW ID and Auto TX level..."), this, [this]() { m_tools->editSettings(this); });
     opts->addSeparator();
     QMenu *ring = opts->addMenu(tr("Audio kept for \"Save last...\""));
     for (int sec : {60, 120, 300, 600})
