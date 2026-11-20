@@ -317,13 +317,17 @@ type and press Enter; Esc cancels.
   - The first time, the file is made from a built-in list: the digital-mode frequencies of
     the ARRL band plan, common PSK31 / Olivia / SSTV spots (marked as such in the
     comment), the Feld Hell Club's suggested Hell frequencies 160-6 m (dial 1 kHz below,
-    so the signal sits at 1000 Hz audio), and the NAVTEX, WEFAX and WWV receive frequencies. *Add built-in...* adds any
+    so the signal sits at 1000 Hz audio), the US 60 m channels and segment for CW, RTTY,
+    PSK31 and Olivia (100 W ERP on the channels, signal centred on the channel at 1500 Hz
+    audio; 9.15 W ERP in 5351.5-5366.5 kHz; 2.8 kHz bandwidth), and the NAVTEX, WEFAX and WWV receive frequencies. *Add built-in...* adds any
     built-in entries missing from your list later without touching your own.
   - Classes: an empty Classes cell is worked out from FCC Part 97 (ITU Region 2) for the
     tab's emission (CW, RTTY/data or SSTV image) across the 3 kHz the signal can occupy
     from the dial, e.g. SSTV on 7.171 LSB is Advanced and Extra only, data on 28.120 is open
-    to every class, Novice and Technician have CW only on 80, 40 and 15 m. 60 m is not
-    covered (channel rules). This is a guide: check the current rules before transmitting.
+    to every class, Novice and Technician have CW only on 80, 40 and 15 m. 60 m follows the
+    FCC rules from 13 February 2026: General and up, CW / data / USB phone only, on the four
+    channels centred on 5332, 5348, 5373 and 5405 kHz (USB dial 1.5 kHz below) and anywhere
+    in 5351.5-5366.5 kHz. This is a guide: check the current rules before transmitting.
 
 **PSK Reporter** (status bar button, Options > *PSK Reporter...*): sends the callsigns this
 station hears to [pskreporter.info](https://pskreporter.info), where they show on the map.

@@ -1,6 +1,11 @@
 Name,Tab,Sub-mode,Dial MHz,Sideband,Band,Classes,Comment
 CW 160 m,CW,,1.810,USB,160 m,"General, Advanced, Extra",ARRL band plan: 1.810 CW QRP; whole band 1.800-2.000 is CW
 CW 80 m,CW,,3.550,USB,80 m,"Novice, Technician, General, Advanced, Extra","80 m CW, in the 3.525-3.600 segment open to all classes (Novice/Technician: CW only)"
+CW 60 m 5332,CW,,5.3305,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5332 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; set the TX pitch to 1500 Hz so the CW note is on the channel centre"
+CW 60 m 5348,CW,,5.3465,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5348 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; set the TX pitch to 1500 Hz so the CW note is on the channel centre"
+CW 60 m 5373,CW,,5.3715,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5373 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; set the TX pitch to 1500 Hz so the CW note is on the channel centre"
+CW 60 m 5405,CW,,5.4035,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5405 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; set the TX pitch to 1500 Hz so the CW note is on the channel centre"
+CW 60 m segment,CW,,5.3520,USB,60 m,"General, Advanced, Extra","60 m segment 5351.5-5366.5 kHz (FCC since 13 Feb 2026, General and up): 9.15 W ERP max, 2.8 kHz max; anywhere in the segment"
 CW 40 m,CW,,7.030,USB,40 m,"Novice, Technician, General, Advanced, Extra","40 m CW, General segment starts 7.025"
 CW 40 m Novice/Tech,CW,,7.110,USB,40 m,"Novice, Technician, General, Advanced, Extra","Inside 7.025-7.125, the 40 m segment Novice/Technician may use (CW only)"
 CW 30 m,CW,,10.110,USB,30 m,"General, Advanced, Extra","30 m: General and up; 200 W limit, CW and data only"
@@ -13,6 +18,11 @@ CW 10 m,CW,,28.050,USB,10 m,"Novice, Technician, General, Advanced, Extra",ARRL 
 CW 6 m,CW,,50.090,USB,6 m,"Technician, General, Advanced, Extra",ARRL band plan: 50.0-50.1 CW and beacons
 RTTY 160 m,RTTY,45.45/170,1.802,USB,160 m,"General, Advanced, Extra",ARRL band plan: 1.800-1.810 digital modes
 RTTY 80 m,RTTY,45.45/170,3.580,USB,80 m,"General, Advanced, Extra",ARRL band plan: 3.570-3.600 RTTY/Data
+RTTY 60 m 5332,RTTY,45.45/170,5.3305,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5332 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; use Tones: Centred on 1500 Hz so the pair sits on the channel centre"
+RTTY 60 m 5348,RTTY,45.45/170,5.3465,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5348 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; use Tones: Centred on 1500 Hz so the pair sits on the channel centre"
+RTTY 60 m 5373,RTTY,45.45/170,5.3715,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5373 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; use Tones: Centred on 1500 Hz so the pair sits on the channel centre"
+RTTY 60 m 5405,RTTY,45.45/170,5.4035,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5405 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; use Tones: Centred on 1500 Hz so the pair sits on the channel centre"
+RTTY 60 m segment,RTTY,45.45/170,5.3520,USB,60 m,"General, Advanced, Extra","60 m segment 5351.5-5366.5 kHz (FCC since 13 Feb 2026, General and up): 9.15 W ERP max, 2.8 kHz max; anywhere in the segment"
 RTTY 80 m DX,RTTY,45.45/170,3.588,USB,80 m,"General, Advanced, Extra",ARRL band plan: 3.590 RTTY/Data DX (tones at 2125/2295 Hz put the signal near 3.590)
 RTTY 40 m DX,RTTY,45.45/170,7.038,USB,40 m,"General, Advanced, Extra",ARRL band plan: 7.040 RTTY/Data DX (tones at 2125/2295 Hz put the signal near 7.040)
 RTTY 40 m,RTTY,45.45/170,7.080,USB,40 m,"General, Advanced, Extra",ARRL band plan: 7.080-7.125 RTTY/Data
@@ -23,6 +33,11 @@ RTTY 15 m,RTTY,45.45/170,21.080,USB,15 m,"General, Advanced, Extra",ARRL band pl
 RTTY 12 m,RTTY,45.45/170,24.920,USB,12 m,"General, Advanced, Extra",ARRL band plan: 24.920-24.925 RTTY
 RTTY 10 m,RTTY,45.45/170,28.080,USB,10 m,"Novice, Technician, General, Advanced, Extra",ARRL band plan: 28.070-28.150 RTTY; open to all classes
 PSK31 80 m,PSK,BPSK31,3.580,USB,80 m,"General, Advanced, Extra",Common PSK31 spot; ARRL band plan: 3.570-3.600 RTTY/Data
+PSK31 60 m 5332,PSK,BPSK31,5.3305,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5332 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; put the signal at 1500 Hz audio (channel centre)"
+PSK31 60 m 5348,PSK,BPSK31,5.3465,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5348 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; put the signal at 1500 Hz audio (channel centre)"
+PSK31 60 m 5373,PSK,BPSK31,5.3715,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5373 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; put the signal at 1500 Hz audio (channel centre)"
+PSK31 60 m 5405,PSK,BPSK31,5.4035,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5405 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; put the signal at 1500 Hz audio (channel centre)"
+PSK31 60 m segment,PSK,BPSK31,5.3520,USB,60 m,"General, Advanced, Extra","60 m segment 5351.5-5366.5 kHz (FCC since 13 Feb 2026, General and up): 9.15 W ERP max, 2.8 kHz max; anywhere in the segment"
 PSK31 40 m,PSK,BPSK31,7.070,USB,40 m,"General, Advanced, Extra","Common PSK31 spot (below the ARRL 7.080-7.125 RTTY/Data segment, but in the FCC data sub-band)"
 PSK31 30 m,PSK,BPSK31,10.142,USB,30 m,"General, Advanced, Extra",Common PSK31 spot; ARRL band plan lists 10.140-10.150 as packet
 PSK31 20 m,PSK,BPSK31,14.070,USB,20 m,"General, Advanced, Extra",Common PSK31 spot; ARRL band plan: 14.070-14.095 RTTY
@@ -31,6 +46,11 @@ PSK31 15 m,PSK,BPSK31,21.070,USB,15 m,"General, Advanced, Extra",Common PSK31 sp
 PSK31 12 m,PSK,BPSK31,24.920,USB,12 m,"General, Advanced, Extra",ARRL band plan: 24.920-24.925 RTTY
 PSK31 10 m,PSK,BPSK31,28.120,USB,10 m,"Novice, Technician, General, Advanced, Extra",Common PSK31 spot; ARRL band plan: 28.070-28.150 RTTY; open to all classes
 Olivia 80 m,Olivia,Olivia 8/500,3.583,USB,80 m,"General, Advanced, Extra",Common Olivia spot; ARRL band plan: 3.570-3.600 RTTY/Data
+Olivia 60 m 5332,Olivia,Olivia 8/500,5.3305,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5332 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; put the centre at 1500 Hz audio (channel centre)"
+Olivia 60 m 5348,Olivia,Olivia 8/500,5.3465,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5348 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; put the centre at 1500 Hz audio (channel centre)"
+Olivia 60 m 5373,Olivia,Olivia 8/500,5.3715,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5373 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; put the centre at 1500 Hz audio (channel centre)"
+Olivia 60 m 5405,Olivia,Olivia 8/500,5.4035,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5405 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; put the centre at 1500 Hz audio (channel centre)"
+Olivia 60 m segment,Olivia,Olivia 8/500,5.3520,USB,60 m,"General, Advanced, Extra","60 m segment 5351.5-5366.5 kHz (FCC since 13 Feb 2026, General and up): 9.15 W ERP max, 2.8 kHz max; anywhere in the segment"
 Olivia 40 m,Olivia,Olivia 8/500,7.072,USB,40 m,"General, Advanced, Extra","Common Olivia spot (below the ARRL 7.080 RTTY/Data segment, in the FCC data sub-band)"
 Olivia 20 m,Olivia,Olivia 8/500,14.072,USB,20 m,"General, Advanced, Extra",Common Olivia spot; ARRL band plan: 14.070-14.095 RTTY
 Olivia 10 m,Olivia,Olivia 8/500,28.120,USB,10 m,"Novice, Technician, General, Advanced, Extra",ARRL band plan: 28.070-28.150 RTTY; open to all classes

@@ -120,6 +120,20 @@ int main(int argc, char **argv)
     CHECK(cls(Emission::Cw, 50.090, "USB") == (Technician | GAE));
     CHECK(cls(Emission::Cw, 7.020, "USB") == Extra);
 
+    std::printf("classes: 60 m (channels and the 5351.5-5366.5 kHz segment)\n");
+    CHECK(cls(Emission::Data, 5.3305, "USB") == GAE); // channel centred on 5332 kHz
+    CHECK(cls(Emission::Data, 5.3465, "USB") == GAE);
+    CHECK(cls(Emission::Data, 5.3715, "USB") == GAE);
+    CHECK(cls(Emission::Data, 5.4035, "USB") == GAE);
+    CHECK(cls(Emission::Data, 5.3520, "USB") == GAE); // the segment
+    CHECK(cls(Emission::Data, 5.3635, "USB") == GAE); // top of the segment: 5363.5-5366.5
+    CHECK(cls(Emission::Data, 5.3640, "USB") == 0); // runs past 5366.5
+    CHECK(cls(Emission::Data, 5.3400, "USB") == 0); // between channels
+    CHECK(cls(Emission::Data, 5.3570, "LSB") == GAE); // 5354.0-5357.0, inside the segment
+    CHECK(cls(Emission::Cw, 5.3305, "USB") == GAE);
+    CHECK(cls(Emission::Cw, 5.3400, "USB") == 0);
+    CHECK(cls(Emission::Image, 5.3520, "USB") == 0); // no image emissions on 60 m
+
     std::printf("classes: SSTV (image)\n");
     CHECK(cls(Emission::Image, 3.845, "LSB") == GAE);
     CHECK(cls(Emission::Image, 7.171, "LSB") == (Advanced | Extra)); // General phone starts at 7.175

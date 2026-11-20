@@ -288,6 +288,11 @@ inline bool emissionAllowed(Emission e, std::int64_t lo, std::int64_t hi)
     static const std::vector<Seg> data = {
         {M(1.8), M(2.0)},
         {M(3.5), M(3.6)},
+        {M(5.3305), M(5.3335)}, // 60 m: see sixtyMetres below
+        {M(5.3465), M(5.3495)},
+        {M(5.3515), M(5.3665)},
+        {M(5.3715), M(5.3745)},
+        {M(5.4035), M(5.4065)},
         {M(7.0), M(7.125)},
         {M(10.1), M(10.15)},
         {M(14.0), M(14.15)},
@@ -317,7 +322,10 @@ inline bool emissionAllowed(Emission e, std::int64_t lo, std::int64_t hi)
 
 // Classes allowed to send emission e occupying lo..hi Hz (97.301, Region 2). Novice and
 // Technician on 80, 40 and 15 m: CW only; on 10 m 28.0-28.5 MHz (data to 28.3, phone above).
-// 60 m is not covered (channel rules): returns 0 there.
+// 60 m (97.303(h), from 13 Feb 2026): General and up, CW / data / USB phone (no image), 2.8 kHz
+// bandwidth, on the channels centred on 5332, 5348, 5373 and 5405 kHz (100 W ERP; USB dial
+// 1.5 kHz below the centre) and anywhere in 5351.5-5366.5 kHz (9.15 W ERP). The channel
+// spans below run from the USB dial for 3 kHz, like signalSpan().
 inline unsigned classesFor(Emission e, std::int64_t lo, std::int64_t hi)
 {
     using namespace detail;
@@ -325,6 +333,13 @@ inline unsigned classesFor(Emission e, std::int64_t lo, std::int64_t hi)
         std::swap(lo, hi);
     if (!emissionAllowed(e, lo, hi))
         return 0;
+    static const std::vector<Seg> sixtyMetres = {
+        {M(5.3305), M(5.3335)},
+        {M(5.3465), M(5.3495)},
+        {M(5.3515), M(5.3665)},
+        {M(5.3715), M(5.3745)},
+        {M(5.4035), M(5.4065)},
+    };
     static const std::vector<Seg> extra = {
         {M(1.8), M(2.0)},
         {M(3.5), M(4.0)},
@@ -382,6 +397,8 @@ inline unsigned classesFor(Emission e, std::int64_t lo, std::int64_t hi)
     static const std::vector<Seg> techVhf = {{M(50.0), M(54.0)}, {M(144.0), M(148.0)}};
 
     unsigned out = 0;
+    if (inAny(lo, hi, sixtyMetres))
+        out |= General | Advanced | Extra;
     if (inAny(lo, hi, extra))
         out |= Extra;
     if (inAny(lo, hi, advanced))
