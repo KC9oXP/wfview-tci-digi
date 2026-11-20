@@ -324,7 +324,8 @@ void TxTools::startAutoLevel(double level, const TestSignal &sig, std::function<
     m_alSince.start();
     m_alTimer.start();
     emit autoLevelChanged(true);
-    emit message(tr("Auto level: looking for ALC %1 (click Auto level again to stop)...")
+    emit message(tr("Auto level step 1: trying %1 dB, looking for ALC %2 (click Auto level again to stop)...")
+                     .arg(m_al->currentDb(), 0, 'f', 1)
                      .arg(m_alTarget, 0, 'f', m_alTarget < 1.0 ? 2 : 1));
 }
 
@@ -386,20 +387,26 @@ void TxTools::autoLevelTick()
     m_alReadings.clear();
     m_alLastAlc = alc;
     using St = autolevel::Search::State;
+    const double triedDb = m_al->currentDb();
     const St st = m_al->feed(alc);
     const QString target = QString::number(m_alTarget, 'f', m_alTarget < 1.0 ? 2 : 1);
     if (st == St::Measuring)
     {
         m_tune->setTuneLevel(txlevel::dbToLevel(m_al->currentDb()));
         m_alSince.start();
-        emit message(tr("Auto level: ALC %1 - trying %2 dB...").arg(alc, 0, 'f', 2).arg(m_al->currentDb(), 0, 'f', 1));
+        emit message(tr("Auto level step %1: ALC %2 at %3 dB - trying %4 dB...")
+                         .arg(m_al->steps() + 1)
+                         .arg(alc, 0, 'f', 2)
+                         .arg(triedDb, 0, 'f', 1)
+                         .arg(m_al->currentDb(), 0, 'f', 1));
         return;
     }
     if (st == St::Done)
-        finishAutoLevel(tr("Auto level: TX level set to %1 dB (ALC %2, target %3).")
+        finishAutoLevel(tr("Auto level: TX level set to %1 dB (ALC %2, target %3) in %4 steps.")
                             .arg(m_al->resultDb(), 0, 'f', 1)
                             .arg(m_al->resultAlc(), 0, 'f', 2)
-                            .arg(target),
+                            .arg(target)
+                            .arg(m_al->steps()),
                         true,
                         m_al->resultDb());
     else if (st == St::AtMaxBelow)
