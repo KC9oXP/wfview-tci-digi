@@ -310,7 +310,10 @@ QWidget *RttyPanel::buildTop()
 
     h->addLayout(left, 3);
     m_scope = new ScopeWidget();
-    m_scope->setToolTip(tr("Tuning scope: a clean \"+\" means mark and space are on frequency."));
+    m_scope->setToolTip(
+        tr("Tuning scope (crossed ellipses): mark draws the horizontal line, space the vertical one.\n"
+           "A clean \"+\" means mark and space are on frequency; tilted or smeared lines mean mistuned.\n"
+           "While transmitting (TX in the corner) it shows your own tones: the perfect \"+\" to tune others to."));
     h->addWidget(m_scope, 2);
 
     // wiring
@@ -549,9 +552,10 @@ void RttyPanel::syncTransmitting(bool on)
 
 void RttyPanel::updateScopeIdle()
 {
-    if (m_rtty->transmitting())
-        m_scope->setIdleText(tr("TX"));
-    else if (!m_rtty->decoding())
+    // While transmitting the scope shows our own tones (a reference "+").
+    const bool tx = m_rtty->transmitting();
+    m_scope->setTag(tx ? tr("TX") : QString());
+    if (!tx && !m_rtty->decoding())
         m_scope->setIdleText(tr("Decode off"));
     else
         m_scope->setIdleText(QString());

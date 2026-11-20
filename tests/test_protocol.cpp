@@ -6,6 +6,7 @@
 #include "rttytxsource.h"
 #include "tciprotocol.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -168,6 +169,93 @@ static void testWrongChannelsFails()
     CHECK(got.find("KC9OXP TEST") == std::string::npos);
 }
 
+// Louder scope points split by where they lie: along X (mark), along Y (space)
+// or neither (tone changes, mistuning).
+struct ScopeSplit
+{
+    size_t loud = 0, alongX = 0, alongY = 0;
+};
+
+static ScopeSplit splitPoints(const std::vector<RttyScope::Point> &pts, size_t from = 0)
+{
+    ScopeSplit r;
+    for (size_t i = from; i < pts.size(); ++i)
+    {
+        const double a = std::fabs(pts[i].x), b = std::fabs(pts[i].y);
+        if (std::max(a, b) < 0.3)
+            continue;
+        ++r.loud;
+        if (b < 0.15 * a)
+            ++r.alongX;
+        else if (a < 0.15 * b)
+            ++r.alongY;
+    }
+    return r;
+}
+
+static void testTxScopeMonitor()
+{
+    std::printf("RTTY TX monitor for the tuning scope\n");
+    RttyConfig cfg;
+    cfg.markHz = 2295.0;
+    cfg.reverse = true; // USB: space 2125 below mark
+    RttyTxSource tx;
+    tx.setConfig(cfg);
+    tx.setLevel(0.5f);
+
+    std::vector<float> stereo(2048 * 2), mon;
+    // Not transmitting: nothing to show.
+    tx.render(stereo.data(), 2048, 2, 48000.0f);
+    CHECK(tx.takeMonitor(mon) == 0.0f);
+    CHECK(mon.empty());
+
+    tx.start(0.3);
+    tx.queueText("RYRYRYRYRYRY CQ CQ DE KC9OXP KC9OXP K\n");
+    RttyScope scope;
+    scope.setConfig(48000.0, cfg.markHz, cfg.spaceHz(), cfg.baud, cfg.shiftHz);
+    std::vector<RttyScope::Point> pts;
+    size_t prerollEnd = 0;
+    for (int i = 0; i < 60 && !tx.idle(); ++i)
+    {
+        tx.render(stereo.data(), 2048, 2, 48000.0f);
+        const float rate = tx.takeMonitor(mon);
+        CHECK(rate == 48000.0f);
+        CHECK(mon.size() == 2048);
+        // the monitor is the mono signal that went out on channel 0
+        CHECK(!mon.empty() && mon[100] == stereo[200]);
+        scope.process(mon.data(), mon.size(), 10, pts);
+        if (i == 5) // 6 x 2048 samples = 0.26 s, still in the 0.3 s mark preroll
+            prerollEnd = pts.size();
+    }
+    CHECK(tx.takeMonitor(mon) == 0.0f); // already taken
+
+    // Steady mark: a flat line along X (skip the filters' first 20 ms).
+    const size_t skip = 96;
+    std::vector<RttyScope::Point> pre(pts.begin() + skip, pts.begin() + prerollEnd);
+    const ScopeSplit m = splitPoints(pre);
+    // Keying: both arms of the "+".
+    const ScopeSplit k = splitPoints(pts, prerollEnd);
+    std::printf("  mark preroll: %zu/%zu along X; keyed: %zu along X, %zu along Y of %zu\n",
+                m.alongX,
+                m.loud,
+                k.alongX,
+                k.alongY,
+                k.loud);
+    CHECK(m.loud > 100 && m.alongX >= m.loud * 98 / 100);
+    CHECK(k.alongX > k.loud / 4 && k.alongY > k.loud / 4);
+    CHECK(k.alongX + k.alongY > k.loud * 6 / 10);
+
+    // Not taken for a while: kept to about one second.
+    for (int i = 0; i < 60; ++i)
+        tx.render(stereo.data(), 2048, 2, 48000.0f);
+    tx.takeMonitor(mon);
+    CHECK(mon.size() <= 48000);
+    // Stopped: the leftover copy is dropped.
+    tx.render(stereo.data(), 2048, 2, 48000.0f);
+    tx.stop();
+    CHECK(tx.takeMonitor(mon) == 0.0f);
+}
+
 int main()
 {
     testParse();
@@ -176,6 +264,7 @@ int main()
     testRttyLoop(false, 0.0);
     testRttyLoop(true, 0.15);
     testWrongChannelsFails();
+    testTxScopeMonitor();
     std::printf(g_fail ? "FAILED: %d\n" : "ALL PASSED\n", g_fail);
     return g_fail ? 1 : 0;
 }

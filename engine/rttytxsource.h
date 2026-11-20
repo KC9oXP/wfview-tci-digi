@@ -54,6 +54,12 @@ public:
     // Converter thread: write frames * channels interleaved samples.
     void render(float *out, size_t frames, int channels, float sampleRate);
 
+    // A copy of the transmitted tones (mono) for the tuning scope while
+    // transmitting. Moves what was rendered since the last call into 'out'
+    // (at most about one second; older audio is dropped) and returns its
+    // sample rate, or 0 if nothing was rendered.
+    float takeMonitor(std::vector<float> &out);
+
 private:
     mutable std::mutex m_mutex;
     RttyModulator m_mod;
@@ -62,6 +68,8 @@ private:
     size_t m_queuedCodes = 0; // codes queued since start()
     std::deque<std::pair<size_t, char>> m_echo; // (code count after this char, char)
     std::vector<float> m_buf;
+    std::vector<float> m_monitor;
+    float m_monitorRate = 0.0f;
     std::atomic<bool> m_active {false};
     std::atomic<uint64_t> m_frames {0};
 };

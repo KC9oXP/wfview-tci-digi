@@ -33,6 +33,7 @@ void RttyTxSource::start(double prerollSec)
     m_mod.queueCodes({RttyBaudot::kLtrs});
     m_queuedCodes = 1;
     m_frames.store(0, std::memory_order_relaxed);
+    m_monitor.clear();
     m_active.store(true, std::memory_order_relaxed);
 }
 
@@ -63,6 +64,7 @@ void RttyTxSource::stop()
     m_mod.clear();
     m_echo.clear();
     m_queuedCodes = 0;
+    m_monitor.clear();
 }
 
 bool RttyTxSource::idle() const
@@ -101,4 +103,23 @@ void RttyTxSource::render(float *out, size_t frames, int channels, float sampleR
         for (int c = 0; c < channels; ++c)
             out[i * channels + c] = m_buf[i];
     m_frames.fetch_add(frames, std::memory_order_relaxed);
+
+    if (m_active.load(std::memory_order_relaxed) && m_cfg.sampleRate > 0.0)
+    {
+        m_monitorRate = static_cast<float>(m_cfg.sampleRate);
+        m_monitor.insert(m_monitor.end(), m_buf.begin(), m_buf.end());
+        const size_t cap = static_cast<size_t>(m_cfg.sampleRate); // about one second
+        if (m_monitor.size() > cap)
+            m_monitor.erase(m_monitor.begin(), m_monitor.end() - static_cast<std::ptrdiff_t>(cap));
+    }
+}
+
+float RttyTxSource::takeMonitor(std::vector<float> &out)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    out.clear();
+    if (m_monitor.empty())
+        return 0.0f;
+    out.swap(m_monitor);
+    return m_monitorRate;
 }

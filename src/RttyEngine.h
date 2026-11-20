@@ -7,6 +7,7 @@
 //
 //   RttyEngine --> RttyTxSource <-- TciClient TX render callback
 //   RttyEngine -- transmitRequested(bool) --> TciClient::setTransmit()
+//   RttyTxSource::takeMonitor --pushTxAudio [queued]--> worker --txScopeUpdated--> scope while transmitting
 //
 // Transmit sends audio tones (AFSK) as TCI TX audio, so the radio must be in a
 // data/SSB mode that takes computer audio (USB-D / DIGU on Icom).
@@ -45,6 +46,9 @@ public slots:
                    double squelch);
     void resetDecoder();
     void findTones(double shiftHz);
+    // Our own transmitted tones, for the scope while transmitting.
+    void pushTxAudio(QVector<float> mono, float sampleRate);
+    void resetTxScope();
 
 signals:
     void textDecoded(QString text);
@@ -52,9 +56,14 @@ signals:
     void tonesFound(bool found, double lowHz, double highHz, double levelDb);
     // Crossed-ellipse scope points, flat [x0, y0, x1, y1, ...] in -1..1, ~15 frames a second.
     void scopeUpdated(QVector<float> xy);
+    // The same for the transmitted audio.
+    void txScopeUpdated(QVector<float> xy);
 
 private:
     void applyConfig();
+    void applyTxScopeConfig();
+    // Every ~66 ms: the newest points as one scope frame.
+    static bool takeScopeFrame(std::vector<RttyScope::Point> &pts, QElapsedTimer &timer, QVector<float> &xy);
 
     RttyConfig m_cfg;
     double m_squelch = 0.0;
@@ -62,6 +71,10 @@ private:
     RttyScope m_scope;
     std::vector<RttyScope::Point> m_scopePts;
     QElapsedTimer m_scopeTimer;
+    RttyScope m_txScope;
+    float m_txRate = 0.0f;
+    std::vector<RttyScope::Point> m_txScopePts;
+    QElapsedTimer m_txScopeTimer;
     std::vector<float> m_history;
     QElapsedTimer m_statsTimer;
 };
@@ -239,7 +252,9 @@ private slots:
     void onStatsUpdated(double quality, double markDb, double spaceDb, bool squelchOpen, double sampleRate);
     void onTonesFound(bool found, double lowHz, double highHz, double levelDb);
     void onScopeUpdated(const QVector<float> &xy);
+    void onTxScopeUpdated(const QVector<float> &xy);
     void pollTx();
+    void feedTxScope();
 
 private:
     RttyConfig config() const;
@@ -293,4 +308,5 @@ private:
     bool m_cwIdAfter = false;
     QElapsedTimer m_keyedTimer;
     QTimer m_txPoll;
+    std::vector<float> m_txMonitor;
 };

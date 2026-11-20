@@ -3,7 +3,7 @@
 // Crossed-ellipse RTTY tuning scope: mark on one axis, space on the other.
 // A tuned signal shows a "+"; a mistuned one leans or smears. Points fade
 // like phosphor. The drawing stays square and centred however the widget is
-// sized.
+// sized. While transmitting it shows our own tones, tagged "TX".
 
 #include <QImage>
 #include <QString>
@@ -32,6 +32,8 @@ public slots:
     void addPoints(const QVector<float> &xy);
     // Shown in place of the trace (e.g. "Decode off", "TX"); empty = live.
     void setIdleText(const QString &text);
+    // Small label in the top-left corner over a live trace (e.g. "TX"); empty = none.
+    void setTag(const QString &text);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -43,4 +45,5 @@ private:
 
     QImage m_img;
     QString m_idle;
+    QString m_tag;
 };

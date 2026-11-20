@@ -1,5 +1,6 @@
 #include "ScopeWidget.h"
 
+#include <QFont>
 #include <QPainter>
 #include <QResizeEvent>
 #include <algorithm>
@@ -47,6 +48,14 @@ void ScopeWidget::setIdleText(const QString &text)
     m_idle = text;
     if (!m_img.isNull())
         m_img.fill(Qt::black);
+    update();
+}
+
+void ScopeWidget::setTag(const QString &text)
+{
+    if (text == m_tag)
+        return;
+    m_tag = text;
     update();
 }
 
@@ -98,5 +107,13 @@ void ScopeWidget::paintEvent(QPaintEvent *)
     {
         p.setPen(QColor(0x2f, 0x7f, 0x45));
         p.drawText(sq, Qt::AlignCenter, m_idle);
+    }
+    else if (!m_tag.isEmpty())
+    {
+        QFont f = p.font();
+        f.setBold(true);
+        p.setFont(f);
+        p.setPen(QColor(0xff, 0x50, 0x40));
+        p.drawText(sq.adjusted(6, 4, -6, -4), Qt::AlignLeft | Qt::AlignTop, m_tag);
     }
 }

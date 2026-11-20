@@ -53,6 +53,7 @@ RttyDecoderWorker::RttyDecoderWorker(QObject *parent)
     m_cfg.sampleRate = 0.0; // set by the first audio block
     m_statsTimer.start();
     m_scopeTimer.start();
+    m_txScopeTimer.start();
 }
 
 void RttyDecoderWorker::applyConfig()
@@ -62,6 +63,52 @@ void RttyDecoderWorker::applyConfig()
     m_demod.setConfig(m_cfg);
     m_demod.setSquelch(m_squelch);
     m_scope.setConfig(m_cfg.sampleRate, m_cfg.markHz, m_cfg.spaceHz(), m_cfg.baud, m_cfg.shiftHz);
+}
+
+void RttyDecoderWorker::applyTxScopeConfig()
+{
+    // Same tones and filters as the receive scope, at the TX audio rate.
+    if (m_txRate > 0.0f)
+        m_txScope.setConfig(m_txRate, m_cfg.markHz, m_cfg.spaceHz(), m_cfg.baud, m_cfg.shiftHz);
+}
+
+bool RttyDecoderWorker::takeScopeFrame(std::vector<RttyScope::Point> &pts, QElapsedTimer &timer, QVector<float> &xy)
+{
+    if (timer.elapsed() < scopeIntervalMs)
+        return false;
+    timer.restart();
+    const size_t first = pts.size() > scopeMaxPoints ? pts.size() - scopeMaxPoints : 0;
+    xy.clear();
+    xy.reserve(static_cast<int>(2 * (pts.size() - first)));
+    for (size_t i = first; i < pts.size(); ++i)
+    {
+        xy.append(pts[i].x);
+        xy.append(pts[i].y);
+    }
+    pts.clear();
+    return true;
+}
+
+void RttyDecoderWorker::pushTxAudio(QVector<float> mono, float sampleRate)
+{
+    if (mono.isEmpty() || sampleRate <= 0.0f)
+        return;
+    if (m_txRate != sampleRate)
+    {
+        m_txRate = sampleRate;
+        applyTxScopeConfig();
+    }
+    const size_t step = static_cast<size_t>(std::max(1.0, sampleRate / scopePointsPerSecond));
+    m_txScope.process(mono.constData(), static_cast<size_t>(mono.size()), step, m_txScopePts);
+    QVector<float> xy;
+    if (takeScopeFrame(m_txScopePts, m_txScopeTimer, xy))
+        emit txScopeUpdated(xy);
+}
+
+void RttyDecoderWorker::resetTxScope()
+{
+    m_txScope.reset();
+    m_txScopePts.clear();
 }
 
 void RttyDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
@@ -86,20 +133,9 @@ void RttyDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
 
     const size_t step = static_cast<size_t>(std::max(1.0, sampleRate / scopePointsPerSecond));
     m_scope.process(mono.constData(), static_cast<size_t>(mono.size()), step, m_scopePts);
-    if (m_scopeTimer.elapsed() >= scopeIntervalMs)
-    {
-        m_scopeTimer.restart();
-        const size_t first = m_scopePts.size() > scopeMaxPoints ? m_scopePts.size() - scopeMaxPoints : 0;
-        QVector<float> xy;
-        xy.reserve(static_cast<int>(2 * (m_scopePts.size() - first)));
-        for (size_t i = first; i < m_scopePts.size(); ++i)
-        {
-            xy.append(m_scopePts[i].x);
-            xy.append(m_scopePts[i].y);
-        }
-        m_scopePts.clear();
+    QVector<float> xy;
+    if (takeScopeFrame(m_scopePts, m_scopeTimer, xy))
         emit scopeUpdated(xy);
-    }
 
     if (m_statsTimer.elapsed() >= statsIntervalMs)
     {
@@ -125,6 +161,7 @@ void RttyDecoderWorker::setParams(
     m_cfg.ita2 = ita2;
     m_squelch = squelch;
     applyConfig();
+    applyTxScopeConfig();
 }
 
 void RttyDecoderWorker::resetDecoder()
@@ -172,6 +209,7 @@ RttyEngine::RttyEngine(QObject *parent)
     connect(m_worker, &RttyDecoderWorker::statsUpdated, this, &RttyEngine::onStatsUpdated);
     connect(m_worker, &RttyDecoderWorker::tonesFound, this, &RttyEngine::onTonesFound);
     connect(m_worker, &RttyDecoderWorker::scopeUpdated, this, &RttyEngine::onScopeUpdated);
+    connect(m_worker, &RttyDecoderWorker::txScopeUpdated, this, &RttyEngine::onTxScopeUpdated);
     m_thread->start(QThread::LowPriority);
 
     m_txPoll.setInterval(txPollMs);
@@ -502,6 +540,24 @@ void RttyEngine::onScopeUpdated(const QVector<float> &xy)
         emit scopePoints(xy);
 }
 
+void RttyEngine::onTxScopeUpdated(const QVector<float> &xy)
+{
+    // Shown whether or not Decode is on: it is our own signal.
+    if (m_keyed)
+        emit scopePoints(xy);
+}
+
+void RttyEngine::feedTxScope()
+{
+    const float rate = m_tx->takeMonitor(m_txMonitor);
+    if (rate <= 0.0f || m_txMonitor.empty())
+        return;
+    QVector<float> mono(static_cast<int>(m_txMonitor.size()));
+    std::copy(m_txMonitor.begin(), m_txMonitor.end(), mono.begin());
+    QMetaObject::invokeMethod(
+        m_worker, "pushTxAudio", Qt::QueuedConnection, Q_ARG(QVector<float>, mono), Q_ARG(float, rate));
+}
+
 void RttyEngine::onTonesFound(bool found, double lowHz, double highHz, double levelDb)
 {
     if (!found)
@@ -572,6 +628,7 @@ void RttyEngine::keyUp()
         setStatus(tr("The server reports this radio as receive only."));
         return;
     }
+    QMetaObject::invokeMethod(m_worker, "resetTxScope", Qt::QueuedConnection);
     m_tx->start(prerollSeconds);
     m_keyed = true;
     m_tailQueued = false;
@@ -695,6 +752,7 @@ void RttyEngine::pollTx()
     const std::string sent = m_tx->takeSent();
     if (!sent.empty())
         emit textAppended(QString::fromLatin1(sent.data(), static_cast<int>(sent.size())));
+    feedTxScope();
 
     const qint64 ms = m_keyedTimer.elapsed();
     if (ms > txStartTimeoutMs && m_tx->renderedFrames() == 0)
