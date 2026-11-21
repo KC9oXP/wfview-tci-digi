@@ -333,7 +333,26 @@ void QsoLogDock::setCall(const QString &call)
     m_name->clear();
     m_qth->clear();
     m_grid->clear();
+    m_filledCall.clear();
     startLookup();
+}
+
+void QsoLogDock::newCall(const QString &call)
+{
+    if (m_filledCall.isEmpty() || call.compare(m_filledCall, Qt::CaseInsensitive) == 0)
+        return;
+    // The form moved on to another call: take away what the lookup filled in for the last
+    // one (a box you changed by hand stays).
+    if (m_name->text() == m_filledName)
+        m_name->clear();
+    if (m_qth->text() == m_filledQth)
+        m_qth->clear();
+    if (m_grid->text() == m_filledGrid)
+        m_grid->clear();
+    m_filledCall.clear();
+    m_filledName.clear();
+    m_filledQth.clear();
+    m_filledGrid.clear();
 }
 
 void QsoLogDock::setLookup(CallLookup *lookup)
@@ -346,13 +365,18 @@ void QsoLogDock::setLookup(CallLookup *lookup)
             {
                 if (call.compare(m_call->text().trimmed(), Qt::CaseInsensitive) != 0)
                     return; // the form has moved on to another call
-                // Only blank fields: never overwrite what you typed.
+                newCall(call); // clears the last call's looked-up boxes
+                // Blank boxes only: never overwrite what you typed.
                 if (m_name->text().trimmed().isEmpty())
                     m_name->setText(info.name);
                 if (m_qth->text().trimmed().isEmpty())
                     m_qth->setText(info.qth);
                 if (m_grid->text().trimmed().isEmpty())
                     m_grid->setText(info.grid);
+                m_filledCall = call;
+                m_filledName = m_name->text();
+                m_filledQth = m_qth->text();
+                m_filledGrid = m_grid->text();
                 m_info->setText(tr("%1 looked up on %2.").arg(call, m_lookup->serviceName()));
             });
     connect(m_lookup,
@@ -368,6 +392,7 @@ void QsoLogDock::setLookup(CallLookup *lookup)
 void QsoLogDock::startLookup()
 {
     const QString call = m_call->text().trimmed();
+    newCall(call); // also when the lookup then finds nothing
     if (m_lookup && call.size() >= 3)
         m_lookup->lookup(call);
 }
@@ -384,6 +409,7 @@ void QsoLogDock::clearForm()
     m_qth->clear();
     m_grid->clear();
     m_comment->clear();
+    m_filledCall.clear();
     m_rstS->setText(defaultRst());
     m_rstR->setText(defaultRst());
     m_start = QDateTime();

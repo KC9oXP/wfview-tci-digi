@@ -82,6 +82,10 @@ private:
     QString m_mode, m_submode;
     QString m_myCall;
     QDateTime m_start;
+    // What the last lookup put in Name / QTH / Grid, and for which call: those boxes are
+    // replaced (or cleared) when the call changes, unless you edited them.
+    QString m_filledCall, m_filledName, m_filledQth, m_filledGrid;
+    void newCall(const QString &call);
 
     QLineEdit *m_call = nullptr;
     QLineEdit *m_rstS = nullptr;
