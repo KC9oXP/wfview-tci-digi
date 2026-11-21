@@ -353,7 +353,9 @@ station hears to [pskreporter.info](https://pskreporter.info), where they show o
   right after CQ, DE or 73 (`CQ DE W1AW K`, `73 W1AW SK`; one over is enough) in the CW, RTTY,
   PSK, Olivia/Contestia and AMTOR tabs, each call at most once per 10 minutes. After 73 the call
   counts only if DE does not follow it (`TU 73 K1ABC DE W1AW` reports W1AW, not K1ABC, who was
-  only being thanked). Text you send is never read.
+  only being thanked). A call sent twice in a row also counts (`VVV TEST TEST N9KRK N9KRK`),
+  unless DE follows it (`N9KRK N9KRK DE W9ABC` is W9ABC calling N9KRK). Text you send is never
+  read.
 - As the PSK Reporter developer page asks: at most one report every 5 minutes (timed from when
   you turn it on, not the clock), each call at most once per 5 minutes and otherwise once an
   hour unless it moves band; mode names are ADIF (CW, RTTY, PSK31, OLIVIA, CONTESTI,
@@ -363,7 +365,8 @@ station hears to [pskreporter.info](https://pskreporter.info), where they show o
 
 *Options > GridTracker (live frequency and heard calls)...* (off until turned on) sends GridTracker2
 the dial frequency, band, mode, your call and grid every 15 seconds and whenever they change, and the
-calls heard in the CW, RTTY, PSK, Olivia/Contestia and AMTOR tabs right after CQ, DE or 73, each call at
+calls heard in the CW, RTTY, PSK, Olivia/Contestia and AMTOR tabs right after CQ, DE or 73 (or sent twice
+in a row, as for PSK Reporter), each call at
 most once a minute, so they show on its map. The heard calls appear as `CQ W1AW` (a CQ), `K1ABC W1AW`
 (W1AW calling K1ABC; calls to you are highlighted by GridTracker) or `DE W1AW`. It uses the same UDP
 message format WSJT-X sends, to 127.0.0.1 port 2237 by default (GridTracker2: Settings > General >

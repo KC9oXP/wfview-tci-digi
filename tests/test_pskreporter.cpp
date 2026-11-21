@@ -327,11 +327,11 @@ int main()
         CHECK(dx.feed("RTTY", "CQ TEST W1AW ", 14080000, 0).size() == 1);
         // my own call is never reported
         CHECK(sp.feed("PSK", "CQ DE KC9OXP KC9OXP 73 KC9OXP SK ", 14070000, 400).empty());
-        // a call that is not after CQ, DE or 73 does not count
+        // a single call that is not after CQ, DE or 73 does not count (twice in a row does)
         callspot::Spotter none;
-        CHECK(none.feed("PSK", "W1AW W1AW W1AW W1AW TNX FER QSO ", 14070000, 0).empty());
+        CHECK(none.feed("PSK", "W1AW TNX FER QSO ", 14070000, 0).empty());
         // "DE W1AW K1ABC": W1AW counts, the second call does not
-        out = none.feed("PSK", "DE W1AW K1ABC K1ABC K1ABC ", 14070000, 0);
+        out = none.feed("PSK", "DE W1AW K1ABC TNX ", 14070000, 0);
         CHECK(out.size() == 1 && out[0].call == "W1AW");
         CHECK(none.sightings("K1ABC", 0) == 0);
         // the old 3-sighting rule still works if asked for
@@ -339,6 +339,33 @@ int main()
         three.needed = 3;
         CHECK(three.feed("CW", "CQ DE W6EL W6EL K ", 7030000, 0).empty());
         CHECK(three.feed("CW", "DE W6EL ", 7030000, 10).size() == 1);
+    }
+
+    std::printf("spotter: a call sent twice with no keyword (VVV TEST TEST N9KRK N9KRK)\n");
+    {
+        callspot::Spotter sp;
+        sp.myCall = "KC9OXP";
+        auto out = sp.feed("CW", "?VV VVV TEST TEST N9KRK N9KRK TE", 3543000, 100);
+        CHECK(out.empty()); // "TE" may still be arriving; the word after the pair decides
+        out = sp.feed("CW", "ST TEST ", 3543000, 101);
+        CHECK(out.size() == 1 && out[0].call == "N9KRK" && out[0].via == "2x" && out[0].to.empty());
+        // split over pieces, three times, then K
+        callspot::Spotter b;
+        out = b.feed("CW", "W1AW W1", 7030000, 0);
+        out = b.feed("CW", "AW W1AW K ", 7030000, 1);
+        CHECK(out.size() == 1 && out[0].call == "W1AW");
+        // someone calling N9KRK: N9KRK is not heard, the caller is
+        callspot::Spotter c;
+        out = c.feed("CW", "N9KRK N9KRK DE W9ABC W9ABC K ", 3543000, 0);
+        CHECK(out.size() == 1 && out[0].call == "W9ABC" && out[0].to == "N9KRK");
+        // once only, not two different calls, not my own call
+        callspot::Spotter d;
+        d.myCall = "KC9OXP";
+        CHECK(d.feed("CW", "W1AW K1ABC TEST ", 7030000, 0).empty());
+        CHECK(d.feed("CW", "KC9OXP KC9OXP TEST ", 7030000, 0).empty());
+        CHECK(d.feed("CW", "5NN 5NN TU ", 7030000, 0).empty());
+        // GridTracker line for it: "DE N9KRK"
+        CHECK(sp.sightings("N9KRK", 101) == 0); // reported, list cleared
     }
 
     std::printf(g_fail ? "\n%d FAILED\n" : "\nALL PASSED\n", g_fail);

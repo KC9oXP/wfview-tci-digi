@@ -9,6 +9,8 @@
 // then not again for `windowSec`. "CQ CQ DE W1AW W1AW W1AW K" is three sightings.
 // After 73 the call counts only when DE does not follow it: "73 W1AW SK" is W1AW signing,
 // "TU 73 K1ABC DE W1AW" is K1ABC being thanked (not heard), so only W1AW counts.
+// A call sent twice in a row with no keyword before it ("VVV TEST TEST N9KRK N9KRK") counts
+// too (via "2x"), unless DE follows: "N9KRK N9KRK DE KC9OXP" is KC9OXP calling N9KRK.
 #pragma once
 
 #include <cstdint>
@@ -206,6 +208,7 @@ private:
         std::string prev; // the word before this one
         std::string to; // the call before DE ("K1ABC DE W1AW")
         bool cqDe = false; // "CQ CQ DE W1AW": a CQ, though DE came last
+        std::string dbl; // "W1AW W1AW" with no keyword: counted once the next word is not DE
     };
     struct Seen
     {
@@ -247,6 +250,15 @@ private:
             else
                 return; // "73 W1AW W1AW": wait for the word after the repeats
         }
+        if (!st.dbl.empty())
+        {
+            // "N9KRK N9KRK TE" / "N9KRK N9KRK K": N9KRK sent it. "N9KRK N9KRK DE KC9OXP": called.
+            if (w == st.dbl)
+                return; // more repeats
+            if (w != "DE")
+                sighting(source, st.dbl, "2x", std::string(), hz, now, out);
+            st.dbl.clear();
+        }
         if (w == "DE")
         {
             st.cqDe = st.after == 2 && st.lastCall.empty();
@@ -264,7 +276,11 @@ private:
             return;
         }
         if (st.after == 0)
+        {
+            if (w == before && isCallsign(w))
+                st.dbl = w; // "W1AW W1AW": wait for the next word
             return;
+        }
         if (isCallsign(w))
         {
             if (st.after == 3)
