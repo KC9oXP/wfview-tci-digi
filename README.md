@@ -346,6 +346,17 @@ station hears to [pskreporter.info](https://pskreporter.info), where they show o
   hour unless it moves band; mode names are ADIF (CW, RTTY, PSK31, OLIVIA, CONTESTI,
   AMTORFEC). A *test server* option sends to PSK Reporter's packet checker instead of the map.
 
+#### GridTracker (live frequency and heard calls)
+
+*Options > GridTracker (live frequency and heard calls)...* (off until turned on) sends GridTracker2
+the dial frequency, band, mode, your call and grid every 15 seconds and whenever they change, and the
+calls heard in the CW, RTTY, PSK, Olivia/Contestia and AMTOR tabs right after CQ, DE or 73, each call at
+most once a minute, so they show on its map. The heard calls appear as `CQ W1AW` (a CQ), `K1ABC W1AW`
+(W1AW calling K1ABC; calls to you are highlighted by GridTracker) or `DE W1AW`. It uses the same UDP
+message format WSJT-X sends, to 127.0.0.1 port 2237 by default (GridTracker2: Settings > General >
+Receive UDP Messages, port 2237). Logged QSOs still reach GridTracker through *Logging and uploads*
+(ADIF, port 2333). Text you send is never read.
+
 **Logging and uploads** (Options > *Logging and uploads...*; status bar *QRZ* / *LoTW*): every
 logged QSO is always written to the ADIF file. Each one can also go, as soon as it is logged:
 - *To another program* as an ADIF record over UDP, e.g. GridTracker2 (Settings > General >

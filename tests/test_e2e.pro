@@ -64,10 +64,12 @@ HEADERS += \
     ../src/PskReporter.h \
     ../src/SecretStore.h \
     ../src/LogUploader.h \
+    ../src/GridTrackerLink.h \
     ../src/CallLookup.h \
     ../engine/lookupcore.h \
     ../engine/signalreport.h \
     ../engine/uploadcore.h \
+    ../engine/gridtrackerudp.h \
     ../engine/callspot.h \
     ../engine/pskrcore.h \
     ../engine/memories.h \
@@ -122,6 +124,7 @@ SOURCES += \
     ../src/PskReporter.cpp \
     ../src/SecretStore.cpp \
     ../src/LogUploader.cpp \
+    ../src/GridTrackerLink.cpp \
     ../src/CallLookup.cpp \
     ../src/MainWindow.cpp \
     ../engine/sstvcore.cpp \

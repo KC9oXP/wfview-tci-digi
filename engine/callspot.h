@@ -139,6 +139,8 @@ struct Spot
     std::string call;
     std::int64_t hz = 0; // RF frequency when it was seen
     std::int64_t timeSec = 0;
+    std::string via; // "CQ", "DE" or "73": the word before the call
+    std::string to; // "K1ABC DE W1AW": K1ABC (empty if not known)
 };
 
 class Spotter
@@ -201,6 +203,9 @@ private:
         std::string lastCall; // for "DE W1AW W1AW"
         int skips = 0; // words skipped after CQ or 73 (CQ DX, CQ TEST, TU 73 GL ...)
         std::string pending; // call after 73, counted once the next word is not DE
+        std::string prev; // the word before this one
+        std::string to; // the call before DE ("K1ABC DE W1AW")
+        bool cqDe = false; // "CQ CQ DE W1AW": a CQ, though DE came last
     };
     struct Seen
     {
@@ -219,11 +224,24 @@ private:
               std::int64_t now,
               std::vector<Spot> &out)
     {
+        const std::string before = st.prev;
+        st.prev = w;
+        wordIn(source, st, before, w, hz, now, out);
+    }
+
+    void wordIn(const std::string &source,
+              Stream &st,
+              const std::string &before,
+              const std::string &w,
+              std::int64_t hz,
+              std::int64_t now,
+              std::vector<Spot> &out)
+    {
         if (!st.pending.empty())
         {
             // "73 W1AW SK": W1AW signed. "73 K1ABC DE W1AW": K1ABC was only addressed.
             if (w != "DE" && w != st.pending)
-                sighting(source, st.pending, hz, now, out);
+                sighting(source, st.pending, "73", std::string(), hz, now, out);
             if (w != st.pending)
                 st.pending.clear();
             else
@@ -231,8 +249,10 @@ private:
         }
         if (w == "DE")
         {
+            st.cqDe = st.after == 2 && st.lastCall.empty();
             st.after = 1;
             st.lastCall.clear();
+            st.to = isCallsign(before) ? before : std::string();
             return;
         }
         if (w == "CQ" || w == "73")
@@ -240,6 +260,7 @@ private:
             st.after = (w == "CQ") ? 2 : 3;
             st.skips = 0;
             st.lastCall.clear();
+            st.to.clear();
             return;
         }
         if (st.after == 0)
@@ -255,7 +276,7 @@ private:
             if (st.lastCall.empty() || st.lastCall == w)
             {
                 st.lastCall = w;
-                sighting(source, w, hz, now, out);
+                sighting(source, w, (st.after == 2 || st.cqDe) ? "CQ" : "DE", st.to, hz, now, out);
                 return; // "DE W1AW W1AW": stay after the keyword for repeats
             }
             st.after = 0; // a different call: "DE W1AW K1ABC" is not two sightings of either
@@ -266,8 +287,13 @@ private:
         st.after = 0;
     }
 
-    void sighting(
-        const std::string &source, const std::string &call, std::int64_t hz, std::int64_t now, std::vector<Spot> &out)
+    void sighting(const std::string &source,
+                  const std::string &call,
+                  const std::string &via,
+                  const std::string &to,
+                  std::int64_t hz,
+                  std::int64_t now,
+                  std::vector<Spot> &out)
     {
         if (!myCall.empty() && upper(myCall) == call)
             return;
@@ -282,7 +308,7 @@ private:
         if (int(t.list.size()) >= needed && (t.reportedAt < 0 || now - t.reportedAt > windowSec))
         {
             t.reportedAt = now;
-            out.push_back({source, call, hz, now});
+            out.push_back({source, call, hz, now, via, to == call ? std::string() : to});
             t.list.clear();
         }
     }

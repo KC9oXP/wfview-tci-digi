@@ -33,6 +33,7 @@ class HellPanel;
 class MemoriesDialog;
 class PskReporter;
 class LogUploader;
+class GridTrackerLink;
 class ModemEngine;
 class PskEngine;
 class PskPanel;
@@ -96,6 +97,7 @@ private:
     QString applySubMode(const QString &tab, const QString &sub);
     // PSK Reporter (status bar button, Options > PSK Reporter...)
     void wirePskReporter();
+    void updateGridTracker(); // dial, mode, TX state, audio offset (sent only on change)
     void updatePskrButton();
     void editPskReporter();
     void togglePskReporter();
@@ -191,6 +193,7 @@ private:
     MemoriesDialog *m_memories = nullptr;
     PskReporter *m_pskr = nullptr;
     LogUploader *m_uploader = nullptr;
+    GridTrackerLink *m_gridTracker = nullptr; // live dial / mode / heard calls to GridTracker2
     QPushButton *m_qrzBtn = nullptr;
     QPushButton *m_lotwBtn = nullptr;
     void updateUploadButtons();

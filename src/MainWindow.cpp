@@ -12,6 +12,7 @@
 #include "HellEngine.h"
 #include "HellPanel.h"
 #include "LogUploader.h"
+#include "GridTrackerLink.h"
 #include "MemoriesDialog.h"
 #include "NavtexEngine.h"
 #include "NavtexPanel.h"
@@ -234,6 +235,9 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_pskrBtn->setCursor(Qt::PointingHandCursor);
     statusBar()->addPermanentWidget(m_pskrBtn);
     m_uploader = new LogUploader(m_settings, this);
+    m_gridTracker = new GridTrackerLink(m_settings, this);
+    m_gridTracker->setObjectName(QStringLiteral("gridTracker"));
+    connect(m_gridTracker, &GridTrackerLink::message, this, &MainWindow::log);
     m_qrzBtn = new QPushButton(tr("QRZ"));
     m_lotwBtn = new QPushButton(tr("LoTW"));
     for (QPushButton *b : {m_qrzBtn, m_lotwBtn})
@@ -292,6 +296,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_spectrum, &SpectrumEngine::line, this, &MainWindow::trackSnr);
     m_snrShow.setInterval(300);
     connect(&m_snrShow, &QTimer::timeout, this, &MainWindow::updateSnrLabel);
+    connect(&m_snrShow, &QTimer::timeout, this, &MainWindow::updateGridTracker);
     m_snrShow.start();
     connect(m_audio,
             &AudioHub::playbackChanged,
@@ -846,6 +851,9 @@ void MainWindow::buildMenus()
     }
     opts->addAction(tr("Memories..."), this, &MainWindow::showMemories);
     opts->addAction(tr("PSK Reporter..."), this, &MainWindow::editPskReporter);
+    opts->addAction(tr("GridTracker (live frequency and heard calls)..."),
+                    this,
+                    [this]() { m_gridTracker->editSettings(this); });
     opts->addAction(
         tr("Logging and uploads (GridTracker, QRZ, LoTW)..."), this, [this]() { m_uploader->editSettings(this); });
     opts->addAction(tr("Callsign lookup (QRZ / HamQTH)..."), this, &MainWindow::editCallLookup);
@@ -1935,12 +1943,38 @@ qint64 MainWindow::rfHz(double audioHz) const
 
 void MainWindow::feedPskr(const QString &tab, const QString &subMode, const QString &text, double audioHz)
 {
-    if (!m_pskr->enabled() || !m_pskr->autoDetect())
+    const bool pskr = m_pskr->enabled() && m_pskr->autoDetect();
+    const bool gt = m_gridTracker->enabled();
+    if (!pskr && !gt)
         return;
     // Only what was received: our own sent text (and anything while keyed) is skipped.
     if (anyTransmitting() || m_client->radioTransmitting() || text.contains(QLatin1String("[TX]")))
         return;
-    m_pskr->feedText(tab, PskReporter::modeFor(tab, subMode), text, rfHz(audioHz));
+    const QString mode = PskReporter::modeFor(tab, subMode);
+    const qint64 rf = rfHz(audioHz);
+    if (pskr)
+        m_pskr->feedText(tab, mode, text, rf);
+    if (gt)
+    {
+        // The live SNR only if it was measured recently on this signal.
+        const bool snrOk = !std::isnan(m_snr) && m_snrAge.isValid() && m_snrAge.elapsed() < 10000
+                           && std::abs(m_snrHz - audioHz) < 200;
+        m_gridTracker->feedText(tab, mode, text, audioHz, rf, snrOk ? m_snr : std::nan(""));
+    }
+}
+
+void MainWindow::updateGridTracker()
+{
+    if (!m_gridTracker->enabled())
+        return;
+    m_gridTracker->setDial(m_client->frequencyHz());
+    const QString tab = currentTabKey();
+    QString mode = PskReporter::modeFor(tab, currentSubMode());
+    if (mode.isEmpty())
+        mode = QString(tab).remove(QLatin1Char('&')).toUpper(); // SSTV, HELL ... (no PSK Reporter name)
+    m_gridTracker->setMode(mode);
+    m_gridTracker->setTransmitting(anyTransmitting() || m_client->radioTransmitting());
+    m_gridTracker->setRxDf(currentAudioHz());
 }
 
 void MainWindow::wirePskReporter()
@@ -1993,6 +2027,14 @@ void MainWindow::wirePskReporter()
     for (ModemEngine *e : m_modems)
         connect(e, &ModemEngine::settingsChanged, this, [this, e]() { m_pskr->setMyCall(e->myCall()); });
     connect(m_qso, &QsoLogDock::myGridChanged, m_pskr, &PskReporter::setMyGrid);
+
+    // GridTracker gets the same call and grid.
+    m_gridTracker->setMyCall(m_pskr->myCall());
+    m_gridTracker->setMyGrid(m_pskr->myGrid());
+    connect(m_pskr, &PskReporter::statusChanged, this, [this]() {
+        m_gridTracker->setMyCall(m_pskr->myCall());
+        m_gridTracker->setMyGrid(m_pskr->myGrid());
+    });
 
     connect(m_pskr, &PskReporter::statusChanged, this, &MainWindow::updatePskrButton);
     connect(m_pskr, &PskReporter::message, this, &MainWindow::log);

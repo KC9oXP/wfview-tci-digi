@@ -20,6 +20,7 @@
 #include "OliviaEngine.h"
 #include "PskEngine.h"
 #include "PskReporter.h"
+#include "GridTrackerLink.h"
 #include "QsoLog.h"
 #include "RttyEngine.h"
 #include "RxText.h"
@@ -1033,6 +1034,111 @@ static void runPskReporterAndFreqBox()
     CHECK(!pskr->enabled() && pskrBtn->text() == QStringLiteral("PSKR off"));
 }
 
+// GridTracker link: status (dial, mode, call, grid) and heard calls as WSJT-X-format
+// datagrams to a local UDP port.
+static QList<QByteArray> readAll(QUdpSocket &s)
+{
+    QList<QByteArray> out;
+    while (s.hasPendingDatagrams())
+    {
+        QByteArray d(int(s.pendingDatagramSize()), 0);
+        s.readDatagram(d.data(), d.size());
+        out << d;
+    }
+    return out;
+}
+
+static quint32 typeOf(const QByteArray &d)
+{
+    if (d.size() < 12 || quint8(d[0]) != 0xad || quint8(d[1]) != 0xbc)
+        return 0xffffffffU;
+    return (quint32(quint8(d[8])) << 24) | (quint32(quint8(d[9])) << 16) | (quint32(quint8(d[10])) << 8)
+           | quint32(quint8(d[11]));
+}
+
+static void runGridTracker()
+{
+    std::printf("\n=== 0.9.7: GridTracker live link ===\n");
+    MockTciServer server;
+    server.listen();
+    QUdpSocket gt; // stands in for GridTracker2 on 2237
+    CHECK(gt.bind(QHostAddress::LocalHost, 0));
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("TCI/Port"), server.port());
+    settings.setValue(QStringLiteral("TCI/ConnectOnStart"), true);
+    settings.setValue(QStringLiteral("Station/MyCall"), QStringLiteral("KC9OXP"));
+    settings.setValue(QStringLiteral("Station/MyGrid"), QStringLiteral("EN71ar"));
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    settings.setValue(QStringLiteral("GridTracker/Port"), gt.localPort());
+    MainWindow w(&settings);
+    w.show();
+    auto *client = w.findChild<TciClient *>();
+    CHECK(waitFor([&] { return client->isReady(); }, 5000));
+    auto *link = w.findChild<GridTrackerLink *>();
+    CHECK(link != nullptr);
+    if (!link)
+        return;
+    CHECK(!link->enabled()); // off until turned on
+    pump(300);
+    CHECK(readAll(gt).isEmpty());
+
+    link->setEnabled(true);
+    client->setFrequency(7080000);
+    CHECK(waitFor([&] { return client->frequencyHz() == 7080000; }, 3000));
+    // heartbeat + status arrive; status carries the dial, call and grid
+    bool beat = false, status = false;
+    CHECK(waitFor(
+        [&]
+        {
+            for (const QByteArray &d : readAll(gt))
+            {
+                if (typeOf(d) == 0)
+                    beat = true;
+                // dial 7080000 = 0x00000000006C0840 as quint64
+                if (typeOf(d) == 1 && d.contains(QByteArray::fromHex("00000000006c0840")) && d.contains("KC9OXP")
+                    && d.contains("EN71ar"))
+                    status = true;
+            }
+            return beat && status;
+        },
+        3000));
+    std::printf("  heartbeat %d, status with dial/call/grid %d\n", int(beat), int(status));
+
+    // a heard call goes out as a Decode, once a minute at most
+    link->feedText(QStringLiteral("RTTY"),
+                   QStringLiteral("RTTY"),
+                   QStringLiteral("CQ CQ DE W1AW W1AW K "),
+                   1500,
+                   7081500,
+                   12.0);
+    QByteArray dec;
+    CHECK(waitFor(
+        [&]
+        {
+            for (const QByteArray &d : readAll(gt))
+                if (typeOf(d) == 2)
+                    dec = d;
+            return !dec.isEmpty();
+        },
+        3000));
+    CHECK(dec.contains("CQ W1AW") && dec.contains("RTTY"));
+    CHECK(link->decodesSent() == 1);
+    link->feedText(QStringLiteral("RTTY"), QStringLiteral("RTTY"), QStringLiteral("CQ DE W1AW K "), 1500, 7081500, 12.0);
+    CHECK(link->decodesSent() == 1); // not again within the minute
+    link->feedText(QStringLiteral("CW"), QStringLiteral("CW"), QStringLiteral("KC9OXP DE K3WW K "), 700, 7030700, 9.0);
+    CHECK(link->sentMessages().contains(QStringLiteral("KC9OXP K3WW")));
+    link->feedText(QStringLiteral("CW"), QStringLiteral("CW"), QStringLiteral("CQ DE KC9OXP K "), 700, 7030700, 9.0);
+    CHECK(link->decodesSent() == 2); // own call never
+
+    link->setEnabled(false);
+    pump(300);
+    readAll(gt);
+    link->feedText(QStringLiteral("CW"), QStringLiteral("CW"), QStringLiteral("CQ DE N0AX K "), 700, 7030700, 9.0);
+    pump(300);
+    CHECK(readAll(gt).isEmpty());
+}
+
 // A stand-in for logbook.qrz.com: plain HTTP on localhost, answers from a list.
 class FakeQrz : public QObject
 {
@@ -1304,6 +1410,7 @@ int main(int argc, char *argv[])
     runWwv();
     runMemories();
     runPskReporterAndFreqBox();
+    runGridTracker();
     runUploads();
     const int screens = args.indexOf(QStringLiteral("--screens"));
     if (screens >= 0)
