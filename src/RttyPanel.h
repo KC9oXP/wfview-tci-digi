@@ -71,6 +71,7 @@ private:
     QCheckBox *m_usos = nullptr;
     QComboBox *m_figures = nullptr;
     QComboBox *m_tones = nullptr;
+    QComboBox *m_preset = nullptr; // shows the preset the settings match, else "Choose..."
     TxToolButtons *m_tools = nullptr;
     QLineEdit *m_myCall = nullptr;
     QProgressBar *m_markBar = nullptr;

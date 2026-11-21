@@ -98,7 +98,9 @@ shows a clean signal. On the air the same tabs work on the radio's receive audio
 ## The modes in detail
 
 The tabs that can transmit (CW, RTTY, PSK, Hell, Olivia, SSTV, AMTOR) come first; a
-*Read only* divider separates the receive-only tabs (NAVTEX, WEFAX, WWV Time). Every
+*Read only* divider separates the receive-only tabs (NAVTEX, WEFAX, WWV Time). Drag tabs
+to put them in your own order (kept across restarts); transmit tabs stay left of *Read only*
+and receive-only tabs right of it. *View > Reset tab order* puts them back. Every
 *Decode* button is dark red and reads "Push To Decode" when off, and green "Decode" when
 on. Only one tab transmits at a time; *My call* is shared by all tabs.
 
@@ -121,7 +123,8 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
 ### RTTY (receive and transmit)
 
 - Any baud and shift (45.45/50/75/100 bd, 170/200/425/850 Hz presets), 1/1.5/2 stop
-  bits, USOS, US TTY or ITA2 figures, Reverse.
+  bits, USOS, US TTY or ITA2 figures, Reverse. The *Preset* box shows the preset the
+  current settings match (or *Choose...* when they match none).
 - Mark/space filter demodulator with W7AY optimal ATC and a tone-contrast squelch.
 - *Tones*: the classic high pair (2125/2295 Hz) or centred on 1500 Hz (1415/1585 Hz, as
   fldigi), so RTTY sits in the middle of a narrow data passband.
@@ -310,7 +313,8 @@ type and press Enter; Esc cancels.
 - *Log*: the session log on (green) or off, for all modes.
 - *Presets*: frequency presets for the tab showing (SSTV 3.845 LSB / 14.230 ..., WEFAX NMF
   / NMG with the 1.9 kHz offset, NAVTEX 518 kHz, WWV 2.5-25 MHz AM ...). A preset sets the
-  dial and mode over TCI; add the current frequency or edit the list.
+  dial and mode over TCI; add the current frequency or edit the list. While the dial is on a
+  preset (within 10 Hz, same sideband) the box shows that preset's name.
 - *Memories* (Ctrl+M, also Options > Memories...): a window listing frequencies with their
   tab, sub-mode (BPSK31, Olivia 8/500, RTTY 45.45/170 ...), dial, sideband, band, US
   license classes and a comment. Click one and the app switches to that tab, sets the

@@ -60,6 +60,25 @@ QProgressBar *makeBar()
 }
 } // namespace
 
+namespace
+{
+// Preset box rows 1..: baud, shift, stop bits, ITA2 figures.
+struct RttyPreset
+{
+    double baud;
+    int shift;
+    double stop;
+    bool ita2;
+};
+const RttyPreset kRttyPresets[] = {{45.45, 170, 1.5, false},
+                                   {50.0, 170, 1.5, false},
+                                   {75.0, 170, 1.5, false},
+                                   {50.0, 450, 1.5, true},
+                                   {100.0, 850, 1.5, true},
+                                   {75.0, 850, 1.5, true}};
+constexpr int kRttyPresetCount = int(sizeof(kRttyPresets) / sizeof(kRttyPresets[0]));
+} // namespace
+
 RttyPanel::RttyPanel(RttyEngine *engine, QSettings *settings, QWidget *parent)
     : QWidget(parent)
     , m_rtty(engine)
@@ -238,6 +257,7 @@ QWidget *RttyPanel::buildTop()
     {
         // Common settings in one pick; each field can still be changed after.
         auto *preset = new QComboBox();
+        m_preset = preset;
         preset->addItem(tr("Choose..."));
         preset->addItem(tr("Amateur 45.45 baud / 170 Hz"));
         preset->addItem(tr("Amateur 50 baud / 170 Hz"));
@@ -262,30 +282,16 @@ QWidget *RttyPanel::buildTop()
         connect(preset,
                 &QComboBox::activated,
                 this,
-                [this, preset](int i)
+                [this](int i)
                 {
-                    struct P
-                    {
-                        double baud;
-                        int shift;
-                        double stop;
-                        bool ita2;
-                    };
-                    static const P ps[] = {{45.45, 170, 1.5, false},
-                                           {50.0, 170, 1.5, false},
-                                           {75.0, 170, 1.5, false},
-                                           {50.0, 450, 1.5, true},
-                                           {100.0, 850, 1.5, true},
-                                           {75.0, 850, 1.5, true}};
-                    if (i < 1 || i > 6)
+                    if (i < 1 || i > kRttyPresetCount)
                         return;
-                    const P &p = ps[i - 1];
+                    const RttyPreset &p = kRttyPresets[i - 1];
                     m_rtty->setBaud(p.baud);
                     m_rtty->setShift(p.shift);
                     m_rtty->setStopBits(p.stop);
                     m_rtty->setIta2(p.ita2);
-                    const QSignalBlocker b(preset);
-                    preset->setCurrentIndex(0);
+                    syncSettings(); // the box now shows this preset
                 });
         ++row;
     }
@@ -526,6 +532,19 @@ void RttyPanel::syncSettings()
     m_stopBits->setCurrentIndex(m_stopBits->findData(m_rtty->stopBits()));
     m_usos->setChecked(m_rtty->usos());
     m_figures->setCurrentIndex(m_rtty->ita2() ? 1 : 0);
+    if (m_preset)
+    { // the preset the settings match, else "Choose..."
+        int match = 0;
+        for (int k = 0; k < kRttyPresetCount; ++k)
+        {
+            const RttyPreset &p = kRttyPresets[k];
+            if (std::fabs(m_rtty->baud() - p.baud) < 0.01 && m_rtty->shift() == p.shift
+                && std::fabs(m_rtty->stopBits() - p.stop) < 0.01 && m_rtty->ita2() == p.ita2)
+                match = k + 1;
+        }
+        const QSignalBlocker bp(m_preset);
+        m_preset->setCurrentIndex(match);
+    }
     {
         const QSignalBlocker bt(m_tones);
         const double centre = (m_rtty->markHz() + m_rtty->spaceHz()) / 2.0;

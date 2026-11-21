@@ -79,11 +79,15 @@
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QStyleFactory>
+#include <QEvent>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <cstdlib>
 
 #ifndef APP_VERSION
 #define APP_VERSION "0.0.0"
@@ -127,6 +131,29 @@ qint64 parseFreq(const QString &text)
         mult = 1e6; // a bare "14.074" means MHz
     return qRound64(v * mult);
 }
+} // namespace
+
+namespace
+{
+// Calls fn when the mouse button is released over the watched widget.
+class ReleaseWatcher : public QObject
+{
+public:
+    ReleaseWatcher(std::function<void()> fn, QObject *parent) : QObject(parent), m_fn(std::move(fn))
+    {
+    }
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *ev) override
+    {
+        if (ev->type() == QEvent::MouseButtonRelease)
+            m_fn();
+        return QObject::eventFilter(obj, ev);
+    }
+
+private:
+    std::function<void()> m_fn;
+};
 } // namespace
 
 MainWindow::MainWindow(QSettings *settings, QWidget *parent)
@@ -215,12 +242,60 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
         divider->setAlignment(Qt::AlignCenter);
         const int i = m_tabs->addTab(divider, QStringLiteral("    %1 \u25B8").arg(tr("Read only")));
         m_tabs->setTabEnabled(i, false);
-        m_tabs->setTabToolTip(i, tr("The tabs to the right of here only receive."));
+        m_tabs->setTabToolTip(i,
+                              tr("The tabs to the right of here only receive.\nDrag tabs to put them in your own "
+                                 "order (transmit tabs stay left of here, receive-only tabs right); "
+                                 "View > Reset tab order puts them back."));
+        m_tabDivider = divider;
     }
     m_tabs->addTab(m_navtexPanel, tr("NAVTEX"));
     m_tabs->addTab(m_wefaxPanel, tr("WEFAX"));
     m_wwvPanel = new WwvPanel(m_wwv);
     m_tabs->addTab(m_wwvPanel, tr("WWV Time"));
+    {
+        // Stable keys for the saved order (tab texts are translated); tx = can transmit.
+        const struct
+        {
+            QWidget *w;
+            const char *key;
+            bool tx;
+        } keys[] = {{m_cwPanel, "CW", true},
+                    {m_rttyPanel, "RTTY", true},
+                    {m_pskPanel, "PSK", true},
+                    {m_hellPanel, "Hell", true},
+                    {m_oliviaPanel, "Olivia", true},
+                    {m_sstvPanel, "SSTV", true},
+                    {m_amtorPanel, "AMTOR", true},
+                    {m_tabDivider, "ReadOnly", false},
+                    {m_navtexPanel, "NAVTEX", false},
+                    {m_wefaxPanel, "WEFAX", false},
+                    {m_wwvPanel, "WWV", false}};
+        for (const auto &k : keys)
+        {
+            k.w->setProperty("tabKey", QString::fromLatin1(k.key));
+            k.w->setProperty("tabTx", k.tx);
+        }
+    }
+    m_tabs->setMovable(true);
+    arrangeTabs(m_settings->value(QStringLiteral("Window/TabOrder")).toStringList());
+    connect(m_tabs->tabBar(),
+            &QTabBar::tabMoved,
+            this,
+            [this](int, int)
+            {
+                if (!m_arrangingTabs)
+                    m_tabsDragged = true;
+            });
+    // After the drop (not during the drag): put each tab back on its side of "Read only", save.
+    m_tabs->tabBar()->installEventFilter(new ReleaseWatcher(
+        [this]()
+        {
+            if (!m_tabsDragged)
+                return;
+            m_tabsDragged = false;
+            QTimer::singleShot(0, this, &MainWindow::tabsMoved);
+        },
+        this));
     v->addWidget(m_tabs, 1);
     setCentralWidget(central);
 
@@ -664,10 +739,7 @@ QWidget *MainWindow::buildConnectionBar()
                 const QVariant d = m_presetBox->itemData(i);
                 const QString kind = d.toString();
                 const int index = m_presetBox->itemData(i, Qt::UserRole + 1).toInt();
-                {
-                    const QSignalBlocker b(m_presetBox);
-                    m_presetBox->setCurrentIndex(0);
-                }
+                syncPresetBox(); // back to "Presets" until the dial is on a preset
                 if (kind == QLatin1String("add"))
                     addCurrentPreset();
                 else if (kind == QLatin1String("edit"))
@@ -797,6 +869,13 @@ void MainWindow::buildMenus()
                 applyTheme(on);
             });
     applyTheme(dark->isChecked());
+    view->addAction(tr("Reset tab order"),
+                    this,
+                    [this]()
+                    {
+                        m_settings->remove(QStringLiteral("Window/TabOrder"));
+                        arrangeTabs({});
+                    });
 
     QMenu *opts = menuBar()->addMenu(tr("&Options"));
     opts->setToolTipsVisible(true);
@@ -1095,6 +1174,7 @@ void MainWindow::onFrequency(qint64 hz)
     m_freq->showHz(hz);
     m_session->setRadio(hz, m_client->modulation());
     m_qso->setRadio(hz, m_client->modulation());
+    syncPresetBox();
 }
 
 void MainWindow::onModulation(const QString &mode)
@@ -1681,6 +1761,106 @@ void MainWindow::fillPresetBox()
     m_presetBox->addItem(tr("Edit presets..."), QStringLiteral("edit"));
     m_presetBox->setCurrentIndex(0);
     m_presetBox->setToolTip(tr("Frequency presets for the %1 tab: set the dial (and USB/LSB) over TCI.").arg(key));
+    syncPresetBox();
+}
+
+QStringList MainWindow::tabOrder() const
+{
+    QStringList keys;
+    for (int i = 0; i < m_tabs->count(); ++i)
+        keys << m_tabs->widget(i)->property("tabKey").toString();
+    return keys;
+}
+
+void MainWindow::arrangeTabs(const QStringList &order)
+{
+    // Wanted order: the saved keys first (unknown ones skipped), then any tab not in it in its
+    // built-in place; then transmit tabs, "Read only", receive-only tabs.
+    QList<QWidget *> all;
+    for (int i = 0; i < m_tabs->count(); ++i)
+        all << m_tabs->widget(i);
+    QList<QWidget *> wanted;
+    for (const QString &k : order)
+        for (QWidget *w : all)
+            if (w->property("tabKey").toString() == k && !wanted.contains(w))
+                wanted << w;
+    if (order.isEmpty())
+    {
+        // built-in order
+        wanted = {m_cwPanel,
+                  m_rttyPanel,
+                  m_pskPanel,
+                  m_hellPanel,
+                  m_oliviaPanel,
+                  m_sstvPanel,
+                  m_amtorPanel,
+                  m_tabDivider,
+                  m_navtexPanel,
+                  m_wefaxPanel,
+                  m_wwvPanel};
+    }
+    for (QWidget *w : all)
+        if (!wanted.contains(w))
+            wanted << w;
+    QList<QWidget *> tx, rx;
+    for (QWidget *w : wanted)
+    {
+        if (w == m_tabDivider)
+            continue;
+        (w->property("tabTx").toBool() ? tx : rx) << w;
+    }
+    const QList<QWidget *> target = tx + QList<QWidget *>{m_tabDivider} + rx;
+
+    QWidget *current = m_tabs->currentWidget();
+    m_arrangingTabs = true;
+    for (int t = 0; t < target.size(); ++t)
+    {
+        const int from = m_tabs->indexOf(target.at(t));
+        if (from >= 0 && from != t)
+            m_tabs->tabBar()->moveTab(from, t);
+    }
+    m_arrangingTabs = false;
+    if (current)
+        m_tabs->setCurrentWidget(current);
+}
+
+void MainWindow::tabsMoved()
+{
+    arrangeTabs(tabOrder());
+    m_settings->setValue(QStringLiteral("Window/TabOrder"), tabOrder());
+}
+
+void MainWindow::syncPresetBox()
+{
+    if (!m_presetBox || !m_client)
+        return;
+    const qint64 hz = m_client->frequencyHz();
+    const QString mode = m_client->modulation().toUpper();
+    int match = 0;
+    for (int i = 1; i < m_presetBox->count(); ++i)
+    {
+        if (m_presetBox->itemData(i).toString() != QLatin1String("preset"))
+            continue;
+        const QList<Preset> list = presets(currentTabKey());
+        const int k = m_presetBox->itemData(i, Qt::UserRole + 1).toInt();
+        if (k < 0 || k >= list.size())
+            continue;
+        const Preset &p = list.at(k);
+        // same dial (10 Hz) and, if the preset sets one, the same sideband (USB also matches DIGU)
+        const bool sbOk = p.sideband.isEmpty()
+                          || (p.sideband == QLatin1String("USB") ? !mode.startsWith(QLatin1String("L"))
+                                                                  : mode.startsWith(QLatin1String("L")));
+        if (hz > 0 && std::llabs(hz - p.hz) <= 10 && sbOk)
+        {
+            match = i;
+            break;
+        }
+    }
+    if (m_presetBox->currentIndex() != match)
+    {
+        const QSignalBlocker b(m_presetBox);
+        m_presetBox->setCurrentIndex(match);
+    }
 }
 
 void MainWindow::applyPreset(const Preset &p, const QString &what)

@@ -88,6 +88,11 @@ private:
         QString sideband; // "USB", "LSB" or empty (keep the mode)
     };
     QString currentTabKey() const;
+    void syncPresetBox(); // show the preset the dial is on, else "Presets"
+    // Tab order: drag tabs to rearrange (View > Reset tab order). Kept in Window/TabOrder by key.
+    void arrangeTabs(const QStringList &order);
+    void tabsMoved();
+    QStringList tabOrder() const;
     QList<Preset> presets(const QString &tabKey) const;
     void savePresets(const QString &tabKey, const QList<Preset> &list);
     void fillPresetBox();
@@ -210,6 +215,9 @@ private:
     int m_txLimitMin = 5;
     TxPowerWatch *m_powerWatch = nullptr;
     QTabWidget *m_tabs = nullptr;
+    QWidget *m_tabDivider = nullptr; // "Read only" tab: transmit tabs left of it, receive-only right
+    bool m_arrangingTabs = false;
+    bool m_tabsDragged = false; // a tab moved in this drag; tidy and save on release
     QLabel *m_diag = nullptr;
 
     QDockWidget *m_logDock = nullptr;
