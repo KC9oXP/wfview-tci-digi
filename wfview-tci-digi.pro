@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.9.6
+VERSION = 0.9.7
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
