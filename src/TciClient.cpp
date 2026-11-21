@@ -388,8 +388,12 @@ void TciClient::onDiagTimer()
                 .arg(m_rxPacketsWin / sec, 0, 'f', 1)
                 .arg(qRound64(m_rxFramesWin / sec))
                 .arg(peakDb, 0, 'f', 1);
-        // Packets full of zeros: seen from wfview until it was restarted.
-        m_silentWins = m_rxPeak <= 0.0f ? m_silentWins + 1 : 0;
+        // Packets full of zeros: seen from wfview until it was restarted. Not while transmitting:
+        // wfview sends zeros for receive audio then, and that is normal.
+        if (m_txOn || m_radioTx)
+            m_silentWins = 0;
+        else
+            m_silentWins = m_rxPeak <= 0.0f ? m_silentWins + 1 : 0;
         if (m_silentWins >= 3)
             t += tr(" - SILENT (all zeros from the server: restart wfview if this stays)");
     }
