@@ -148,7 +148,8 @@ void GridTrackerLink::setMyCall(const QString &call)
 
 void GridTrackerLink::setMyGrid(const QString &grid)
 {
-    const std::string g = grid.trimmed().toStdString();
+    // WSJT-X form ("EN71ar"); "" if not a valid locator, so GridTracker keeps its own
+    const std::string g = wsjtx::normalGrid(grid.trimmed().toStdString());
     if (g == m_status.deGrid)
         return;
     m_status.deGrid = g;

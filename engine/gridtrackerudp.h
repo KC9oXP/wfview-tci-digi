@@ -158,4 +158,32 @@ inline std::string messageFor(const std::string &call, const std::string &via, c
         return to + " " + call;
     return "DE " + call;
 }
+// Grid as WSJT-X sends it: "EN71ar" (field and square upper case, subsquare lower case),
+// 4 or 6 characters. Anything that is not a valid Maidenhead locator gives "" (GridTracker
+// puts an unreadable grid at 0 N 0 E, in the Gulf of Guinea).
+inline std::string normalGrid(const std::string &in)
+{
+    std::string g;
+    for (char c : in)
+        if (c != ' ' && c != '\t')
+            g.push_back(c);
+    if (g.size() != 4 && g.size() != 6)
+        return std::string();
+    auto up = [](char c) { return (c >= 'a' && c <= 'z') ? char(c - 'a' + 'A') : c; };
+    auto low = [](char c) { return (c >= 'A' && c <= 'Z') ? char(c - 'A' + 'a') : c; };
+    g[0] = up(g[0]);
+    g[1] = up(g[1]);
+    if (g[0] < 'A' || g[0] > 'R' || g[1] < 'A' || g[1] > 'R' || g[2] < '0' || g[2] > '9' || g[3] < '0'
+        || g[3] > '9')
+        return std::string();
+    if (g.size() == 6)
+    {
+        g[4] = low(g[4]);
+        g[5] = low(g[5]);
+        if (g[4] < 'a' || g[4] > 'x' || g[5] < 'a' || g[5] > 'x')
+            return std::string();
+    }
+    return g;
+}
+
 } // namespace wsjtx

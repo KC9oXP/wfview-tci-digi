@@ -193,6 +193,23 @@ int main()
         CHECK(sp.feed("CW", "CQ DE W1AW K ", 7030000, 61).size() == 1);
     }
 
+    std::printf("My grid as WSJT-X sends it (GridTracker put \"en71ar\" at 0 N 0 E)\n");
+    CHECK(wsjtx::normalGrid("en71ar") == "EN71ar");
+    CHECK(wsjtx::normalGrid("EN71AR") == "EN71ar");
+    CHECK(wsjtx::normalGrid(" en71 ") == "EN71");
+    CHECK(wsjtx::normalGrid("EN71a").empty());
+    CHECK(wsjtx::normalGrid("ZZ71ar").empty()); // field letters only go to R
+    CHECK(wsjtx::normalGrid("EN71zz").empty()); // subsquare letters only go to X
+    CHECK(wsjtx::normalGrid("").empty());
+    {
+        wsjtx::StatusInfo st;
+        st.deGrid = wsjtx::normalGrid("en71ar");
+        const auto b = wsjtx::status("wfview-tci-digi", st);
+        const std::string raw(b.begin(), b.end());
+        CHECK(raw.find("EN71ar") != std::string::npos);
+        CHECK(raw.find("en71ar") == std::string::npos);
+    }
+
     std::printf(g_fail ? "\n%d FAILED\n" : "\nALL PASSED\n", g_fail);
     return g_fail ? 1 : 0;
 }
