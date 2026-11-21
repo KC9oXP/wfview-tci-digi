@@ -4,6 +4,7 @@
 
 #include "memories.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -198,6 +199,54 @@ int main(int argc, char **argv)
             }
         }
         CHECK(bad == 0);
+    }
+
+    std::printf("band column order\n");
+    {
+        CHECK(bandMetres("160 m") == 160 && bandMetres("60m") == 60 && bandMetres("70 cm") == 0.7);
+        CHECK(bandMetres("") == 0 && bandMetres("HF") == 0);
+        std::vector<std::pair<std::string, std::int64_t>> rows = {{"10 m", 28120000},
+                                                                  {"160 m", 1807000},
+                                                                  {"2 m", 144100000},
+                                                                  {"17 m", 18100000},
+                                                                  {"", 4625000},
+                                                                  {"20 m", 14080000},
+                                                                  {"20 m", 14070000},
+                                                                  {"12 m", 24920000},
+                                                                  {"6 m", 50290000},
+                                                                  {"15 m", 21080000},
+                                                                  {"60 m", 5332000},
+                                                                  {"80 m", 3580000}};
+        std::sort(rows.begin(),
+                  rows.end(),
+                  [](const auto &a, const auto &b) { return bandLess(a.first, a.second, b.first, b.second); });
+        std::string order;
+        for (const auto &r : rows)
+            order += (r.first.empty() ? std::string("-") : r.first) + ",";
+        std::printf("  %s\n", order.c_str());
+        CHECK(order == "160 m,80 m,60 m,20 m,20 m,17 m,15 m,12 m,10 m,6 m,2 m,-,");
+        CHECK(rows[3].second == 14070000); // same band: by dial
+    }
+
+    std::printf("Add built-in puts rows in place\n");
+    {
+        auto mk = [](const char *tab, std::int64_t hz)
+        {
+            Memory m;
+            m.tab = tab;
+            m.dialHz = hz;
+            return m;
+        };
+        std::vector<Memory> l = {mk("CW", 1810000), mk("CW", 3560000), mk("CW", 7030000), mk("CW", 50090000),
+                                 mk("RTTY", 3580000), mk("RTTY", 7080000)};
+        insertInOrder(l, mk("CW", 5332000)); // 60 m: between 80 and 40
+        CHECK(l[2].dialHz == 5332000 && l[3].dialHz == 7030000);
+        insertInOrder(l, mk("RTTY", 1800000)); // below all RTTY rows: before the first
+        CHECK(l[5].tab == "RTTY" && l[5].dialHz == 1800000);
+        insertInOrder(l, mk("PSK", 14070000)); // no PSK rows: at the end
+        CHECK(l.back().tab == "PSK");
+        insertInOrder(l, mk("RTTY", 28080000)); // above all: after the last RTTY row
+        CHECK(l[8].dialHz == 28080000 && l[9].tab == "PSK");
     }
 
     std::printf(g_fail ? "\n%d FAILED\n" : "\nALL PASSED\n", g_fail);

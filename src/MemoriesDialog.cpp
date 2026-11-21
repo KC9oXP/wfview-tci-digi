@@ -56,6 +56,19 @@ public:
         return data(Qt::UserRole + 1).toLongLong() < o.data(Qt::UserRole + 1).toLongLong();
     }
 };
+// Sorts the band column 160 m, 80 m ... 2 m (then by dial), not as text.
+class BandItem : public QTableWidgetItem
+{
+public:
+    using QTableWidgetItem::QTableWidgetItem;
+    bool operator<(const QTableWidgetItem &o) const override
+    {
+        return memories::bandLess(text().toStdString(),
+                                  data(Qt::UserRole + 1).toLongLong(),
+                                  o.text().toStdString(),
+                                  o.data(Qt::UserRole + 1).toLongLong());
+    }
+};
 // Classes filter choices (index 0 = any).
 const unsigned kClassBits[] = {
     0, memories::Novice, memories::Technician, memories::General, memories::Advanced, memories::Extra, memories::Other};
@@ -361,8 +374,12 @@ void MemoriesDialog::fill()
                                          q(m.comment)};
         for (int c = 0; c < ColCount; ++c)
         {
-            auto *it = c == ColDial ? new DialItem(cells[c]) : new QTableWidgetItem(cells[c]);
+            QTableWidgetItem *it = c == ColDial   ? new DialItem(cells[c])
+                                   : c == ColBand ? new BandItem(cells[c])
+                                                  : new QTableWidgetItem(cells[c]);
             it->setData(Qt::UserRole, i);
+            if (c == ColBand)
+                it->setData(Qt::UserRole + 1, qlonglong(m.dialHz));
             if (c == ColDial)
             {
                 it->setData(Qt::UserRole + 1, qlonglong(m.dialHz));
@@ -590,7 +607,8 @@ void MemoriesDialog::addMissingBuiltIn()
                               tr("Add %n built-in memories that are not in your list?", nullptr, int(missing.size())))
         != QMessageBox::Yes)
         return;
-    m_list.insert(m_list.end(), missing.begin(), missing.end());
+    for (const memories::Memory &b : missing)
+        memories::insertInOrder(m_list, b); // in its tab, in frequency order
     if (save())
         m_status->setText(tr("Added %n built-in memories.", nullptr, int(missing.size())));
     fill();

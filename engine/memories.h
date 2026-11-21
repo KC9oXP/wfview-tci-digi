@@ -229,6 +229,63 @@ inline std::string bandName(std::int64_t hz)
     return std::string();
 }
 
+// Wavelength in metres from a band name ("160 m", "60m", "70 cm"); 0 if there is none.
+// Used to sort the Band column 160 m, 80 m, 60 m ... 2 m instead of as text.
+inline double bandMetres(const std::string &band)
+{
+    size_t i = 0;
+    while (i < band.size() && band[i] == ' ')
+        ++i;
+    double v = 0;
+    bool any = false;
+    while (i < band.size() && band[i] >= '0' && band[i] <= '9')
+    {
+        v = v * 10 + (band[i] - '0');
+        any = true;
+        ++i;
+    }
+    if (!any)
+        return 0;
+    while (i < band.size() && band[i] == ' ')
+        ++i;
+    if (i + 1 < band.size() && (band[i] == 'c' || band[i] == 'C') && (band[i + 1] == 'm' || band[i + 1] == 'M'))
+        v /= 100.0;
+    return v;
+}
+
+// Puts m into list in its place: after the last row of the same tab whose dial is at or
+// below m's, else before that tab's first row, else at the end. Used by "Add built-in..."
+// so new rows (e.g. 60 m) land between 80 m and 40 m instead of after 6 m.
+template <class List> inline void insertInOrder(List &list, const typename List::value_type &m)
+{
+    long after = -1, first = -1;
+    for (long i = 0; i < long(list.size()); ++i)
+    {
+        if (list[size_t(i)].tab != m.tab)
+            continue;
+        if (first < 0)
+            first = i;
+        if (list[size_t(i)].dialHz <= m.dialHz)
+            after = i;
+    }
+    const long at = after >= 0 ? after + 1 : (first >= 0 ? first : long(list.size()));
+    list.insert(list.begin() + at, m);
+}
+
+// Band column order: longest wavelength first (160 m before 80 m ... 2 m), then by dial;
+// rows with no band go last.
+inline bool bandLess(const std::string &a, std::int64_t dialA, const std::string &b, std::int64_t dialB)
+{
+    const double ma = bandMetres(a), mb = bandMetres(b);
+    if (ma != mb)
+    {
+        if (ma == 0 || mb == 0)
+            return mb == 0; // no band: last
+        return ma > mb;
+    }
+    return dialA < dialB;
+}
+
 // What is on the air, as the rules see it.
 enum class Emission
 {
