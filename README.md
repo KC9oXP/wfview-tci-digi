@@ -296,8 +296,11 @@ type and press Enter; Esc cancels.
   connected. With *Reconnect* ticked it keeps retrying every 5 s.
 - Frequency and mode, shown and settable.
 - *SNR*: live signal-to-noise of the signal on the tab in use (green 10 dB and up, amber
-  3-10 dB, red below 3 dB; `SNR (TX)` while transmitting). Same measurement as the QSO
-  log's signal report; not WSJT-X's 2500 Hz-referenced SNR.
+  3-10 dB; `SNR --` below 3 dB, where there is no signal above the noise; `SNR (TX)` while
+  transmitting). The signal's strongest spectrum bin is compared with the typical strongest
+  bin of same-width stretches of noise elsewhere in the passband, so an empty frequency reads
+  about 0 dB; RTTY needs both mark and space and measures the weaker. Same measurement as the
+  QSO log's signal report; not WSJT-X's 2500 Hz-referenced SNR.
 - *Log*: the session log on (green) or off, for all modes.
 - *Presets*: frequency presets for the tab showing (SSTV 3.845 LSB / 14.230 ..., WEFAX NMF
   / NMG with the 1.9 kHz offset, NAVTEX 518 kHz, WWV 2.5-25 MHz AM ...). A preset sets the
@@ -396,7 +399,7 @@ logged QSO is always written to the ADIF file. Each one can also go, as soon as 
 - *Add signal report to the comment* (on by default): logging adds e.g. `SNR 18 dB, S7` to the
   comment. The SNR is the signal's peak over the noise floor in the receive spectrum, at the
   frequency of the tab in use, smoothed over a few seconds and never measured while you transmit
-  (it is not WSJT-X's 2500 Hz-referenced SNR). The S-meter is asked from wfview (TCI `rx_smeter`,
+  (it is not WSJT-X's 2500 Hz-referenced SNR); below 3 dB it is left out. The S-meter is asked from wfview (TCI `rx_smeter`,
   dBm, S9 = -73 dBm); if wfview does not answer, only the SNR is added.
 - Receive panes keep a long history: scroll back and the view stays put while new text
   arrives (*Live* returns), Ctrl+F finds text, right-click saves it.

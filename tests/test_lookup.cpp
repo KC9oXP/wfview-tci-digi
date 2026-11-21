@@ -141,7 +141,9 @@ int main()
     CHECK(sUnits(-140.0) == "S0");
     CHECK(note(18.4, -85.0) == "SNR 18 dB, S7");
     CHECK(note(std::nan(""), -85.0) == "S7");
-    CHECK(note(-3.0, std::nan("")) == "SNR -3 dB");
+    CHECK(note(-3.0, std::nan("")).empty()); // below 3 dB: noise, not a report
+    CHECK(note(2.0, -85.0) == "S7");
+    CHECK(note(3.0, std::nan("")) == "SNR 3 dB");
     CHECK(note(std::nan(""), std::nan("")).empty());
 
     std::printf("SNR from the spectrum\n");
@@ -155,9 +157,52 @@ int main()
         db[size_t(bin)] = -80.0f; // 20 dB above the floor at 1500 Hz
         const double s = snrDb(db.data(), n, hzPerBin, 1500.0, 50.0);
         std::printf("  measured %.1f dB\n", s);
-        CHECK(std::fabs(s - 20.0) < 2.5);
+        CHECK(std::fabs(s - 18.0) < 1.5); // 20 dB over the floor, 18 over the floor's ripple peaks
         CHECK(std::isnan(snrDb(db.data(), n, hzPerBin, 0.0, 50.0))); // no signal frequency
-        CHECK(snrDb(db.data(), n, hzPerBin, 2200.0, 50.0) < 4.0); // nothing there
+        CHECK(snrDb(db.data(), n, hzPerBin, 2200.0, 50.0) < kMinSnrDb); // nothing there
+    }
+
+    std::printf("SNR on pure noise reads about 0 dB (was 5-9 dB)\n");
+    {
+        const double hzPerBin = 46.875 / 4;
+        const int n = 2048;
+        std::vector<float> db(static_cast<size_t>(n));
+        unsigned x = 12345;
+        auto rnd = [&]() { x = x * 1664525u + 1013904223u; return (double(x >> 8) + 0.5) / 16777216.0; };
+        for (const double half : {40.0, 60.0, 125.0, 420.0})
+        {
+            double sum = 0, worst = -99;
+            const int runs = 300;
+            for (int r = 0; r < runs; ++r)
+            {
+                for (float &v : db)
+                    v = float(10.0 * std::log10(-std::log(rnd()))); // noise power, exponential
+                const double s = snrDb(db.data(), n, hzPerBin, half > 400 ? 1900.0 : 1500.0, half); // SSTV at 1900
+                sum += s;
+                worst = std::max(worst, s);
+            }
+            std::printf("  +/-%3.0f Hz: mean %.1f dB, worst of %d %.1f dB\n", half, sum / runs, runs, worst);
+            CHECK(std::fabs(sum / runs) < 1.0);
+        }
+        // a window so wide nothing of its width fits beside it: narrower noise windows
+        double sum = 0;
+        for (int r = 0; r < 100; ++r)
+        {
+            for (float &v : db)
+                v = float(10.0 * std::log10(-std::log(rnd())));
+            sum += snrDb(db.data(), n, hzPerBin, 1500.0, 420.0);
+        }
+        std::printf("  +/-420 Hz at 1500 Hz (no room): mean %.1f dB\n", sum / 100);
+        CHECK(!std::isnan(sum) && sum / 100 < 2.5);
+        // RTTY: both tones needed; mark only is not a signal
+        for (float &v : db)
+            v = -100.0f;
+        db[size_t(2295.0 / hzPerBin)] = -75.0f;
+        CHECK(snrTwoToneDb(db.data(), n, hzPerBin, 2295.0, 2125.0, 40.0) < kMinSnrDb);
+        db[size_t(2125.0 / hzPerBin)] = -80.0f;
+        const double t = snrTwoToneDb(db.data(), n, hzPerBin, 2295.0, 2125.0, 40.0);
+        std::printf("  RTTY mark 25 dB, space 20 dB: %.1f dB\n", t);
+        CHECK(std::fabs(t - 20.0) < 1.0);
     }
 
     std::printf(g_fail ? "\n%d FAILED\n" : "\nALL PASSED\n", g_fail);

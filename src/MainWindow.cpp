@@ -2259,7 +2259,15 @@ void MainWindow::trackSnr(const QVector<float> &db, double hzPerBin)
         return;
     double half = 60;
     const double hz = currentAudioHz(&half);
-    const double s = sigrep::snrDb(db.constData(), int(db.size()), hzPerBin, hz, half);
+    // RTTY: both mark and space must be there (the weaker one is measured).
+    const double s = m_tabs->currentWidget() == m_rttyPanel
+                         ? sigrep::snrTwoToneDb(db.constData(),
+                                                int(db.size()),
+                                                hzPerBin,
+                                                double(m_rtty->markHz()),
+                                                double(m_rtty->spaceHz()),
+                                                40.0)
+                         : sigrep::snrDb(db.constData(), int(db.size()), hzPerBin, hz, half);
     if (std::isnan(s))
         return;
     // A new signal frequency starts fresh rather than averaging two stations.
@@ -2292,17 +2300,23 @@ void MainWindow::updateSnrLabel()
     else if (!std::isnan(m_snr) && m_snrAge.isValid() && m_snrAge.elapsed() < 2000)
     {
         const int snr = int(std::lround(m_snr));
-        text = tr("SNR %1 dB").arg(snr);
-        style = snr >= 10 ? QStringLiteral("color: #50d070; font-weight: bold;")
-            : snr >= 3    ? QStringLiteral("color: #e0a030; font-weight: bold;")
-                          : QStringLiteral("color: #e05040; font-weight: bold;");
+        if (m_snr < sigrep::kMinSnrDb)
+            text = tr("SNR --"); // noise alone reads 0 +/- 3 dB: no signal to rate
+        else
+        {
+            text = tr("SNR %1 dB").arg(snr);
+            style = snr >= 10 ? QStringLiteral("color: #50d070; font-weight: bold;")
+                              : QStringLiteral("color: #e0a030; font-weight: bold;");
+        }
     }
     if (tip.isEmpty())
-        tip = tr("Signal-to-noise of the signal at %1 Hz (+/- %2 Hz) on this tab: its strongest spectrum bin over "
-                 "the median noise floor of the 300-2700 Hz passband, smoothed over about a second.\n"
+        tip = tr("Signal-to-noise of the signal at %1 Hz (+/- %2 Hz) on this tab: its strongest spectrum bin "
+                 "against the typical strongest bin of same-width windows elsewhere in 300-2700 Hz, so noise "
+                 "alone reads about 0 dB. RTTY measures the weaker of mark and space (both must be there). "
+                 "Smoothed over about a second.\n"
                  "This is not WSJT-X's SNR (which is referred to a 2500 Hz bandwidth and reads much lower).\n"
-                 "Green 10 dB and up, amber 3-10 dB, red below 3 dB. The QSO log's signal report uses the same "
-                 "value.")
+                 "Green 10 dB and up, amber 3-10 dB; below 3 dB it shows -- (no signal above the noise) and the "
+                 "QSO log leaves the SNR out of its signal report.")
                   .arg(qRound(hz))
                   .arg(qRound(half));
     if (m_snrLabel->text() != text)
