@@ -980,7 +980,7 @@ static void runPskReporterAndFreqBox()
         CHECK(shown && qso->isVisible());
     }
 
-    // PSK Reporter: off at first; turned on with auto-detect; a call seen 3 times is sent.
+    // PSK Reporter: off at first; turned on with auto-detect; a call seen after CQ / DE is sent.
     auto *pskr = w.findChild<PskReporter *>();
     CHECK(pskr != nullptr);
     if (!pskr)

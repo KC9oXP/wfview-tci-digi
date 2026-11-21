@@ -2053,9 +2053,9 @@ void MainWindow::editPskReporter()
     form->addRow(enable);
     auto *autoDet = new QCheckBox(tr("Auto-detect callsigns in the decoded text"));
     autoDet->setChecked(m_pskr->autoDetect());
-    autoDet->setToolTip(tr("Off: only QSOs you log are reported.\nOn: also any call seen 3 times right after DE or CQ "
-                           "(\"CQ CQ DE W1AW W1AW W1AW\") within 10 minutes near the same frequency, in the CW, "
-                           "RTTY, PSK, Olivia/Contestia and AMTOR tabs."));
+    autoDet->setToolTip(tr("Off: only QSOs you log are reported.\nOn: also any call seen once right after CQ, DE or 73 "
+                           "(\"CQ DE W1AW K\", \"73 W1AW SK\"), in the CW, RTTY, PSK, Olivia/Contestia and AMTOR "
+                           "tabs; each call at most once per 10 minutes."));
     form->addRow(autoDet);
     auto *callEdit = new QLineEdit(m_pskr->myCall());
     callEdit->setPlaceholderText(tr("e.g. KC9OXP"));

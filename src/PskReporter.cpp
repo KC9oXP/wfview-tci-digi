@@ -301,7 +301,7 @@ QString PskReporter::statusText() const
         return tr("PSK Reporter off. Click to turn on.");
     QStringList l;
     l << tr("PSK Reporter on as %1 (%2)%3").arg(m_myCall, m_myGrid, m_test ? tr(", TEST server") : QString());
-    l << (m_auto ? tr("Reports: logged QSOs and calls seen 3 times after DE or CQ.")
+    l << (m_auto ? tr("Reports: logged QSOs and calls seen after CQ, DE or 73.")
                  : tr("Reports: logged QSOs (auto-detect is off)."));
     l << tr("Sent %1, waiting %2.").arg(m_sent).arg(m_queue.waiting());
     const QDateTime next = nextSend();

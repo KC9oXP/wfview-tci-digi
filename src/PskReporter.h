@@ -5,8 +5,8 @@
 //
 // Off until the user turns it on. Two ways a call gets reported:
 //  - Logged: every QSO logged in the QSO log (call, frequency, mode).
-//  - Auto-detect (an option): a call seen 3 times right after DE or CQ in the decoded
-//    text within 10 minutes near the same frequency (engine/callspot.h).
+//  - Auto-detect (an option): a call seen once right after CQ, DE or 73 in the decoded
+//    text (one over is enough), then not again for 10 minutes (engine/callspot.h).
 // Reports go out at most every 5 minutes, timed from when reporting was turned on.
 
 #include "callspot.h"

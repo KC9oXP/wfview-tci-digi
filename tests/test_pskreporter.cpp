@@ -285,43 +285,60 @@ int main()
     CHECK(!isCallsign("A/B/C/D"));
     CHECK(!isCallsign("14070"));
 
-    std::printf("spotter: three sightings after DE / CQ\n");
+    std::printf("spotter: one sighting after CQ / DE / 73\n");
     {
         callspot::Spotter sp;
         sp.myCall = "KC9OXP";
-        // all in one go
+        // one CQ over is enough
         auto out = sp.feed("PSK", "CQ CQ CQ DE W1AW W1AW W1AW K\n", 14071000, 100);
         CHECK(out.size() == 1 && out[0].call == "W1AW" && out[0].source == "PSK" && out[0].hz == 14071000);
-        // not again straight away
+        // not again within 10 minutes
         out = sp.feed("PSK", "CQ DE W1AW W1AW W1AW K ", 14071000, 160);
         CHECK(out.empty());
-        // pieces arriving a few letters at a time
+        // ... but again after 10 minutes
+        out = sp.feed("PSK", "CQ DE W1AW K ", 14071000, 800);
+        CHECK(out.size() == 1);
+        // pieces arriving a few letters at a time: once
         int n = 0;
         const std::string text = "CQ CQ DE K3WW K3WW PSE K\nCQ DE K3WW K ";
         for (size_t i = 0; i < text.size(); i += 3)
             n += int(sp.feed("RTTY", text.substr(i, 3), 7080000, 200).size());
         CHECK(n == 1);
-        // only twice: not yet
-        out = sp.feed("CW", "CQ DE W6EL W6EL K ", 7030000, 300);
-        CHECK(out.empty() && sp.sightings("W6EL", 300) == 2);
-        // third, but far away in frequency: does not count with the others
-        out = sp.feed("CW", "DE W6EL ", 14030000, 310);
-        CHECK(out.empty());
-        // the third close by, but after the 10 minute window: starts again
-        callspot::Spotter late;
-        late.feed("CW", "CQ DE W6EL W6EL ", 7030000, 0);
-        CHECK(late.feed("CW", "DE W6EL ", 7030000, 700).empty());
+        // a single DE is enough
+        CHECK(sp.feed("CW", "K1ABC DE W6EL K ", 7030000, 300).size() == 1);
+        CHECK(sp.sightings("K1ABC", 300) == 0); // K1ABC was only called
+        // 73: the call signing counts
+        callspot::Spotter s73;
+        out = s73.feed("CW", "TU 73 N0AX SK ", 7030000, 0);
+        CHECK(out.size() == 1 && out[0].call == "N0AX");
+        // "73 GL W1AW": a couple of short words between are fine; repeats count once
+        CHECK(s73.feed("RTTY", "73 GL W1AW W1AW SK ", 14080000, 0).size() == 1);
+        // "TU 73 K1ABC DE W4XYZ": K1ABC is being thanked, not heard; W4XYZ is reported
+        out = s73.feed("CW", "TU 73 K1ABC DE W4XYZ SK ", 7030000, 0);
+        CHECK(out.size() == 1 && out[0].call == "W4XYZ");
+        CHECK(s73.sightings("K1ABC", 0) == 0);
+        // the word after the call arrives in a later piece
+        callspot::Spotter late73;
+        CHECK(late73.feed("CW", "73 K5ZZ", 7030000, 0).empty());
+        CHECK(late73.feed("CW", " ", 7030000, 1).empty()); // still waiting for the next word
+        CHECK(late73.feed("CW", "SK ", 7030000, 2).size() == 1);
         // "CQ DX" / "CQ TEST" / "CQ POTA" before the call
         callspot::Spotter dx;
-        CHECK(dx.feed("RTTY", "CQ TEST W1AW W1AW CQ TEST W1AW ", 14080000, 0).size() == 1);
+        CHECK(dx.feed("RTTY", "CQ TEST W1AW ", 14080000, 0).size() == 1);
         // my own call is never reported
-        CHECK(sp.feed("PSK", "CQ DE KC9OXP KC9OXP KC9OXP ", 14070000, 400).empty());
-        // a call that is not after DE or CQ does not count
+        CHECK(sp.feed("PSK", "CQ DE KC9OXP KC9OXP 73 KC9OXP SK ", 14070000, 400).empty());
+        // a call that is not after CQ, DE or 73 does not count
         callspot::Spotter none;
         CHECK(none.feed("PSK", "W1AW W1AW W1AW W1AW TNX FER QSO ", 14070000, 0).empty());
-        // "DE W1AW K1ABC": two different calls, the second does not count
-        CHECK(none.feed("PSK", "DE W1AW K1ABC K1ABC K1ABC ", 14070000, 0).empty());
+        // "DE W1AW K1ABC": W1AW counts, the second call does not
+        out = none.feed("PSK", "DE W1AW K1ABC K1ABC K1ABC ", 14070000, 0);
+        CHECK(out.size() == 1 && out[0].call == "W1AW");
         CHECK(none.sightings("K1ABC", 0) == 0);
+        // the old 3-sighting rule still works if asked for
+        callspot::Spotter three;
+        three.needed = 3;
+        CHECK(three.feed("CW", "CQ DE W6EL W6EL K ", 7030000, 0).empty());
+        CHECK(three.feed("CW", "DE W6EL ", 7030000, 10).size() == 1);
     }
 
     std::printf(g_fail ? "\n%d FAILED\n" : "\nALL PASSED\n", g_fail);

@@ -336,9 +336,11 @@ station hears to [pskreporter.info](https://pskreporter.info), where they show o
   off; the first time it asks for your call and grid (the call is the same My call that every
   transmit tab and the QSO log use, so it can be typed here on a fresh install).
   Right-click for the settings.
-- What is reported: every QSO you log, and, with *Auto-detect* ticked, any call seen 3 times
-  right after DE or CQ (`CQ CQ DE W1AW W1AW W1AW`) within 10 minutes near the same frequency
-  in the CW, RTTY, PSK, Olivia/Contestia and AMTOR tabs. Text you send is never read.
+- What is reported: every QSO you log, and, with *Auto-detect* ticked, any call seen once
+  right after CQ, DE or 73 (`CQ DE W1AW K`, `73 W1AW SK`; one over is enough) in the CW, RTTY,
+  PSK, Olivia/Contestia and AMTOR tabs, each call at most once per 10 minutes. After 73 the call
+  counts only if DE does not follow it (`TU 73 K1ABC DE W1AW` reports W1AW, not K1ABC, who was
+  only being thanked). Text you send is never read.
 - As the PSK Reporter developer page asks: at most one report every 5 minutes (timed from when
   you turn it on, not the clock), each call at most once per 5 minutes and otherwise once an
   hour unless it moves band; mode names are ADIF (CW, RTTY, PSK31, OLIVIA, CONTESTI,

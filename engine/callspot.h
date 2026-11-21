@@ -3,9 +3,12 @@
 //
 // isCallsign(): amateur callsign shape (prefix, a digit, a suffix ending in a letter),
 // with optional /P, /QRP, VE3/ ... parts.
-// Spotter: counts "sightings" of a callsign right after DE or CQ in the decoded text of
-// each source (tab) and reports a call once it has been seen `needed` times within
-// `windowSec` near the same frequency. "CQ CQ DE W1AW W1AW W1AW K" is three sightings.
+// Spotter: counts "sightings" of a callsign right after DE, CQ or 73 in the decoded text
+// of each source (tab) and reports a call once it has been seen `needed` times (default
+// once: one CQ / DE / 73 over is enough) within `windowSec` near the same frequency, and
+// then not again for `windowSec`. "CQ CQ DE W1AW W1AW W1AW K" is three sightings.
+// After 73 the call counts only when DE does not follow it: "73 W1AW SK" is W1AW signing,
+// "TU 73 K1ABC DE W1AW" is K1ABC being thanked (not heard), so only W1AW counts.
 #pragma once
 
 #include <cstdint>
@@ -141,7 +144,7 @@ struct Spot
 class Spotter
 {
 public:
-    int needed = 3; // sightings before a call is reported
+    int needed = 1; // sightings before a call is reported
     int windowSec = 600; // ... within this long
     std::int64_t maxSpreadHz = 1500; // ... and this close in frequency
     std::string myCall; // never reported
@@ -194,9 +197,10 @@ private:
     struct Stream
     {
         std::string partial;
-        int after = 0; // 1 = last keyword DE, 2 = CQ
+        int after = 0; // 1 = last keyword DE, 2 = CQ, 3 = 73
         std::string lastCall; // for "DE W1AW W1AW"
-        int skips = 0; // words skipped after CQ (CQ DX, CQ TEST, CQ POTA ...)
+        int skips = 0; // words skipped after CQ or 73 (CQ DX, CQ TEST, TU 73 GL ...)
+        std::string pending; // call after 73, counted once the next word is not DE
     };
     struct Seen
     {
@@ -215,15 +219,25 @@ private:
               std::int64_t now,
               std::vector<Spot> &out)
     {
+        if (!st.pending.empty())
+        {
+            // "73 W1AW SK": W1AW signed. "73 K1ABC DE W1AW": K1ABC was only addressed.
+            if (w != "DE" && w != st.pending)
+                sighting(source, st.pending, hz, now, out);
+            if (w != st.pending)
+                st.pending.clear();
+            else
+                return; // "73 W1AW W1AW": wait for the word after the repeats
+        }
         if (w == "DE")
         {
             st.after = 1;
             st.lastCall.clear();
             return;
         }
-        if (w == "CQ")
+        if (w == "CQ" || w == "73")
         {
-            st.after = 2;
+            st.after = (w == "CQ") ? 2 : 3;
             st.skips = 0;
             st.lastCall.clear();
             return;
@@ -232,6 +246,12 @@ private:
             return;
         if (isCallsign(w))
         {
+            if (st.after == 3)
+            {
+                st.pending = w;
+                st.after = 0;
+                return;
+            }
             if (st.lastCall.empty() || st.lastCall == w)
             {
                 st.lastCall = w;
@@ -241,8 +261,8 @@ private:
             st.after = 0; // a different call: "DE W1AW K1ABC" is not two sightings of either
             return;
         }
-        if (st.after == 2 && st.lastCall.empty() && ++st.skips <= 2 && w.size() <= 5)
-            return; // "CQ DX W1AW", "CQ TEST W1AW", "CQ POTA W1AW"
+        if (st.after >= 2 && st.lastCall.empty() && ++st.skips <= 2 && w.size() <= 5)
+            return; // "CQ DX W1AW", "CQ TEST W1AW", "CQ POTA W1AW", "73 GL W1AW"
         st.after = 0;
     }
 
