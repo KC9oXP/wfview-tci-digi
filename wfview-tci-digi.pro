@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.9.7
+VERSION = 0.9.8
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -75,11 +75,13 @@ HEADERS += \
     src/SecretStore.h \
     src/LogUploader.h \
     src/GridTrackerLink.h \
+    src/InputLevelMeter.h \
     src/CallLookup.h \
     engine/lookupcore.h \
     engine/signalreport.h \
     engine/uploadcore.h \
     engine/gridtrackerudp.h \
+    engine/inputlevel.h \
     engine/callspot.h \
     engine/pskrcore.h \
     src/MainWindow.h \
@@ -159,6 +161,7 @@ SOURCES += \
     src/SecretStore.cpp \
     src/LogUploader.cpp \
     src/GridTrackerLink.cpp \
+    src/InputLevelMeter.cpp \
     src/CallLookup.cpp \
     src/MainWindow.cpp \
     engine/sstvcore.cpp \

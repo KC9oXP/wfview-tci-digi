@@ -301,6 +301,12 @@ type and press Enter; Esc cancels.
   bin of same-width stretches of noise elsewhere in the passband, so an empty frequency reads
   about 0 dB; RTTY needs both mark and space and measures the weaker. Same measurement as the
   QSO log's signal report; not WSJT-X's 2500 Hz-referenced SNR.
+- *RX input level* (right of SNR, the same on every tab): the receive audio wfview sends, in
+  dBFS (0 = full scale). The bar is the average (RMS) level, the thin mark the recent peak.
+  Green -50 to -12 dBFS is about right; amber is too quiet or too hot; red means peaks at full
+  scale (clipping). Set it with wfview's RX audio level and the radio's AF/RF gain. It is an
+  input level, not a signal report: band noise has a level too. Shows `TX` while transmitting
+  and `no audio` when wfview sends none.
 - *Log*: the session log on (green) or off, for all modes.
 - *Presets*: frequency presets for the tab showing (SSTV 3.845 LSB / 14.230 ..., WEFAX NMF
   / NMG with the 1.9 kHz offset, NAVTEX 518 kHz, WWV 2.5-25 MHz AM ...). A preset sets the
@@ -545,7 +551,8 @@ Found while writing this client; the client works around each one.
   feeds, transmit goes silent. Set the data mode in wfview instead.
 - **Silent RX audio.** Seen once (wfview 3.00, IC-7610, November 2026): wfview kept sending
   RX audio packets at the normal rate, but every sample was zero (`peak -120.0 dBFS`,
-  empty waterfalls). Restarting wfview cured it. The status bar now says so.
+  empty waterfalls). Restarting wfview cured it. The status bar now says so (not while
+  transmitting: wfview sends zeros for receive audio then, and that is normal).
 - **`tx_sensors_enable` argument order.** The TCI spec is `tx_sensors_enable:true,<ms>;`;
   wfview 3.00 reads the enable flag from the second argument, so this client sends
   `tx_sensors_enable:0,true;` to wfview. wfview then sends `tx_sensors` with its ALC meter

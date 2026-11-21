@@ -63,6 +63,8 @@ jobs:
           ./test_pskreporter
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_gridtracker.cpp -o test_gridtracker
           ./test_gridtracker
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_inputlevel.cpp -o test_inputlevel
+          ./test_inputlevel
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_upload.cpp -o test_upload
           ./test_upload
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_lookup.cpp -o test_lookup

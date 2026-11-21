@@ -143,7 +143,7 @@ SstvPanel::SstvPanel(SstvEngine *engine, QSettings *settings, QWidget *parent)
             [this]()
             {
                 m_level->setText(m_sstv->decoding()
-                                     ? tr("%1 Hz  %2 dB").arg(qRound(m_sstv->toneHz())).arg(qRound(m_sstv->levelDb()))
+                                     ? tr("%1 Hz").arg(qRound(m_sstv->toneHz())) // input level: dBFS meter in the top bar
                                      : QString());
                 m_stop->setEnabled(m_sstv->receiving());
                 updateMarkers();

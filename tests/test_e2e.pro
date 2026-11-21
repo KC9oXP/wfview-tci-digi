@@ -65,11 +65,13 @@ HEADERS += \
     ../src/SecretStore.h \
     ../src/LogUploader.h \
     ../src/GridTrackerLink.h \
+    ../src/InputLevelMeter.h \
     ../src/CallLookup.h \
     ../engine/lookupcore.h \
     ../engine/signalreport.h \
     ../engine/uploadcore.h \
     ../engine/gridtrackerudp.h \
+    ../engine/inputlevel.h \
     ../engine/callspot.h \
     ../engine/pskrcore.h \
     ../engine/memories.h \
@@ -125,6 +127,7 @@ SOURCES += \
     ../src/SecretStore.cpp \
     ../src/LogUploader.cpp \
     ../src/GridTrackerLink.cpp \
+    ../src/InputLevelMeter.cpp \
     ../src/CallLookup.cpp \
     ../src/MainWindow.cpp \
     ../engine/sstvcore.cpp \

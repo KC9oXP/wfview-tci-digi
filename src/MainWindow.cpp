@@ -13,6 +13,7 @@
 #include "HellPanel.h"
 #include "LogUploader.h"
 #include "GridTrackerLink.h"
+#include "InputLevelMeter.h"
 #include "MemoriesDialog.h"
 #include "NavtexEngine.h"
 #include "NavtexPanel.h"
@@ -282,6 +283,10 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_client, &TciClient::radioTransmitChanged, this, &MainWindow::onRadioTransmit);
     // Receive audio goes through the hub (ring buffer, recording, WAV playback).
     connect(m_client, &TciClient::rxAudio, m_audio, &AudioHub::fromRadio);
+    connect(m_client,
+            &TciClient::rxAudio,
+            this,
+            [this](const QVector<float> &mono, float) { m_inMeter.add(mono.constData(), size_t(mono.size())); });
     connect(m_audio, &AudioHub::audio, m_cw, &CwDecoder::pushAudio);
     connect(m_audio, &AudioHub::audio, m_rtty, &RttyEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_psk, &ModemEngine::pushAudio);
@@ -296,6 +301,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_spectrum, &SpectrumEngine::line, this, &MainWindow::trackSnr);
     m_snrShow.setInterval(300);
     connect(&m_snrShow, &QTimer::timeout, this, &MainWindow::updateSnrLabel);
+    connect(&m_snrShow, &QTimer::timeout, this, &MainWindow::updateInputLevel);
     connect(&m_snrShow, &QTimer::timeout, this, &MainWindow::updateGridTracker);
     m_snrShow.start();
     connect(m_audio,
@@ -708,6 +714,8 @@ QWidget *MainWindow::buildConnectionBar()
     m_snrLabel->setAlignment(Qt::AlignCenter);
     m_snrLabel->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("SNR -88 dB")) + 12);
     h->addWidget(m_snrLabel);
+    m_inLevel = new InputLevelMeter();
+    h->addWidget(m_inLevel);
     m_txLamp = new QLabel(tr(" RX "));
     m_txLamp->setAlignment(Qt::AlignCenter);
     m_txLamp->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("  TX  ")) + 8);
@@ -2325,6 +2333,37 @@ void MainWindow::updateSnrLabel()
         m_snrLabel->setStyleSheet(style);
     if (m_snrLabel->toolTip() != tip)
         m_snrLabel->setToolTip(tip);
+}
+
+void MainWindow::updateInputLevel()
+{
+    if (!m_inLevel)
+        return;
+    const double dt = m_inClock.isValid() ? std::clamp(m_inClock.restart() / 1000.0, 0.0, 2.0) : 0.3;
+    if (!m_inClock.isValid())
+        m_inClock.start();
+    if (!m_client || m_client->state() == TciClient::State::Disconnected)
+    {
+        m_inLevel->setIdle(tr("--"));
+        m_inHold.reset();
+    }
+    else if (anyTransmitting() || m_client->radioTransmitting())
+    {
+        // wfview sends silence for receive audio while transmitting
+        m_inLevel->setIdle(tr("TX"));
+        m_inHold.reset();
+    }
+    else if (m_inMeter.empty())
+    {
+        m_inLevel->setIdle(tr("no audio"));
+        m_inHold.reset();
+    }
+    else
+    {
+        const double peak = m_inHold.update(m_inMeter.peakDb(), dt);
+        m_inLevel->setLevel(m_inMeter.rmsDb(), peak);
+    }
+    m_inMeter.reset();
 }
 
 QString MainWindow::signalNote() const

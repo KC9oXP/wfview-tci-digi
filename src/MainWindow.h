@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TciClient.h"
+#include "inputlevel.h"
 #include "memories.h"
 
 #include <QElapsedTimer>
@@ -12,6 +13,7 @@ class AmtorEngine;
 class AmtorPanel;
 class AudioHub;
 class CwDecoder;
+class InputLevelMeter;
 class NavtexEngine;
 class NavtexPanel;
 class OliviaEngine;
@@ -108,6 +110,7 @@ private:
     void trackSnr(const QVector<float> &db, double hzPerBin);
     QString signalNote() const;
     void updateSnrLabel();
+    void updateInputLevel();
     void editCallLookup();
     QString currentSubMode() const;
     void feedPskr(const QString &tab, const QString &subMode, const QString &text, double audioHz);
@@ -166,6 +169,10 @@ private:
     QElapsedTimer m_snrAge;
     QLabel *m_snrLabel = nullptr; // live SNR of the signal on the tab in use
     QTimer m_snrShow;
+    InputLevelMeter *m_inLevel = nullptr; // RX input dBFS, top bar, same for every tab
+    inlevel::Meter m_inMeter;               // RX audio since the last reading
+    inlevel::PeakHold m_inHold;
+    QElapsedTimer m_inClock;
     QList<ModemEngine *> m_txEngines; // m_modems + tune tone + CW ID
     AudioHub *m_audio = nullptr;
     SessionLog *m_session = nullptr;
