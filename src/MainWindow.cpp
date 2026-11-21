@@ -937,15 +937,7 @@ void MainWindow::buildMenus()
                         m_txLimit.stop();
                 });
     }
-    QAction *egg = opts->addAction(tr("STANAG 4481 Easteregg"));
-    egg->setCheckable(true);
-    egg->setChecked(m_rtty->easterEgg());
-    egg->setToolTip(tr("RTTY tab: when a 75 baud / 850 Hz signal looks like an encrypted STANAG 4481 broadcast "
-                       "(locked for 10 s, stop bits right only about half the time), print one line in its "
-                       "honour, then carry on decoding."));
-    connect(egg, &QAction::toggled, m_rtty, &RttyEngine::setEasterEgg);
     opts->addAction(tr("Memories..."), this, &MainWindow::showMemories);
-    opts->addAction(tr("PSK Reporter..."), this, &MainWindow::editPskReporter);
     opts->addAction(tr("GridTracker (live frequency and heard calls)..."),
                     this,
                     [this]() { m_gridTracker->editSettings(this); });
@@ -954,7 +946,20 @@ void MainWindow::buildMenus()
     opts->addAction(tr("Callsign lookup (QRZ / HamQTH)..."), this, &MainWindow::editCallLookup);
     opts->addAction(tr("ALC warning..."), this, &MainWindow::editAlcLimit);
     opts->addAction(tr("Tune tone, CW ID and Auto TX level..."), this, [this]() { m_tools->editSettings(this); });
+    opts->addAction(tr("PSK Reporter..."), this, &MainWindow::editPskReporter);
     opts->addSeparator();
+    opts->addAction(tr("Data folder..."),
+                    this,
+                    [this]()
+                    {
+                        const QString d = QFileDialog::getExistingDirectory(
+                            this, tr("Folder for logs, pictures, screenshots and recordings"), AppPaths::base());
+                        if (!d.isEmpty())
+                        {
+                            AppPaths::setBase(d);
+                            log(tr("Data folder: %1").arg(QDir::toNativeSeparators(AppPaths::base())));
+                        }
+                    });
     QMenu *ring = opts->addMenu(tr("Audio kept for \"Save last...\""));
     for (int sec : {60, 120, 300, 600})
     {
@@ -976,18 +981,13 @@ void MainWindow::buildMenus()
     autoUpdate->setCheckable(true);
     autoUpdate->setChecked(m_update->automatic());
     connect(autoUpdate, &QAction::toggled, m_update, &UpdateCheck::setAutomatic);
-    opts->addAction(tr("Data folder..."),
-                    this,
-                    [this]()
-                    {
-                        const QString d = QFileDialog::getExistingDirectory(
-                            this, tr("Folder for logs, pictures, screenshots and recordings"), AppPaths::base());
-                        if (!d.isEmpty())
-                        {
-                            AppPaths::setBase(d);
-                            log(tr("Data folder: %1").arg(QDir::toNativeSeparators(AppPaths::base())));
-                        }
-                    });
+    QAction *egg = opts->addAction(tr("STANAG 4481 Easteregg"));
+    egg->setCheckable(true);
+    egg->setChecked(m_rtty->easterEgg());
+    egg->setToolTip(tr("RTTY tab: when a 75 baud / 850 Hz signal looks like an encrypted STANAG 4481 broadcast "
+                       "(locked for 10 s, stop bits right only about half the time), print one line in its "
+                       "honour, then carry on decoding."));
+    connect(egg, &QAction::toggled, m_rtty, &RttyEngine::setEasterEgg);
 
     QMenu *help = menuBar()->addMenu(tr("&Help"));
     help->addAction(tr("Check for updates..."), m_update, &UpdateCheck::checkNow);
