@@ -65,6 +65,8 @@ jobs:
           ./test_gridtracker
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_inputlevel.cpp -o test_inputlevel
           ./test_inputlevel
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_stanagegg.cpp engine/rttycore.cpp -o test_stanagegg
+          ./test_stanagegg
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_upload.cpp -o test_upload
           ./test_upload
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_lookup.cpp -o test_lookup

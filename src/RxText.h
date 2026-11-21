@@ -16,6 +16,9 @@
 #include <QPoint>
 #include <QString>
 
+class QColor;
+class QTextCharFormat;
+
 class QLineEdit;
 class QPlainTextEdit;
 class QToolButton;
@@ -26,6 +29,8 @@ namespace RxText
 // maxChars: older text is trimmed from the top beyond this (only while the
 // reader follows the newest text, so a scrolled-back view does not jump).
 void append(QPlainTextEdit *edit, const QString &text, int maxChars = 400000);
+// The same, in bold and the given colour (the text after it is plain again).
+void appendStyled(QPlainTextEdit *edit, const QString &text, const QColor &color, int maxChars = 400000);
 } // namespace RxText
 
 // Callsigns picked in any receive pane (double-click, or the context menu).

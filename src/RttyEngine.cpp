@@ -139,14 +139,21 @@ void RttyDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
 
     if (m_statsTimer.elapsed() >= statsIntervalMs)
     {
-        m_statsTimer.restart();
+        const double dt = std::min(m_statsTimer.restart() / 1000.0, 2.0);
         const RttyDemodulator::Stats s = m_demod.stats();
+        if (m_egg.update(m_eggOn, m_cfg.baud, m_cfg.shiftHz, s.quality, s.chars, s.framingErrors, dt))
+            emit easterEgg();
         emit statsUpdated(s.quality,
                           levelDb(s.markLevel, s.noiseLevel),
                           levelDb(s.spaceLevel, s.noiseLevel),
                           s.squelchOpen,
                           m_cfg.sampleRate);
     }
+}
+
+void RttyDecoderWorker::setEasterEgg(bool on)
+{
+    m_eggOn = on;
 }
 
 void RttyDecoderWorker::setParams(
@@ -206,6 +213,7 @@ RttyEngine::RttyEngine(QObject *parent)
     m_worker->moveToThread(m_thread);
     connect(m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
     connect(m_worker, &RttyDecoderWorker::textDecoded, this, &RttyEngine::onTextDecoded);
+    connect(m_worker, &RttyDecoderWorker::easterEgg, this, &RttyEngine::onEasterEgg);
     connect(m_worker, &RttyDecoderWorker::statsUpdated, this, &RttyEngine::onStatsUpdated);
     connect(m_worker, &RttyDecoderWorker::tonesFound, this, &RttyEngine::onTonesFound);
     connect(m_worker, &RttyDecoderWorker::scopeUpdated, this, &RttyEngine::onScopeUpdated);
@@ -246,6 +254,7 @@ void RttyEngine::loadSettings(QSettings *settings)
     m_diddle = m_settings->value(QStringLiteral("Diddle"), m_diddle).toBool();
     m_txLevel = m_settings->value(QStringLiteral("TxLevel"), m_txLevel).toDouble();
     m_myCall = m_settings->value(QStringLiteral("MyCall"), m_myCall).toString();
+    m_easterEgg = m_settings->value(QStringLiteral("Stanag4481Easteregg"), m_easterEgg).toBool();
     const QStringList names = m_settings->value(QStringLiteral("MacroNames")).toStringList();
     const QStringList texts = m_settings->value(QStringLiteral("MacroTexts")).toStringList();
     if (names.size() == kMacroCount && texts.size() == kMacroCount)
@@ -262,8 +271,19 @@ void RttyEngine::loadSettings(QSettings *settings)
     m_squelch = std::clamp(m_squelch, 0.0, 0.95);
     m_txLevel = std::clamp(m_txLevel, 0.0, 1.0);
     applyConfig();
+    QMetaObject::invokeMethod(m_worker, "setEasterEgg", Qt::QueuedConnection, Q_ARG(bool, m_easterEgg));
     emit settingsChanged();
     emit macrosChanged();
+}
+
+void RttyEngine::setEasterEgg(bool on)
+{
+    if (on == m_easterEgg)
+        return;
+    m_easterEgg = on;
+    save("Stanag4481Easteregg", on);
+    QMetaObject::invokeMethod(m_worker, "setEasterEgg", Qt::QueuedConnection, Q_ARG(bool, on));
+    emit settingsChanged();
 }
 
 void RttyEngine::save(const char *key, const QVariant &value)
@@ -508,6 +528,16 @@ void RttyEngine::onTextDecoded(const QString &text)
         return; // our own transmission is shown from the TX side
     emit textAppended(text);
     m_atLineStart = text.endsWith(QLatin1Char('\n'));
+}
+
+void RttyEngine::onEasterEgg()
+{
+    if (!m_easterEgg || m_keyed || !m_decoding)
+        return;
+    // line break, the line, line break; then the decode carries on
+    emit easterEggText((m_atLineStart ? QString() : QStringLiteral("\n"))
+                       + QString::fromLatin1(stanagegg::message()) + QStringLiteral("\n"));
+    m_atLineStart = true;
 }
 
 void RttyEngine::onStatsUpdated(double quality, double markDb, double spaceDb, bool squelchOpen, double sampleRate)

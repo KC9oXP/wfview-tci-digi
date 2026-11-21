@@ -565,6 +565,17 @@ It started as the CW decoder and RTTY window proposed for wfview v3 (wf-group/wf
 talks to wfview over TCI, so wfview v3 can ship without it and wfview's TCI server gets a
 real client to test against.
 
+## Easter egg
+
+Options > *STANAG 4481 Easteregg* (on by default). NATO STANAG 4481 FSK shore-to-ship
+broadcasts (usually 75 baud, 850 Hz shift; the RTTY tab has a preset for it) are synchronous
+and encrypted, so an RTTY decoder prints random characters and the stop bit is right only
+about half the time; amateur RTTY always has its stop bits. When the RTTY tab has been locked
+on such a signal for 10 seconds and at least 10 characters look like that, it prints one
+line in tribute to the 1991 Mega Drive port of Zero Wing, then carries on with the random
+characters. Once per signal; it is not written to the session log and never reaches PSK
+Reporter or GridTracker.
+
 ## Future
 
 - CW with the radio's own keyer once wfview's TCI server supports `cw_macros`.

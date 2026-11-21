@@ -18,14 +18,19 @@
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QShortcut>
+#include <QColor>
+#include <QFont>
 #include <QTextBlock>
+#include <QTextCharFormat>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QToolButton>
 
 namespace RxText
 {
-void append(QPlainTextEdit *edit, const QString &text, int maxChars)
+namespace
+{
+void insert(QPlainTextEdit *edit, const QString &text, const QTextCharFormat &fmt, int maxChars)
 {
     if (!edit || text.isEmpty())
         return;
@@ -33,7 +38,7 @@ void append(QPlainTextEdit *edit, const QString &text, int maxChars)
     const bool following = sb->value() >= sb->maximum() - 2 && !edit->textCursor().hasSelection();
     QTextCursor c(edit->document());
     c.movePosition(QTextCursor::End);
-    c.insertText(text);
+    c.insertText(text, fmt);
     if (following && edit->document()->characterCount() > maxChars)
     {
         QTextCursor t(edit->document());
@@ -43,6 +48,20 @@ void append(QPlainTextEdit *edit, const QString &text, int maxChars)
     }
     if (following)
         sb->setValue(sb->maximum());
+}
+} // namespace
+
+void append(QPlainTextEdit *edit, const QString &text, int maxChars)
+{
+    insert(edit, text, QTextCharFormat(), maxChars); // plain, also after a styled line
+}
+
+void appendStyled(QPlainTextEdit *edit, const QString &text, const QColor &color, int maxChars)
+{
+    QTextCharFormat f;
+    f.setForeground(color);
+    f.setFontWeight(QFont::Bold);
+    insert(edit, text, f, maxChars);
 }
 } // namespace RxText
 

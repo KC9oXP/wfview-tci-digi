@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.9.8
+VERSION = 0.9.9
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -82,6 +82,7 @@ HEADERS += \
     engine/uploadcore.h \
     engine/gridtrackerudp.h \
     engine/inputlevel.h \
+    engine/stanagegg.h \
     engine/callspot.h \
     engine/pskrcore.h \
     src/MainWindow.h \

@@ -30,6 +30,7 @@
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QColor>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -91,6 +92,10 @@ RttyPanel::RttyPanel(RttyEngine *engine, QSettings *settings, QWidget *parent)
     connect(m_rtty, &RttyEngine::statusChanged, m_status, &QLabel::setText);
     connect(m_rtty, &RttyEngine::transmittingChanged, this, &RttyPanel::syncTransmitting);
     connect(m_rtty, &RttyEngine::textAppended, this, &RttyPanel::appendText);
+    connect(m_rtty,
+            &RttyEngine::easterEggText,
+            this,
+            [this](const QString &t) { RxText::appendStyled(m_rx, t, QColor(0x50, 0xd0, 0x70), maxRxChars); });
     connect(m_rtty, &RttyEngine::scopePoints, m_scope, &ScopeWidget::addPoints);
 
     // F1-F8 send macros, Esc aborts, while this tab is showing.
@@ -239,9 +244,12 @@ QWidget *RttyPanel::buildTop()
         preset->addItem(tr("Amateur 75 baud / 170 Hz"));
         preset->addItem(tr("DWD weather 50 baud / 450 Hz (ITA2)"));
         preset->addItem(tr("100 baud / 850 Hz (ITA2)"));
+        preset->addItem(tr("Military 75 baud / 850 Hz (STANAG 4481)"));
         preset->setToolTip(tr("Fill in baud, shift, stop bits and figures for a common RTTY service.\n"
                               "DWD (German weather service): 4583, 7646, 10100.8 kHz; tune so the pair sits "
-                              "on your mark/space tones, Reverse if needed."));
+                              "on your mark/space tones, Reverse if needed.\n"
+                              "STANAG 4481: NATO naval shore-to-ship broadcasts, synchronous and encrypted, so "
+                              "the decode is random characters."));
         g->addWidget(new QLabel(tr("Preset")), row, 0);
         g->addWidget(preset, row, 1, 1, 2);
         auto *standard = new QPushButton(tr("Standard"));
@@ -267,8 +275,9 @@ QWidget *RttyPanel::buildTop()
                                            {50.0, 170, 1.5, false},
                                            {75.0, 170, 1.5, false},
                                            {50.0, 450, 1.5, true},
-                                           {100.0, 850, 1.5, true}};
-                    if (i < 1 || i > 5)
+                                           {100.0, 850, 1.5, true},
+                                           {75.0, 850, 1.5, true}};
+                    if (i < 1 || i > 6)
                         return;
                     const P &p = ps[i - 1];
                     m_rtty->setBaud(p.baud);

@@ -13,6 +13,7 @@
 // data/SSB mode that takes computer audio (USB-D / DIGU on Icom).
 
 #include "rttycore.h"
+#include "stanagegg.h"
 
 #include <QElapsedTimer>
 #include <QObject>
@@ -49,9 +50,12 @@ public slots:
     // Our own transmitted tones, for the scope while transmitting.
     void pushTxAudio(QVector<float> mono, float sampleRate);
     void resetTxScope();
+    void setEasterEgg(bool on);
 
 signals:
     void textDecoded(QString text);
+    // STANAG 4481 Easteregg tripped (stanagegg.h)
+    void easterEgg();
     void statsUpdated(double quality, double markDb, double spaceDb, bool squelchOpen, double sampleRate);
     void tonesFound(bool found, double lowHz, double highHz, double levelDb);
     // Crossed-ellipse scope points, flat [x0, y0, x1, y1, ...] in -1..1, ~15 frames a second.
@@ -77,6 +81,8 @@ private:
     QElapsedTimer m_txScopeTimer;
     std::vector<float> m_history;
     QElapsedTimer m_statsTimer;
+    stanagegg::Detector m_egg;
+    bool m_eggOn = true;
 };
 
 class RttyEngine : public QObject
@@ -199,6 +205,10 @@ public:
     {
         return m_squelchOpen;
     }
+    bool easterEgg() const
+    {
+        return m_easterEgg;
+    }
 
 public slots:
     void pushAudio(const QVector<float> &mono, float sampleRate);
@@ -219,6 +229,8 @@ public slots:
     void setCall(const QString &c);
     void setMacro(int index, const QString &name, const QString &text);
     void setHoldTx(bool on);
+    // Options > STANAG 4481 Easteregg (on by default)
+    void setEasterEgg(bool on);
 
     void resync();
     void autoTune();
@@ -246,6 +258,8 @@ signals:
     void statusChanged(QString status);
     void transmittingChanged(bool on);
     void textAppended(QString text);
+    // The STANAG 4481 Easteregg line, for the RTTY pane only (not the session log or spotters).
+    void easterEggText(QString text);
     void scopePoints(QVector<float> xy);
     void transmitRequested(bool on);
     // A transmission whose text had {CWID} ended: send the CW ID at this level.
@@ -253,6 +267,7 @@ signals:
 
 private slots:
     void onTextDecoded(const QString &text);
+    void onEasterEgg();
     void onStatsUpdated(double quality, double markDb, double spaceDb, bool squelchOpen, double sampleRate);
     void onTonesFound(bool found, double lowHz, double highHz, double levelDb);
     void onScopeUpdated(const QVector<float> &xy);
@@ -289,6 +304,7 @@ private:
     bool m_ita2 = false;
     double m_squelch = 0.5;
     bool m_diddle = false;
+    bool m_easterEgg = true;
     double m_txLevel = 0.5;
     QString m_myCall;
     QString m_call;

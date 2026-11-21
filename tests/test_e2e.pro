@@ -72,6 +72,7 @@ HEADERS += \
     ../engine/uploadcore.h \
     ../engine/gridtrackerudp.h \
     ../engine/inputlevel.h \
+    ../engine/stanagegg.h \
     ../engine/callspot.h \
     ../engine/pskrcore.h \
     ../engine/memories.h \

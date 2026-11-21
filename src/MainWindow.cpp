@@ -799,6 +799,7 @@ void MainWindow::buildMenus()
     applyTheme(dark->isChecked());
 
     QMenu *opts = menuBar()->addMenu(tr("&Options"));
+    opts->setToolTipsVisible(true);
     QAction *onStart = opts->addAction(tr("Connect on start"));
     onStart->setCheckable(true);
     onStart->setChecked(m_settings->value(QStringLiteral("TCI/ConnectOnStart"), false).toBool());
@@ -857,6 +858,13 @@ void MainWindow::buildMenus()
                         m_txLimit.stop();
                 });
     }
+    QAction *egg = opts->addAction(tr("STANAG 4481 Easteregg"));
+    egg->setCheckable(true);
+    egg->setChecked(m_rtty->easterEgg());
+    egg->setToolTip(tr("RTTY tab: when a 75 baud / 850 Hz signal looks like an encrypted STANAG 4481 broadcast "
+                       "(locked for 10 s, stop bits right only about half the time), print one line in its "
+                       "honour, then carry on decoding."));
+    connect(egg, &QAction::toggled, m_rtty, &RttyEngine::setEasterEgg);
     opts->addAction(tr("Memories..."), this, &MainWindow::showMemories);
     opts->addAction(tr("PSK Reporter..."), this, &MainWindow::editPskReporter);
     opts->addAction(tr("GridTracker (live frequency and heard calls)..."),
