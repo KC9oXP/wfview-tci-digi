@@ -19,6 +19,8 @@
 #include "NavtexPanel.h"
 #include "OliviaEngine.h"
 #include "OliviaPanel.h"
+#include "Mt63Engine.h"
+#include "Mt63Panel.h"
 #include "PskEngine.h"
 #include "PskPanel.h"
 #include "PskReporter.h"
@@ -177,6 +179,8 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_cwTx->loadSettings(m_settings);
     m_olivia = new OliviaEngine(this);
     m_olivia->loadSettings(m_settings);
+    m_mt63 = new Mt63Engine(this);
+    m_mt63->loadSettings(m_settings);
     m_sstv = new SstvEngine(this);
     m_sstv->loadSettings(m_settings);
     m_navtex = new NavtexEngine(m_settings, this);
@@ -189,7 +193,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_session = new SessionLog(m_settings, this);
     m_amtor = new AmtorEngine(this);
     m_amtor->loadSettings(m_settings);
-    m_modems = {m_psk, m_hell, m_cwTx, m_olivia, m_sstv, m_amtor};
+    m_modems = {m_psk, m_hell, m_cwTx, m_olivia, m_mt63, m_sstv, m_amtor};
     // Tune tone and CW ID: created before the tabs, which put their buttons in.
     m_tools = new TxTools(m_settings, this);
     m_txEngines = m_modems;
@@ -229,6 +233,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_pskPanel = new PskPanel(m_psk, m_settings);
     m_hellPanel = new HellPanel(m_hell, m_settings);
     m_oliviaPanel = new OliviaPanel(m_olivia, m_settings);
+    m_mt63Panel = new Mt63Panel(m_mt63, m_settings);
     m_sstvPanel = new SstvPanel(m_sstv, m_settings);
     m_amtorPanel = new AmtorPanel(m_amtor, m_settings);
     m_navtexPanel = new NavtexPanel(m_navtex);
@@ -238,6 +243,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_tabs->addTab(m_pskPanel, tr("PSK"));
     m_tabs->addTab(m_hellPanel, tr("Hell"));
     m_tabs->addTab(m_oliviaPanel, tr("Olivia"));
+    m_tabs->addTab(m_mt63Panel, tr("MT63"));
     m_tabs->addTab(m_sstvPanel, tr("SSTV"));
     m_tabs->addTab(m_amtorPanel, tr("AMTOR"));
     {
@@ -267,6 +273,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
                     {m_pskPanel, "PSK", true},
                     {m_hellPanel, "Hell", true},
                     {m_oliviaPanel, "Olivia", true},
+                    {m_mt63Panel, "MT63", true},
                     {m_sstvPanel, "SSTV", true},
                     {m_amtorPanel, "AMTOR", true},
                     {m_tabDivider, "ReadOnly", false},
@@ -370,6 +377,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_audio, &AudioHub::audio, m_psk, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_hell, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_olivia, &ModemEngine::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_mt63, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_sstv, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_amtor, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_navtex, &NavtexEngine::pushAudio);
@@ -378,6 +386,9 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_audio, &AudioHub::audio, m_spectrum, &SpectrumEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_rsid, &RsidEngine::pushAudio);
     connect(m_rsid, &RsidEngine::detected, this, &MainWindow::onRsid);
+    m_rsidReturn = new QTimer(this);
+    m_rsidReturn->setInterval(1000);
+    connect(m_rsidReturn, &QTimer::timeout, this, &MainWindow::checkRsidReturn);
     connect(m_spectrum, &SpectrumEngine::line, this, &MainWindow::trackSnr);
     m_snrShow.setInterval(300);
     connect(&m_snrShow, &QTimer::timeout, this, &MainWindow::updateSnrLabel);
@@ -396,6 +407,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_spectrum, &SpectrumEngine::line, m_pskPanel, &ModemPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_hellPanel, &ModemPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_oliviaPanel, &ModemPanel::addSpectrumLine);
+    connect(m_spectrum, &SpectrumEngine::line, m_mt63Panel, &ModemPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_amtorPanel, &ModemPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_navtexPanel, &NavtexPanel::addSpectrumLine);
     connect(m_spectrum, &SpectrumEngine::line, m_sstvPanel, &SstvPanel::addSpectrumLine);
@@ -634,13 +646,27 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_tabs,
             &QTabWidget::currentChanged,
             this,
-            [this](int)
+            [this](int i)
             {
                 updateQsoMode();
                 fillPresetBox();
                 if (m_memories)
                     m_memories->setCurrentTab(currentTabKey());
+                // Seen: the activity dot goes.
+                if (i >= 0 && !m_tabs->tabIcon(i).isNull())
+                {
+                    m_tabs->setTabIcon(i, QIcon());
+                    m_tabs->setTabToolTip(i, QString());
+                }
             });
+    // Activity dots: decoded text on a tab that is not showing.
+    connect(m_cw, &CwDecoder::textAppended, this, [this]() { markActivity(m_cwPanel); });
+    connect(m_rtty, &RttyEngine::textAppended, this, [this]() { markActivity(m_rttyPanel); });
+    connect(m_psk, &ModemEngine::textAppended, this, [this]() { markActivity(m_pskPanel); });
+    connect(m_olivia, &ModemEngine::textAppended, this, [this]() { markActivity(m_oliviaPanel); });
+    connect(m_mt63, &ModemEngine::textAppended, this, [this]() { markActivity(m_mt63Panel); });
+    connect(m_amtor, &ModemEngine::textAppended, this, [this]() { markActivity(m_amtorPanel); });
+    connect(m_navtex, &NavtexEngine::textAppended, this, [this]() { markActivity(m_navtexPanel); });
     updateQsoMode();
     fillPresetBox();
     if (m_settings->value(QStringLiteral("TCI/ConnectOnStart"), false).toBool())
@@ -997,11 +1023,22 @@ void MainWindow::buildMenus()
     QAction *rsidSwitch = rsidMenu->addAction(tr("Switch to the mode it names"));
     rsidSwitch->setCheckable(true);
     rsidSwitch->setChecked(m_rsid->autoSwitch());
-    rsidSwitch->setToolTip(tr("When an ID for PSK, RTTY, Olivia/Contestia, Feld Hell or CW is heard: show that tab, "
-                              "set the mode and the frequency, and turn Decode on. Off: only a notice."));
+    rsidSwitch->setToolTip(tr("When an ID for PSK, RTTY, Olivia/Contestia, MT63, Feld Hell or CW is heard: show that "
+                              "tab, set the mode and the frequency, and turn Decode on. Off: only a notice."));
     connect(rsidSwitch, &QAction::toggled, m_rsid, &RsidEngine::setAutoSwitch);
+    QAction *rsidBack = rsidMenu->addAction(tr("Go back to the previous tab when the signal ends"));
+    rsidBack->setCheckable(true);
+    rsidBack->setChecked(m_rsid->goBack());
+    rsidBack->setToolTip(tr("After switching tabs for an ID: once that signal has ended (no new text for 10 s, "
+                            "20 s on MT63, or none at all for a minute), show the tab you were on again, e.g. "
+                            "back to the Contestia net after MT63 traffic. Not while you transmit, and not if you "
+                            "changed tabs yourself. Every tab keeps decoding meanwhile; a dot on a tab means it has "
+                            "new text."));
+    connect(rsidBack, &QAction::toggled, m_rsid, &RsidEngine::setGoBack);
     connect(rsidOn, &QAction::toggled, rsidSwitch, &QAction::setEnabled);
+    connect(rsidOn, &QAction::toggled, rsidBack, &QAction::setEnabled);
     rsidSwitch->setEnabled(m_rsid->enabled());
+    rsidBack->setEnabled(m_rsid->enabled());
     QAction *egg = opts->addAction(tr("STANAG 4481 Easteregg"));
     egg->setCheckable(true);
     egg->setChecked(m_rtty->easterEgg());
@@ -1027,6 +1064,7 @@ void MainWindow::buildMenus()
                                "PSK: BPSK31/63/125, matched-filter receiver with AFC.<br>"
                                "Hell: Feld Hell (Hellschreiber) send and painted receive.<br>"
                                "Olivia / Contestia: Pawel Jalocha's MFSK library, as in fldigi.<br>"
+                               "MT63: Pawel Jalocha's MT63 code, as in fldigi.<br>"
                                "NAVTEX / SITOR-B: receive (decoder after fldigi's).<br>"
                                "RSID: mode ID bursts (after fldigi's, W1HKJ, M0GLD, VK2ETA).<br>"
                                "SSTV: Martin, Scottie, Robot, PD modes, VIS, auto slant; send pictures.<br>"
@@ -1260,8 +1298,21 @@ void MainWindow::onRsid(int code, double centreHz, bool mirrored, int errors)
                                  15000);
         return;
     }
+    // Remember where we were, to go back when the signal has ended (Options >
+    // RSID > Go back ...). A second ID while still away keeps the first tab.
     auto show = [this](QWidget *panel)
     {
+        QWidget *cur = m_tabs->currentWidget();
+        if (cur != panel)
+        {
+            if (!m_rsidTo || cur != m_rsidTo)
+                m_rsidFrom = cur;
+            m_rsidTo = panel;
+            m_rsidJumpMs = QDateTime::currentMSecsSinceEpoch();
+            m_rsidTextMs = 0;
+            if (m_rsidReturn)
+                m_rsidReturn->start();
+        }
         const int i = m_tabs->indexOf(panel);
         if (i >= 0)
             m_tabs->setCurrentIndex(i);
@@ -1281,6 +1332,13 @@ void MainWindow::onRsid(int code, double centreHz, bool mirrored, int errors)
         m_olivia->setCarrierHz(centreHz);
         m_olivia->setDecoding(true);
         m_oliviaPanel->addNote(note);
+        break;
+    case rsid::Target::Mt63:
+        show(m_mt63Panel);
+        m_mt63->setMode(m->bandwidth, m->longInterleave);
+        m_mt63->setCarrierHz(centreHz);
+        m_mt63->setDecoding(true);
+        m_mt63Panel->addNote(note);
         break;
     case rsid::Target::Rtty:
     {
@@ -1307,6 +1365,65 @@ void MainWindow::onRsid(int code, double centreHz, bool mirrored, int errors)
         break;
     }
     statusBar()->showMessage(note, 15000);
+}
+
+// After an RSID jump: back to the tab we came from once the signal has ended
+// (no text for a while after some arrived, or none at all for a minute), as
+// long as the user is still looking at the tab it jumped to.
+void MainWindow::checkRsidReturn()
+{
+    if (!m_rsidTo || !m_rsidFrom)
+    {
+        m_rsidReturn->stop();
+        return;
+    }
+    if (m_tabs->currentWidget() != m_rsidTo || !m_rsid->goBack())
+    {
+        // The user went elsewhere (or turned it off): forget the jump.
+        m_rsidFrom = m_rsidTo = nullptr;
+        m_rsidReturn->stop();
+        return;
+    }
+    if (anyTransmitting())
+        return; // a reply on the new mode: stay
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    // MT63 prints nothing for up to one interleave (up to 13 s) at the end.
+    const qint64 quietMs = m_rsidTo == m_mt63Panel ? 20000 : 10000;
+    const bool ended = m_rsidTextMs > 0 ? now - m_rsidTextMs > quietMs : now - m_rsidJumpMs > 60000;
+    if (!ended)
+        return;
+    QWidget *back = m_rsidFrom;
+    m_rsidFrom = m_rsidTo = nullptr;
+    m_rsidReturn->stop();
+    const int i = m_tabs->indexOf(back);
+    if (i < 0)
+        return;
+    m_tabs->setCurrentIndex(i);
+    statusBar()->showMessage(tr("RSID: signal ended, back to %1.").arg(m_tabs->tabText(i)), 10000);
+}
+
+void MainWindow::markActivity(QWidget *panel)
+{
+    if (panel == m_rsidTo)
+        m_rsidTextMs = QDateTime::currentMSecsSinceEpoch();
+    if (!panel || m_tabs->currentWidget() == panel)
+        return;
+    const int i = m_tabs->indexOf(panel);
+    if (i < 0 || !m_tabs->tabIcon(i).isNull())
+        return;
+    static const QIcon dot = []()
+    {
+        QPixmap px(10, 10);
+        px.fill(Qt::transparent);
+        QPainter p(&px);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0xe8, 0xb0, 0x40));
+        p.drawEllipse(1, 1, 8, 8);
+        return QIcon(px);
+    }();
+    m_tabs->setTabIcon(i, dot);
+    m_tabs->setTabToolTip(i, tr("New text since you last looked."));
 }
 
 void MainWindow::onTransmitRequested(QObject *who, bool on)
@@ -1370,6 +1487,7 @@ void MainWindow::updateRadioState()
     m_pskPanel->setRadioState(ready, canTx, m_client->modulation());
     m_hellPanel->setRadioState(ready, canTx, m_client->modulation());
     m_oliviaPanel->setRadioState(ready, canTx, m_client->modulation());
+    m_mt63Panel->setRadioState(ready, canTx, m_client->modulation());
     m_sstvPanel->setRadioState(ready, canTx, m_client->modulation());
     m_amtorPanel->setRadioState(ready, canTx, m_client->modulation());
     updateWwvRadio();
@@ -1389,6 +1507,7 @@ void MainWindow::saveAll()
     m_pskPanel->saveState();
     m_hellPanel->saveState();
     m_oliviaPanel->saveState();
+    m_mt63Panel->saveState();
     m_sstvPanel->saveState();
     m_amtorPanel->saveState();
     m_settings->beginGroup(QStringLiteral("Window"));
@@ -1643,6 +1762,15 @@ void MainWindow::wireLogs()
                                tr("%1 @ %2 Hz").arg(m_olivia->modeName()).arg(qRound(m_olivia->carrierHz())),
                                t);
             });
+    connect(m_mt63,
+            &ModemEngine::textAppended,
+            this,
+            [this](const QString &t)
+            {
+                m_session->add(QStringLiteral("MT63"),
+                               tr("%1 @ %2 Hz").arg(m_mt63->modeName()).arg(qRound(m_mt63->carrierHz())),
+                               t);
+            });
     connect(m_amtor,
             &ModemEngine::textAppended,
             this,
@@ -1685,6 +1813,7 @@ void MainWindow::wireLogs()
             });
     connect(m_psk, &ModemEngine::settingsChanged, this, &MainWindow::updateQsoMode);
     connect(m_olivia, &ModemEngine::settingsChanged, this, &MainWindow::updateQsoMode);
+    connect(m_mt63, &ModemEngine::settingsChanged, this, &MainWindow::updateQsoMode);
 
     // A callsign double-clicked (or "Log <call>") in any receive pane goes to the QSO log.
     connect(RxCalls::instance(),
@@ -1745,6 +1874,8 @@ void MainWindow::updateQsoMode()
             sub = QStringLiteral("OLIVIA %1/%2").arg(m_olivia->tones()).arg(m_olivia->bandwidth());
         }
     }
+    else if (w == m_mt63Panel)
+        mode = QStringLiteral("MT63");
     else if (w == m_sstvPanel)
         mode = QStringLiteral("SSTV");
     else if (w == m_amtorPanel)
@@ -1902,6 +2033,7 @@ void MainWindow::arrangeTabs(const QStringList &order)
                   m_pskPanel,
                   m_hellPanel,
                   m_oliviaPanel,
+                  m_mt63Panel,
                   m_sstvPanel,
                   m_amtorPanel,
                   m_tabDivider,
@@ -2150,6 +2282,8 @@ memories::Memory MainWindow::currentMemory() const
     else if (w == m_oliviaPanel)
         m.subMode
             = OliviaEngine::presetName({m_olivia->contestia(), m_olivia->tones(), m_olivia->bandwidth()}).toStdString();
+    else if (w == m_mt63Panel)
+        m.subMode = m_mt63->modeName().toStdString();
     else if (w == m_rttyPanel)
         m.subMode = QStringLiteral("%1/%2").arg(m_rtty->baud(), 0, 'g', 4).arg(m_rtty->shift()).toStdString();
     return m;
@@ -2187,6 +2321,22 @@ QString MainWindow::applySubMode(const QString &tab, const QString &subIn)
                 m_olivia->setMode(p.contestia, p.tones, p.bandwidth);
                 return QString();
             }
+        }
+    }
+    else if (tab.compare(QLatin1String("MT63"), Qt::CaseInsensitive) == 0)
+    {
+        // "MT63-1000L", "1000L", "MT63-500S"
+        QString t = norm;
+        t.remove(QStringLiteral("MT63"));
+        t.remove(QLatin1Char('-'));
+        const bool lg = !t.endsWith(QLatin1Char('S'));
+        if (t.endsWith(QLatin1Char('S')) || t.endsWith(QLatin1Char('L')))
+            t.chop(1);
+        const int bw = t == QLatin1String("1K") ? 1000 : t == QLatin1String("2K") ? 2000 : t.toInt();
+        if (bw == 500 || bw == 1000 || bw == 2000)
+        {
+            m_mt63->setMode(bw, lg);
+            return QString();
         }
     }
     else if (tab.compare(QLatin1String("RTTY"), Qt::CaseInsensitive) == 0)
@@ -2306,6 +2456,10 @@ void MainWindow::wirePskReporter()
             this,
             [this](const QString &t)
             { feedPskr(QStringLiteral("Olivia"), m_olivia->modeName(), t, m_olivia->carrierHz()); });
+    connect(m_mt63,
+            &ModemEngine::textAppended,
+            this,
+            [this](const QString &t) { feedPskr(QStringLiteral("MT63"), m_mt63->modeName(), t, m_mt63->carrierHz()); });
     connect(m_amtor,
             &ModemEngine::textAppended,
             this,
@@ -2402,7 +2556,7 @@ void MainWindow::editPskReporter()
     auto *autoDet = new QCheckBox(tr("Auto-detect callsigns in the decoded text"));
     autoDet->setChecked(m_pskr->autoDetect());
     autoDet->setToolTip(tr("Off: only QSOs you log are reported.\nOn: also any call seen once right after CQ, DE or 73 "
-                           "(\"CQ DE W1AW K\", \"73 W1AW SK\"), in the CW, RTTY, PSK, Olivia/Contestia and AMTOR "
+                           "(\"CQ DE W1AW K\", \"73 W1AW SK\"), in the CW, RTTY, PSK, Olivia/Contestia, MT63 and AMTOR "
                            "tabs; each call at most once per 10 minutes."));
     form->addRow(autoDet);
     auto *callEdit = new QLineEdit(m_pskr->myCall());
@@ -2531,6 +2685,11 @@ double MainWindow::currentAudioHz(double *halfWidthHz) const
     {
         audio = m_olivia->carrierHz();
         half = m_olivia->bandwidth() / 2.0;
+    }
+    else if (w == m_mt63Panel)
+    {
+        audio = m_mt63->carrierHz();
+        half = m_mt63->bandwidth() / 2.0;
     }
     else if (w == m_amtorPanel)
     {
@@ -2775,5 +2934,7 @@ QString MainWindow::currentSubMode() const
         return QString::fromLatin1(psk::speedName(m_psk->speed()));
     if (w == m_oliviaPanel)
         return m_olivia->modeName();
+    if (w == m_mt63Panel)
+        return m_mt63->modeName();
     return QString();
 }

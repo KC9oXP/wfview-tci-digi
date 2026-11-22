@@ -35,7 +35,8 @@ constexpr int kMaxErrors = 1; // fldigi's default ("medium")
 const std::vector<Mode> &modes()
 {
     // fldigi rsid_defs.cxx, first table. Fields: code, name, target,
-    // PSK speed, RTTY baud, RTTY shift, contestia, tones, bandwidth.
+    // PSK speed, RTTY baud, RTTY shift, contestia, tones, bandwidth, MT63 long
+    // interleave.
     static const std::vector<Mode> m = {
         {263, "EOT", Target::Eot},
         {1, "BPSK31", Target::Psk, 0},
@@ -52,14 +53,14 @@ const std::vector<Mode> &modes()
         {187, "PSK500R", Target::None},
         {7, "PSKFEC31", Target::None},
         {8, "PSK10", Target::None},
-        {9, "MT63_500_LG", Target::None},
-        {10, "MT63_500_ST", Target::None},
+        {9, "MT63_500_LG", Target::Mt63, 0, 0.0, 0, false, 0, 500, true},
+        {10, "MT63_500_ST", Target::Mt63, 0, 0.0, 0, false, 0, 500, false},
         {11, "MT63_500_VST", Target::None},
-        {12, "MT63_1000_LG", Target::None},
-        {13, "MT63_1000_ST", Target::None},
+        {12, "MT63_1000_LG", Target::Mt63, 0, 0.0, 0, false, 0, 1000, true},
+        {13, "MT63_1000_ST", Target::Mt63, 0, 0.0, 0, false, 0, 1000, false},
         {14, "MT63_1000_VST", Target::None},
-        {15, "MT63_2000_LG", Target::None},
-        {17, "MT63_2000_ST", Target::None},
+        {15, "MT63_2000_LG", Target::Mt63, 0, 0.0, 0, false, 0, 2000, true},
+        {17, "MT63_2000_ST", Target::Mt63, 0, 0.0, 0, false, 0, 2000, false},
         {18, "MT63_2000_VST", Target::None},
         {19, "PSKAM10", Target::None},
         {20, "PSKAM31", Target::None},
@@ -208,6 +209,9 @@ std::string displayName(const Mode &m)
         return buf;
     case Target::Olivia:
         std::snprintf(buf, sizeof buf, "%s %d/%d", m.contestia ? "Contestia" : "Olivia", m.tones, m.bandwidth);
+        return buf;
+    case Target::Mt63:
+        std::snprintf(buf, sizeof buf, "MT63-%d%s", m.bandwidth, m.longInterleave ? "L" : "S");
         return buf;
     case Target::Hell:
         return "Feld Hell";

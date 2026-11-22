@@ -32,6 +32,7 @@ RsidEngine::RsidEngine(QSettings *settings, QObject *parent)
     {
         m_enabled = m_settings->value(QStringLiteral("RSID/Enabled"), true).toBool();
         m_autoSwitch = m_settings->value(QStringLiteral("RSID/AutoSwitch"), true).toBool();
+        m_goBack = m_settings->value(QStringLiteral("RSID/GoBack"), true).toBool();
     }
     m_thread = new QThread(this);
     m_thread->setObjectName(QStringLiteral("rsid"));
@@ -78,6 +79,13 @@ void RsidEngine::setAutoSwitch(bool on)
     m_autoSwitch = on;
     if (m_settings)
         m_settings->setValue(QStringLiteral("RSID/AutoSwitch"), on);
+}
+
+void RsidEngine::setGoBack(bool on)
+{
+    m_goBack = on;
+    if (m_settings)
+        m_settings->setValue(QStringLiteral("RSID/GoBack"), on);
 }
 
 void RsidEngine::setTransmitting(bool on)

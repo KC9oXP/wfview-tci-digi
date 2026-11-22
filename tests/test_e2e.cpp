@@ -33,7 +33,9 @@
 #include "WwvEngine.h"
 #include "modemtxsource.h"
 #include "navtexcore.h"
+#include "mt63core.h"
 #include "oliviacore.h"
+#include "rsidcore.h"
 #include "rttytxsource.h"
 #include "sstvcore.h"
 #include "wavfile.h"
@@ -393,6 +395,27 @@ static QString makeTestWav(const QString &dir)
         }
         gap(2.0);
     }
+    {
+        // An RSID burst for MT63-1000L at 1500 Hz, then MT63 traffic (0.9.14):
+        // the app switches to the MT63 tab and decodes it.
+        const std::vector<float> id = rsid::makeBurst(12, 1500.0, fs);
+        for (float v : id)
+            a.push_back(0.3f * v);
+        mt63::Config c;
+        Mt63Modulator m;
+        m.setConfig(c);
+        m.preroll(0.0);
+        for (char ch : std::string("MT63 TEST de KC9OXP\n"))
+            m.queueChar(ch);
+        m.tail(0.0);
+        for (int g = 0; g < 100000 && !m.idle(); ++g)
+        {
+            m.render(b.data(), b.size(), fs);
+            for (float v : b)
+                a.push_back(0.3f * v);
+        }
+        gap(mt63::delaySeconds(c) + 4.0); // the last characters come out one interleave later
+    }
     const QString path = QDir(dir).filePath(QStringLiteral("newmodes.wav"));
     WavWriter w;
     w.open(path.toStdString(), int(fs));
@@ -432,12 +455,14 @@ static void runNewModes()
     CHECK(waitFor([&] { return !hub->playing(); }, 60000));
     pump(4000);
 
-    QWidget *oliviaTab = nullptr, *navtexTab = nullptr, *amtorTab = nullptr;
+    QWidget *oliviaTab = nullptr, *navtexTab = nullptr, *amtorTab = nullptr, *mt63Tab = nullptr;
     int readOnlyDivider = -1, amtorIndex = -1, navtexIndex = -1;
     for (int i = 0; i < tabs->count(); ++i)
     {
         if (tabs->tabText(i) == QStringLiteral("Olivia"))
             oliviaTab = tabs->widget(i);
+        if (tabs->tabText(i) == QStringLiteral("MT63"))
+            mt63Tab = tabs->widget(i);
         if (tabs->tabText(i) == QStringLiteral("NAVTEX"))
         {
             navtexTab = tabs->widget(i);
@@ -463,6 +488,12 @@ static void runNewModes()
     CHECK(ol.contains(QStringLiteral("OLIVIA TEST de KC9OXP")));
     CHECK(nav.contains(QStringLiteral("NAVTEX TEST MESSAGE 42")));
     CHECK(am.contains(QStringLiteral("CQ AMTOR E2E DE KC9OXP 73")));
+    // MT63 after an RSID burst: the tab was switched to, the ID noted, the text decoded.
+    CHECK(mt63Tab != nullptr);
+    const QString mt = mt63Tab ? paneText(mt63Tab) : QString();
+    std::printf("  MT63 pane: [%s]\n", qPrintable(mt.trimmed()));
+    CHECK(mt.contains(QStringLiteral("RSID: MT63-1000L at 15")));
+    CHECK(mt.contains(QStringLiteral("MT63 TEST de KC9OXP")));
     const QDir data(tmp.filePath(QStringLiteral("data")));
     const QStringList sstvFiles = QDir(data.filePath(QStringLiteral("sstv"))).entryList({QStringLiteral("*.png")});
     const QStringList faxFiles = QDir(data.filePath(QStringLiteral("wefax"))).entryList({QStringLiteral("*.png")});
@@ -490,6 +521,7 @@ static void runNewModes()
     CHECK(olLog.contains(QStringLiteral("OLIVIA TEST de KC9OXP")));
     CHECK(readLog(QStringLiteral("NAVTEX")).contains(QStringLiteral("NAVTEX TEST MESSAGE 42")));
     CHECK(readLog(QStringLiteral("AMTOR")).contains(QStringLiteral("AMTOR E2E")));
+    CHECK(readLog(QStringLiteral("MT63")).contains(QStringLiteral("MT63 TEST de KC9OXP")));
     CHECK(readLog(QStringLiteral("SSTV")).contains(QStringLiteral("[SSTV] received Robot 36")));
     CHECK(readLog(QStringLiteral("WEFAX")).contains(QStringLiteral("[WEFAX]")));
 
@@ -724,8 +756,8 @@ static void renderScreens(const QString &dir)
     pump(12000); // enough for a few Hell words
     const QList<QSize> sizes = {QSize(1100, 760), QSize(640, 520), QSize(1600, 1000)};
     static const char *const names[]
-        = {"cw", "rtty", "psk", "hell", "olivia", "sstv", "amtor", "divider", "navtex", "wefax"};
-    for (int tab = 0; tab < tabs->count() && tab < 10; ++tab)
+        = {"cw", "rtty", "psk", "hell", "olivia", "mt63", "sstv", "amtor", "divider", "navtex", "wefax"};
+    for (int tab = 0; tab < tabs->count() && tab < 11; ++tab)
     {
         if (!tabs->isTabEnabled(tab))
             continue;
@@ -762,7 +794,7 @@ static void renderScreens(const QString &dir)
         if (e->text() == QStringLiteral("KC9OXP"))
             ++calls;
     std::printf("  My call fields showing KC9OXP: %d\n", calls);
-    CHECK(calls == 6); // RTTY, PSK, Hell, CW, Olivia, AMTOR
+    CHECK(calls == 7); // RTTY, PSK, Hell, CW, Olivia, MT63, AMTOR
 }
 
 static void runMemories()

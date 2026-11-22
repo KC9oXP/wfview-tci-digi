@@ -1,10 +1,11 @@
 #pragma once
 
-// Transmit sources for Olivia / Contestia and SSTV, on the shared
+// Transmit sources for Olivia / Contestia, MT63, AMTOR and SSTV, on the shared
 // ModemTxSource (mutex, level, echo, frame counter). Kept apart from
 // modemtxsource.h so the PSK / Hell / CW tests do not need these modems.
 
 #include "modemtxsource.h"
+#include "mt63core.h"
 #include "navtexcore.h"
 #include "oliviacore.h"
 #include "sstvcore.h"
@@ -57,6 +58,53 @@ protected:
 
 private:
     OliviaModulator m_mod;
+};
+
+class Mt63TxSource : public ModemTxSource
+{
+public:
+    void setConfig(const mt63::Config &c)
+    {
+        std::lock_guard<std::mutex> lock(mutex());
+        m_mod.setConfig(c);
+    }
+
+protected:
+    void modClear() override
+    {
+        m_mod.clear();
+    }
+    void modPreroll(double sec) override
+    {
+        m_mod.preroll(sec);
+    }
+    size_t modQueueChar(char c) override
+    {
+        return m_mod.queueChar(c);
+    }
+    void modTail(double sec) override
+    {
+        m_mod.tail(sec);
+    }
+    bool modIdle() const override
+    {
+        return m_mod.idle();
+    }
+    size_t modUnitsSent() const override
+    {
+        return m_mod.unitsSent();
+    }
+    void modSetCarrier(double hz) override
+    {
+        m_mod.setCarrier(hz);
+    }
+    void modRender(float *mono, size_t n, double fs) override
+    {
+        m_mod.render(mono, n, fs);
+    }
+
+private:
+    Mt63Modulator m_mod;
 };
 
 // AMTOR FEC (mode B): typed text, phasing first, idle beta between words.

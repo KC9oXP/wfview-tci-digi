@@ -1,5 +1,5 @@
 # wfview TCI Digi - stand-alone digital modes for wfview over TCI: CW, RTTY, PSK,
-# Feld Hell, Olivia/Contestia, SSTV, AMTOR FEC, NAVTEX and WEFAX.
+# Feld Hell, Olivia/Contestia, MT63, SSTV, AMTOR FEC, NAVTEX and WEFAX.
 # Qt 6 (Widgets, WebSockets, Network), C++17.
 
 TEMPLATE = app
@@ -54,6 +54,8 @@ HEADERS += \
     src/ImageView.h \
     src/OliviaEngine.h \
     src/OliviaPanel.h \
+    src/Mt63Engine.h \
+    src/Mt63Panel.h \
     src/NavtexEngine.h \
     src/NavtexPanel.h \
     src/SstvEngine.h \
@@ -94,6 +96,7 @@ HEADERS += \
     engine/wefaxcore.h \
     engine/navtexcore.h \
     engine/oliviacore.h \
+    engine/mt63core.h \
     engine/extratxsources.h \
     engine/wavfile.h \
     engine/versioncheck.h \
@@ -144,6 +147,8 @@ SOURCES += \
     src/ImageView.cpp \
     src/OliviaEngine.cpp \
     src/OliviaPanel.cpp \
+    src/Mt63Engine.cpp \
+    src/Mt63Panel.cpp \
     src/NavtexEngine.cpp \
     src/NavtexPanel.cpp \
     src/SstvEngine.cpp \
@@ -173,6 +178,9 @@ SOURCES += \
     engine/wwvcore.cpp \
     engine/navtexcore.cpp \
     engine/oliviacore.cpp \
+    engine/mt63core.cpp \
+    engine/mt63/dsp.cxx \
+    engine/mt63/mt63base.cxx \
     engine/wavfile.cpp \
     engine/rttycore.cpp \
     engine/rttytxsource.cpp \

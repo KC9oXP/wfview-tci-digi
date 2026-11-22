@@ -71,6 +71,8 @@ jobs:
           ./test_upload
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_lookup.cpp -o test_lookup
           ./test_lookup
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_mt63.cpp engine/mt63core.cpp engine/mt63/dsp.cxx engine/mt63/mt63base.cxx engine/oliviacore.cpp engine/pskcore.cpp -o test_mt63
+          ./test_mt63
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_rsid.cpp engine/rsidcore.cpp engine/spectrum.cpp engine/pskcore.cpp -o test_rsid
           ./test_rsid
       - name: Build app

@@ -81,7 +81,10 @@ int main()
         CHECK(rsid::modeFor(2) && rsid::modeFor(2)->target == rsid::Target::Psk && rsid::modeFor(2)->pskSpeed == 1);
         CHECK(rsid::modeFor(39) && rsid::modeFor(39)->rttyShift == 170
               && std::fabs(rsid::modeFor(39)->rttyBaud - 45.45) < 1e-9);
-        CHECK(rsid::modeFor(12) && rsid::modeFor(12)->target == rsid::Target::None); // MT63-1000L
+        CHECK(rsid::modeFor(12) && rsid::modeFor(12)->target == rsid::Target::Mt63
+              && rsid::modeFor(12)->bandwidth == 1000 && rsid::modeFor(12)->longInterleave); // MT63-1000L
+        CHECK(rsid::displayName(*rsid::modeFor(13)) == "MT63-1000S");
+        CHECK(rsid::modeFor(57) && rsid::modeFor(57)->target == rsid::Target::None); // MFSK16: not decoded here
         CHECK(rsid::modeFor(6) == nullptr); // escape to the second table: not listed
     }
 
@@ -107,7 +110,8 @@ int main()
             {204, 350.0, 48000.0, false, 0.3},
             {104, 1200.0, 48000.0, false, 0.3},
             {263, 1500.0, 48000.0, false, 0.3}, // EOT
-            {12, 1500.0, 48000.0, false, 0.3}, // MT63 1000L: found, not decoded here
+            {12, 1500.0, 48000.0, false, 0.3}, // MT63-1000L
+            {57, 1500.0, 48000.0, false, 0.3}, // MFSK16: found, not decoded here
         };
         unsigned seed = 1;
         for (const Case &c : cases)

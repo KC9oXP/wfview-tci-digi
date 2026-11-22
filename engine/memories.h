@@ -290,7 +290,7 @@ inline bool bandLess(const std::string &a, std::int64_t dialA, const std::string
 enum class Emission
 {
     Cw,
-    Data, // RTTY and data: RTTY, PSK, Olivia, Hell, AMTOR ...
+    Data, // RTTY and data: RTTY, PSK, Olivia, MT63, Hell, AMTOR ...
     Image // SSTV (phone/image sub-bands)
 };
 
@@ -302,7 +302,7 @@ inline bool emissionForTab(const std::string &tab, Emission &e)
         e = Emission::Cw;
     else if (t == "sstv")
         e = Emission::Image;
-    else if (t == "rtty" || t == "psk" || t == "hell" || t == "olivia" || t == "amtor")
+    else if (t == "rtty" || t == "psk" || t == "hell" || t == "olivia" || t == "mt63" || t == "amtor")
         e = Emission::Data;
     else
         return false;

@@ -48,11 +48,17 @@ public:
     {
         return m_autoSwitch;
     }
+    // Options > RSID: go back to the previous tab when the signal ends (default on).
+    bool goBack() const
+    {
+        return m_goBack;
+    }
 
 public slots:
     void pushAudio(const QVector<float> &mono, float sampleRate);
     void setEnabled(bool on);
     void setAutoSwitch(bool on);
+    void setGoBack(bool on);
     // No listening while transmitting (our own ID, if we ever send one).
     void setTransmitting(bool on);
 
@@ -65,5 +71,6 @@ private:
     RsidWorker *m_worker = nullptr;
     bool m_enabled = true;
     bool m_autoSwitch = true;
+    bool m_goBack = true;
     bool m_transmitting = false;
 };

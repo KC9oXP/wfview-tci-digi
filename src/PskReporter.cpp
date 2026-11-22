@@ -79,6 +79,8 @@ QString PskReporter::modeFor(const QString &tab, const QString &subMode)
     if (t == QLatin1String("OLIVIA"))
         return subMode.startsWith(QLatin1String("Contestia"), Qt::CaseInsensitive) ? QStringLiteral("CONTESTI")
                                                                                    : QStringLiteral("OLIVIA");
+    if (t == QLatin1String("MT63"))
+        return QStringLiteral("MT63");
     if (t == QLatin1String("AMTOR"))
         return QStringLiteral("AMTORFEC");
     return QString(); // Hell (pictures of text), SSTV, NAVTEX, WEFAX, WWV: no callsigns to read

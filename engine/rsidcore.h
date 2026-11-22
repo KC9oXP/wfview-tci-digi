@@ -44,6 +44,7 @@ enum class Target
     Psk,
     Rtty,
     Olivia, // Olivia or Contestia
+    Mt63,
     Hell,
     Cw,
     Eot // fldigi's end-of-transmission ID
@@ -55,13 +56,14 @@ struct Mode
     const char *name = ""; // fldigi's name, e.g. "OLIVIA_8_250"
     Target target = Target::None;
     // Target settings: PSK speed (0/1/2); RTTY baud and shift; Olivia
-    // contestia, tones, bandwidth.
+    // contestia, tones, bandwidth; MT63 bandwidth and long interleave.
     int pskSpeed = 0;
     double rttyBaud = 0.0;
     int rttyShift = 0;
     bool contestia = false;
     int tones = 0;
     int bandwidth = 0;
+    bool longInterleave = false;
 };
 
 // fldigi's first ID table (the escape to the second table is not followed).

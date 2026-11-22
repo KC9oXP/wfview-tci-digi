@@ -44,6 +44,8 @@ HEADERS += \
     ../src/ImageView.h \
     ../src/OliviaEngine.h \
     ../src/OliviaPanel.h \
+    ../src/Mt63Engine.h \
+    ../src/Mt63Panel.h \
     ../src/NavtexEngine.h \
     ../src/NavtexPanel.h \
     ../src/SstvEngine.h \
@@ -109,6 +111,8 @@ SOURCES += \
     ../src/ImageView.cpp \
     ../src/OliviaEngine.cpp \
     ../src/OliviaPanel.cpp \
+    ../src/Mt63Engine.cpp \
+    ../src/Mt63Panel.cpp \
     ../src/NavtexEngine.cpp \
     ../src/NavtexPanel.cpp \
     ../src/SstvEngine.cpp \
@@ -138,6 +142,9 @@ SOURCES += \
     ../engine/wwvcore.cpp \
     ../engine/navtexcore.cpp \
     ../engine/oliviacore.cpp \
+    ../engine/mt63core.cpp \
+    ../engine/mt63/dsp.cxx \
+    ../engine/mt63/mt63base.cxx \
     ../engine/wavfile.cpp \
     ../engine/rttycore.cpp \
     ../engine/rttytxsource.cpp \

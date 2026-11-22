@@ -27,6 +27,7 @@ wfview reaches the radio over LAN or over USB.
 | **PSK** | yes | yes | BPSK31, BPSK63, BPSK125; click a signal on the waterfall to tune it |
 | **Feld Hell** | yes | yes | Painted receive with auto column alignment and 30 minutes of scrollback |
 | **Olivia / Contestia** | yes | yes | All the usual tone/bandwidth settings; interoperates with fldigi |
+| **MT63** | yes | yes | 500 / 1000 / 2000 Hz, short or long interleave (MT63-1KL for net traffic); fldigi's code |
 | **SSTV** | yes | yes | Martin, Scottie, Robot, PD modes; auto start, auto slant, auto offset; send a picture with CQ / answer / report / 73 text and a timestamp |
 | **AMTOR FEC** | yes | yes | Mode B (SITOR-B style), 100 baud |
 | **NAVTEX** | yes | - | 518 / 490 kHz and SITOR-B on HF |
@@ -97,7 +98,7 @@ shows a clean signal. On the air the same tabs work on the radio's receive audio
 
 ## The modes in detail
 
-The tabs that can transmit (CW, RTTY, PSK, Hell, Olivia, SSTV, AMTOR) come first; a
+The tabs that can transmit (CW, RTTY, PSK, Hell, Olivia, MT63, SSTV, AMTOR) come first; a
 *Read only* divider separates the receive-only tabs (NAVTEX, WEFAX, WWV Time). Drag tabs
 to put them in your own order (kept across restarts); transmit tabs stay left of *Read only*
 and receive-only tabs right of it. *View > Reset tab order* puts them back. Every
@@ -178,6 +179,22 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
   squelch keeps noise (and the library's junk after a signal ends) off the screen.
 - Transmit starts with two FEC blocks of idle (1-4 s) so the far end has locked on before
   the first letter.
+
+### MT63 (receive and transmit)
+
+- MT63-500, -1000 and -2000 (5, 10 and 20 characters per second), short (S) or long (L)
+  interleave, using Pawel Jalocha's MT63 code as fldigi carries it, so the two interoperate.
+  MT63-1000L is the usual choice for net traffic (for example AmRRON / TAPRN nets, which take
+  check-ins on Contestia and pass traffic in MT63 with an RSID first).
+- 64 carriers with Walsh-function FEC and a long interleave: copy survives fades and a few
+  seconds of interference. The price is delay: text comes out one interleave after it was
+  sent (6.4 s for 1000L).
+- The receiver follows a few tens of Hz of tuning error by itself. An S/N squelch (default
+  5.5 dB; noise alone reads up to about 5) keeps noise off the screen, holds back the
+  decoder's random characters while it locks on, and carries on to the last character at the
+  end of a transmission (the sender's closing fill marks the end).
+- Transmit sends one interleave of fill before the text and after it, as fldigi does, so the
+  far end gets the first and last letters.
 
 ### SSTV (receive and transmit)
 
@@ -265,10 +282,17 @@ lamps tune the radio there in AM; the one you are on is green.
 **RSID** (Options > RSID): the receive audio is watched on every tab for the short ID burst
 fldigi and other programs can send before a transmission (15 tones, about 1.4 s, 170 Hz
 wide). It names the mode and marks its frequency. For PSK (BPSK31/63/125), RTTY (45.45/170,
-50/170, 75/850), Olivia, Contestia, Feld Hell and CW the program shows that tab, sets the
-mode and frequency, turns Decode on and prints an amber "RSID: Olivia 8/250 at 1500 Hz" line
-in the receive pane (*Switch to the mode it names*, on by default; off = only a notice in
-the status bar). Other modes (MT63, MFSK, THOR, DominoEX ...) are named in the status bar.
+50/170, 75/850), Olivia, Contestia, MT63, Feld Hell and CW the program shows that tab, sets
+the mode and frequency, turns Decode on and prints an amber "RSID: MT63-1000L at 1500 Hz"
+line in the receive pane (*Switch to the mode it names*, on by default; off = only a notice
+in the status bar). Other modes (MFSK, THOR, DominoEX ...) are named in the status bar.
+*Go back to the previous tab when the signal ends* (on by default): once the signal it
+switched to has ended (no new text for 10 s, 20 s on MT63, or none for a minute) the tab
+you were on comes back, for example the Contestia net after a piece of MT63 traffic. It
+stays if you transmit or pick another tab yourself.
+
+**Every tab keeps decoding** while another is showing (with Decode on). A tab that is not
+showing gets an amber dot when its decoder prints something; the dot goes when you look.
 Either sideband works: the burst is also looked for mirrored. Nothing is checked while
 transmitting. The decoder follows fldigi's (see License).
 
@@ -373,7 +397,7 @@ station hears to [pskreporter.info](https://pskreporter.info), where they show o
   Right-click for the settings.
 - What is reported: every QSO you log, and, with *Auto-detect* ticked, any call seen once
   right after CQ, DE or 73 (`CQ DE W1AW K`, `73 W1AW SK`; one over is enough) in the CW, RTTY,
-  PSK, Olivia/Contestia and AMTOR tabs, each call at most once per 10 minutes. After 73 the call
+  PSK, Olivia/Contestia, MT63 and AMTOR tabs, each call at most once per 10 minutes. After 73 the call
   counts only if DE does not follow it (`TU 73 K1ABC DE W1AW` reports W1AW, not K1ABC, who was
   only being thanked). A call sent twice in a row also counts (`VVV TEST TEST N9KRK N9KRK`),
   unless DE follows it (`N9KRK N9KRK DE W9ABC` is W9ABC calling N9KRK). Text you send is never
@@ -387,7 +411,7 @@ station hears to [pskreporter.info](https://pskreporter.info), where they show o
 
 *Options > GridTracker (live frequency and heard calls)...* (off until turned on) sends GridTracker2
 the dial frequency, band, mode, your call and grid every 15 seconds and whenever they change, and the
-calls heard in the CW, RTTY, PSK, Olivia/Contestia and AMTOR tabs right after CQ, DE or 73 (or sent twice
+calls heard in the CW, RTTY, PSK, Olivia/Contestia, MT63 and AMTOR tabs right after CQ, DE or 73 (or sent twice
 in a row, as for PSK Reporter), each call at
 most once a minute, so they show on its map. The heard calls appear as `CQ W1AW` (a CQ), `K1ABC W1AW`
 (W1AW calling K1ABC; calls to you are highlighted by GridTracker) or `DE W1AW`. It uses the same UDP
@@ -544,6 +568,8 @@ g++ -std=c++17 -O2 -Iengine tests/test_memories.cpp -o test_memories && ./test_m
 g++ -std=c++17 -O2 -Iengine tests/test_pskreporter.cpp -o test_pskreporter
 # Log uploads: QRZ form encoding and replies, TQSL command line and status codes
 g++ -std=c++17 -O2 -Iengine tests/test_upload.cpp -o test_upload
+# MT63: loopback in every mode, sample rates, weak signal, squelch (no junk on noise or other modes)
+g++ -std=c++17 -O2 -Iengine tests/test_mt63.cpp engine/mt63core.cpp engine/mt63/dsp.cxx engine/mt63/mt63base.cxx engine/oliviacore.cpp engine/pskcore.cpp -o test_mt63
 # RSID: fldigi's code words, bursts at several rates/frequencies/sidebands, no false IDs
 g++ -std=c++17 -O2 -Iengine tests/test_rsid.cpp engine/rsidcore.cpp engine/spectrum.cpp engine/pskcore.cpp -o test_rsid
 
@@ -610,7 +636,7 @@ Reporter or GridTracker.
 ## Future
 
 - CW with the radio's own keyer once wfview's TCI server supports `cw_macros`.
-- More modes (QPSK31/63, MFSK16/32, DominoEX/THOR, MT63 are candidates), each as a Qt-free
+- More modes (QPSK31/63, MFSK16/32, DominoEX/THOR are candidates), each as a Qt-free
   engine with tests, the same way the others are written. WEFAX transmit. CHU as a second
   time source.
 - The goal is for this to become part of wfview if it fits the wfview team's plans: as a
@@ -627,7 +653,9 @@ Feld Hell, SSTV, WEFAX and WWV engines and the 5x7 Hell font were written for th
 from NIST's published format). `engine/ggmorse` is ggmorse by Georgi Gerganov, MIT
 license (see its LICENSE). `engine/jalocha` is Pawel Jalocha's Olivia/Contestia MFSK
 library as distributed with fldigi (GPL); the NAVTEX decoder follows fldigi's (GPL) - see
-`engine/jalocha/README-WFVIEW.txt`. `engine/rsidcore` is adapted from fldigi's RSID code
+`engine/jalocha/README-WFVIEW.txt`. `engine/mt63` is Pawel Jalocha's MT63 code (Copyright (C)
+1999-2004 Pawel Jalocha SP9VRC, 2007-2011 Dave Freese W1HKJ) as distributed with fldigi
+(GPLv3 or later) - see `engine/mt63/README-WFVIEW.txt`. `engine/rsidcore` is adapted from fldigi's RSID code
 (`src/rsid/rsid.cxx` and `rsid_defs.cxx`, Copyright (C) 2008-2012 Dave Freese W1HKJ, Stelios
 Bounanos M0GLD and John Douyere VK2ETA, GPLv3 or later): the ID table, the GF(16) table, the
 encoder and the receive method are theirs.

@@ -18,6 +18,8 @@ class NavtexEngine;
 class NavtexPanel;
 class OliviaEngine;
 class OliviaPanel;
+class Mt63Engine;
+class Mt63Panel;
 class QsoLogDock;
 class SessionLog;
 class SstvEngine;
@@ -77,6 +79,9 @@ private slots:
     void onModulation(const QString &mode);
     void onRadioTransmit(bool on);
     void onRsid(int code, double centreHz, bool mirrored, int errors);
+    void checkRsidReturn();
+    // A dot on a tab that is not showing when its decoder prints text.
+    void markActivity(QWidget *panel);
     void log(const QString &line);
 
 private:
@@ -158,6 +163,14 @@ private:
     CwTxEngine *m_cwTx = nullptr;
     OliviaEngine *m_olivia = nullptr;
     OliviaPanel *m_oliviaPanel = nullptr;
+    Mt63Engine *m_mt63 = nullptr;
+    Mt63Panel *m_mt63Panel = nullptr;
+    // RSID jump: the tab to go back to when the signal it found has ended.
+    QWidget *m_rsidFrom = nullptr;
+    QWidget *m_rsidTo = nullptr;
+    qint64 m_rsidJumpMs = 0; // when it jumped
+    qint64 m_rsidTextMs = 0; // last text on the tab it jumped to (0 = none yet)
+    QTimer *m_rsidReturn = nullptr;
     NavtexEngine *m_navtex = nullptr;
     NavtexPanel *m_navtexPanel = nullptr;
     SstvEngine *m_sstv = nullptr;
