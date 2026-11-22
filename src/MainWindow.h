@@ -126,6 +126,7 @@ private:
     void editCallLookup();
     QString currentSubMode() const;
     void feedPskr(const QString &tab, const QString &subMode, const QString &text, double audioHz);
+    void feedSpotters(const QString &stream, const QString &mode, const QString &text, double audioHz);
     void addCurrentPreset();
     void editPresets();
     void abortAllTx(const QString &why);

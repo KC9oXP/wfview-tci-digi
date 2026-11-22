@@ -59,6 +59,7 @@ void CwDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
                 i.snrDb = c.snrDb;
                 i.active = c.active;
                 i.text = QString::fromLatin1(c.text.data(), static_cast<int>(c.text.size()));
+                i.total = c.total;
                 list.append(i);
             }
             emit multiUpdated(list);
@@ -330,5 +331,23 @@ void CwDecoder::onStats(float pitchHz, float speedWpm, float snrDb, bool locked,
 
 void CwDecoder::onMulti(const QVector<CwChannelInfo> &channels)
 {
-    emit channelsChanged((m_multi && m_enabled) ? channels : QVector<CwChannelInfo>());
+    const bool on = m_multi && m_enabled;
+    emit channelsChanged(on ? channels : QVector<CwChannelInfo>());
+    if (!on || m_paused)
+    {
+        m_channelSeen.clear();
+        return;
+    }
+    // Pass each channel's new text on (call sign spotting); forget closed channels.
+    QHash<int, quint64> seen;
+    for (const CwChannelInfo &c : channels)
+    {
+        const quint64 before = m_channelSeen.value(c.id, 0);
+        seen.insert(c.id, c.total);
+        if (c.total <= before)
+            continue;
+        const int fresh = int(qMin<quint64>(c.total - before, quint64(c.text.size())));
+        emit channelText(c.id, c.pitchHz, c.text.right(fresh));
+    }
+    m_channelSeen = seen;
 }

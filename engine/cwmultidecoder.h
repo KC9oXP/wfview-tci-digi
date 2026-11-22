@@ -39,6 +39,7 @@ public:
         float snrDb = 0.0f;
         bool active = false; // tone present now
         std::string text; // recent decoded text (tail)
+        unsigned long long total = 0; // characters ever added to text (the new ones are its last total - seen)
     };
 
     static constexpr int kMaxChannels = 8;
@@ -148,6 +149,7 @@ public:
             ci.snrDb = c->snrDb;
             ci.active = c->gate();
             ci.text = c->text;
+            ci.total = c->total;
             v.push_back(ci);
         }
         std::sort(v.begin(), v.end(), [](const ChannelInfo &a, const ChannelInfo &b) { return a.pitchHz < b.pitchHz; });
@@ -164,6 +166,7 @@ private:
         bool confirmed = false;
         CwHandKeyDecoder dec;
         std::string text;
+        unsigned long long total = 0;
         bool lastNewline = true;
         bool gate() const
         {
@@ -180,6 +183,7 @@ private:
             if (ch == ' ' && (c.text.empty() || c.text.back() == ' '))
                 continue;
             c.text.push_back(ch);
+            ++c.total;
         }
         if (c.text.size() > kTextKeep)
             c.text.erase(0, c.text.size() - kTextKeep);

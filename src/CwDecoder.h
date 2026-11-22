@@ -7,6 +7,7 @@
 //       --textDecoded / statsUpdated / multiUpdated [queued]--> CwDecoder (GUI thread)
 
 #include <QElapsedTimer>
+#include <QHash>
 #include <QObject>
 #include <QString>
 #include <QVector>
@@ -24,6 +25,7 @@ struct CwChannelInfo
     double snrDb = 0.0;
     bool active = false;
     QString text;
+    quint64 total = 0; // characters ever added to this channel's text
 };
 Q_DECLARE_METATYPE(CwChannelInfo)
 
@@ -132,6 +134,8 @@ signals:
     void textAppended(QString text);
     void statusChanged(QString status);
     void channelsChanged(QVector<CwChannelInfo> channels);
+    // New text on one multi-signal channel (for call sign spotting).
+    void channelText(int id, double pitchHz, QString text);
     void settingsChanged();
 
 private slots:
@@ -156,4 +160,5 @@ private:
     int m_lastPitchHz = 0;
     bool m_fixedSpeed = false;
     int m_speedWpm = 20;
+    QHash<int, quint64> m_channelSeen; // per channel id: characters already passed on
 };

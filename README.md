@@ -114,7 +114,10 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
 - The squelch opens only after the tone has been there for half a second and closes a
   second after it stops, so noise before a signal and AGC recovery after one do not print.
 - *Multi-signal*: every CW signal from 200 to 2000 Hz with its pitch, speed, SNR and
-  text. Double-click a row to decode that station.
+  text. Double-click a call sign in the Text column to put it in the QSO log (with its
+  lookup) and the Call box; double-click Pitch, WPM or SNR to decode that station above.
+  Right-click a row for both (the row's call signs are listed). Each station's text also
+  goes to PSK Reporter auto-detect and the GridTracker link on its own, like the main pane.
 - Transmit as **audio CW**: a keyed tone sent as TX audio with the radio in a data mode,
   the way fldigi does it. On the air it is a normal CW signal at the dial frequency plus
   the pitch. Speed 5-60 WPM, pitch 300-1500 Hz (*= RX pitch* puts you on the station you

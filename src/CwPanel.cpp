@@ -4,6 +4,7 @@
 #include "ModemTxBox.h"
 #include "RxText.h"
 #include "UiStyle.h"
+#include "callspot.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -11,6 +12,8 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QMenu>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollBar>
@@ -18,6 +21,7 @@
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QSplitter>
+#include <QStyle>
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -25,7 +29,35 @@
 namespace
 {
 constexpr int maxDecodeChars = 1000000;
+
+// The word at character index i of text (letters, digits and '/').
+QString wordAt(const QString &text, int i)
+{
+    if (i < 0 || i >= text.size())
+        return QString();
+    const auto part = [](QChar ch) { return ch.isLetterOrNumber() || ch == QLatin1Char('/'); };
+    int a = i, b = i;
+    while (a > 0 && part(text.at(a - 1)))
+        --a;
+    while (b < text.size() && part(text.at(b)))
+        ++b;
+    return text.mid(a, b - a);
 }
+
+// Call signs in a channel's text, newest first, each once.
+QStringList callsIn(const QString &text)
+{
+    QStringList out;
+    const QStringList words = text.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    for (auto it = words.crbegin(); it != words.crend() && out.size() < 6; ++it)
+    {
+        const QString w = it->toUpper();
+        if (!out.contains(w) && callspot::isCallsign(w.toStdString()))
+            out << w;
+    }
+    return out;
+}
+} // namespace
 
 CwPanel::CwPanel(CwDecoder *decoder, CwTxEngine *tx, QSettings *settings, QWidget *parent)
     : QWidget(parent)
@@ -74,8 +106,9 @@ CwPanel::CwPanel(CwDecoder *decoder, CwTxEngine *tx, QSettings *settings, QWidge
     m_squelch->setToolTip(tr("Hold off decoding noise when no signal is present."));
     row2->addWidget(m_squelch);
     m_multi = new QCheckBox(tr("Multi-signal"));
-    m_multi->setToolTip(
-        tr("List every CW signal in the passband (200-2000 Hz).\nDouble-click a row to decode that station."));
+    m_multi->setToolTip(tr("List every CW signal in the passband (200-2000 Hz).\nDouble-click a call sign in the Text "
+                           "column to log it (QSO log lookup); double-click Pitch, WPM or SNR to decode that "
+                           "station above. Right-click a row for both."));
     row2->addWidget(m_multi);
     auto *resync = new QPushButton(tr("Re-sync"));
     resync->setToolTip(tr("Restart pitch and speed tracking, e.g. after changing stations."));
@@ -116,6 +149,8 @@ CwPanel::CwPanel(CwDecoder *decoder, CwTxEngine *tx, QSettings *settings, QWidge
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setFont(mono);
     m_table->setVisible(false);
+    m_table->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_table->viewport()->installEventFilter(this);
     m_split->addWidget(m_table);
     m_split->setStretchFactor(0, 3);
     m_split->setStretchFactor(1, 2);
@@ -192,13 +227,28 @@ CwPanel::CwPanel(CwDecoder *decoder, CwTxEngine *tx, QSettings *settings, QWidge
     connect(m_multi, &QCheckBox::toggled, m_table, &QWidget::setVisible);
     connect(resync, &QPushButton::clicked, m_dec, &CwDecoder::resync);
     connect(clear, &QPushButton::clicked, m_text, &QPlainTextEdit::clear);
+    // Double-clicks are handled in eventFilter (the Text column picks a call sign).
     connect(m_table,
-            &QTableWidget::cellDoubleClicked,
+            &QWidget::customContextMenuRequested,
             this,
-            [this](int row, int)
+            [this](const QPoint &pos)
             {
-                if (auto *it = m_table->item(row, 0))
-                    m_dec->decodeChannel(it->data(Qt::UserRole).toInt());
+                const int row = m_table->rowAt(pos.y());
+                auto *pitch = m_table->item(row, 0);
+                auto *text = m_table->item(row, 3);
+                if (!pitch)
+                    return;
+                QMenu menu(this);
+                const int hz = pitch->data(Qt::UserRole).toInt();
+                menu.addAction(tr("Decode this station above (%1 Hz)").arg(hz),
+                               this,
+                               [this, hz]() { m_dec->decodeChannel(hz); });
+                const QStringList calls = text ? callsIn(text->data(Qt::UserRole).toString()) : QStringList();
+                if (!calls.isEmpty())
+                    menu.addSeparator();
+                for (const QString &c : calls)
+                    menu.addAction(tr("Log %1 (QSO log)").arg(c), this, [this, c]() { pickCall(c); });
+                menu.exec(m_table->viewport()->mapToGlobal(pos));
             });
 
     connect(m_dec, &CwDecoder::settingsChanged, this, &CwPanel::syncFromDecoder);
@@ -218,8 +268,38 @@ void CwPanel::syncTx()
     m_txPitch->setValue(qRound(m_tx->carrierHz()));
 }
 
+void CwPanel::pickCall(const QString &call)
+{
+    emit RxCalls::instance() -> callPicked(call, QStringLiteral("CW")); // QSO log: call + lookup
+    m_txBox->offerCall(call);
+}
+
 bool CwPanel::eventFilter(QObject *obj, QEvent *event)
 {
+    if (obj == m_table->viewport() && event->type() == QEvent::MouseButtonDblClick)
+    {
+        const QPoint pos = static_cast<QMouseEvent *>(event)->position().toPoint();
+        const QModelIndex idx = m_table->indexAt(pos);
+        if (!idx.isValid())
+            return true;
+        if (idx.column() == 3)
+        {
+            // The word under the mouse (the font is fixed-width; the text is drawn from
+            // the left, after a small margin).
+            const QString shown = m_table->item(idx.row(), 3) ? m_table->item(idx.row(), 3)->text() : QString();
+            const QRect r = m_table->visualRect(idx);
+            const int margin = m_table->style()->pixelMetric(QStyle::PM_FocusFrameHMargin, nullptr, m_table) + 1;
+            const int cw = std::max(1, m_table->fontMetrics().horizontalAdvance(QLatin1Char('M')));
+            const int i = (pos.x() - r.left() - margin) / cw;
+            const QString w = wordAt(shown, i).toUpper();
+            if (callspot::isCallsign(w.toStdString()))
+                pickCall(w);
+            return true;
+        }
+        if (auto *it = m_table->item(idx.row(), 0))
+            m_dec->decodeChannel(it->data(Qt::UserRole).toInt());
+        return true;
+    }
     if (obj == m_text->viewport() && event->type() == QEvent::MouseButtonDblClick)
     {
         // Let the text edit select the word first, then offer it as the call.
@@ -321,6 +401,8 @@ void CwPanel::showChannels(const QVector<CwChannelInfo> &channels)
             it->setForeground(c.active ? normal : dim);
             if (col == 0)
                 it->setData(Qt::UserRole, qRound(c.pitchHz));
+            if (col == 3)
+                it->setData(Qt::UserRole, c.text); // all of it, for the right-click call list
         }
     }
 }

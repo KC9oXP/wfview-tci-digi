@@ -2399,6 +2399,13 @@ qint64 MainWindow::rfHz(double audioHz) const
 
 void MainWindow::feedPskr(const QString &tab, const QString &subMode, const QString &text, double audioHz)
 {
+    feedSpotters(tab, PskReporter::modeFor(tab, subMode), text, audioHz);
+}
+
+// stream: what keeps one signal's text apart for the call spotters (the tab, or
+// "CW#3" for a multi-signal CW channel).
+void MainWindow::feedSpotters(const QString &stream, const QString &mode, const QString &text, double audioHz)
+{
     const bool pskr = m_pskr->enabled() && m_pskr->autoDetect();
     const bool gt = m_gridTracker->enabled();
     if (!pskr && !gt)
@@ -2406,16 +2413,15 @@ void MainWindow::feedPskr(const QString &tab, const QString &subMode, const QStr
     // Only what was received: our own sent text (and anything while keyed) is skipped.
     if (anyTransmitting() || m_client->radioTransmitting() || text.contains(QLatin1String("[TX]")))
         return;
-    const QString mode = PskReporter::modeFor(tab, subMode);
     const qint64 rf = rfHz(audioHz);
     if (pskr)
-        m_pskr->feedText(tab, mode, text, rf);
+        m_pskr->feedText(stream, mode, text, rf);
     if (gt)
     {
         // The live SNR only if it was measured recently on this signal.
         const bool snrOk = !std::isnan(m_snr) && m_snrAge.isValid() && m_snrAge.elapsed() < 10000
                            && std::abs(m_snrHz - audioHz) < 200;
-        m_gridTracker->feedText(tab, mode, text, audioHz, rf, snrOk ? m_snr : std::nan(""));
+        m_gridTracker->feedText(stream, mode, text, audioHz, rf, snrOk ? m_snr : std::nan(""));
     }
 }
 
@@ -2439,6 +2445,12 @@ void MainWindow::wirePskReporter()
             &CwDecoder::textAppended,
             this,
             [this](const QString &t) { feedPskr(QStringLiteral("CW"), QString(), t, m_cw->currentPitchHz()); });
+    // Every station in the CW multi-signal list, each on its own.
+    connect(m_cw,
+            &CwDecoder::channelText,
+            this,
+            [this](int id, double pitchHz, const QString &t)
+            { feedSpotters(QStringLiteral("CW#%1").arg(id), QStringLiteral("CW"), t, pitchHz); });
     connect(m_rtty,
             &RttyEngine::textAppended,
             this,
