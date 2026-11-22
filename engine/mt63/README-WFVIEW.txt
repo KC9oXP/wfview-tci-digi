@@ -16,3 +16,15 @@ Changes:
   removed.
 - dsp.h: M_PI defined if <cmath> did not (MSVC defines it only with
   _USE_MATH_DEFINES).
+
+Fixes (found when the receiver would not lock in an MSVC build; checked with
+AddressSanitizer, valgrind and glibc's MALLOC_PERTURB_):
+- mt63base.cxx, MT63rx::Preset: DataScanFirst wrapped into the FFT
+  (& WindowLenMask) like every later index; FFTbuff[] was read past its end
+  for carriers above the FFT size.
+- mt63base.cxx, MT63tx::Preset: the phase-index mask is taken from FFT.Size
+  after FFT.Preset(), not before (it read an unset value on the first call).
+- dsp.h: arrays are allocated with calloc and released with free throughout
+  (fldigi mixed new[] with free and realloc, and some buffers were read before
+  being written, which worked only because fresh large blocks are zero on
+  Linux); dspSeq::EnsureSpace frees the old block (it leaked).

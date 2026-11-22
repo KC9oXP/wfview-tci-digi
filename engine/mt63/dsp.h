@@ -100,14 +100,18 @@ typedef short dspS16;
 
 // ----------------------------------------------------------------------------
 
+// wfview TCI Digi: calloc/free throughout. fldigi mixed new[] with free and
+// realloc, and some code reads buffers before writing them, which only worked
+// because large fresh blocks from the C library happen to be zero on Linux;
+// with MSVC the receiver never locked. The arrays are plain data.
 template <class type>inline int dspRedspAllocArray(type **Array, int Size) {
-	delete [] *Array;
-	*Array = new type[Size];
+	free(*Array);
+	*Array = (type *)calloc(Size, sizeof(type));
 	return (*Array == 0);
 }
 
 template <class type>inline int dspAllocArray(type **Array, int Size) {
-	*Array = new type[Size];
+	*Array = (type *)calloc(Size, sizeof(type));
 	return (*Array == 0);
 }
 
@@ -125,21 +129,21 @@ template <class type>inline void dspMoveArray(type *Dst, type *Src, int Size) {
 
 template <class type> int dspAllocArray2D(type ***Array, int Size1, int Size2) {
 	int i;
-	(*Array) = new type *[Size1 * (sizeof(type *))];
+	(*Array) = (type **)calloc(Size1, sizeof(type *));
 	if ((*Array) == NULL)
 		return 1;
 	for (i = 0; i < Size1; i++)
 		(*Array)[i] = NULL;
 	for (i = 0; i < Size1; i++) {
-		(*Array)[i] = new type [Size2 * sizeof(type)];
+		(*Array)[i] = (type *)calloc(Size2, sizeof(type));
 		if ((*Array)[i] == NULL)
 			goto Error;
 	}
 	return 0;
 Error:
 	for (i = 0; i < Size1; i++)
-		delete [] (*Array)[i];
-	delete [] *Array;
+		free((*Array)[i]);
+	free(*Array);
 	return 1;
 }
 
@@ -147,8 +151,8 @@ template <class type> void dspFreeArray2D(type **Array, int Size1) {
 	if (Array == 0) return;
 	int i;
 	for (i = 0; i < Size1; i++)
-		delete [] (Array)[i];
-	delete [] Array;
+		free((Array)[i]);
+	free(Array);
 }
 
 template <class type> void dspClearArray2D(type **Array, int Size1, int Size2) {
@@ -184,7 +188,8 @@ template <class type> int dspSeq<type>::EnsureSpace(int ReqSpace)
 { 
 	if (ReqSpace <= Space) 
 		return 0;
-	Data = new type[ReqSpace * sizeof(type)];
+	free(Data); // (fldigi leaked it; the contents were never kept anyway)
+	Data = (type *)calloc(ReqSpace, sizeof(type));
 	if (Data == NULL) { 
 		Space = Len = 0; 
 		return -1; 
@@ -195,7 +200,7 @@ template <class type> int dspSeq<type>::EnsureSpace(int ReqSpace)
 
 template <class type> void dspSeq<type>::Free(void)
 { 
-	delete [] Data; 
+	free(Data); 
 	Data = NULL;
 	Space = Len = 0;
 }
@@ -236,7 +241,7 @@ template <class type> dspFIFO<type>::~dspFIFO() {
 }
 
 template <class type> void dspFIFO<type>::Free(void) { 
-	delete [] Buff;
+	free(Buff);
 	Buff = NULL;
 }
 
@@ -811,12 +816,12 @@ dspDelay<type>::dspDelay() {
 
 template <class type>
 dspDelay<type>::~dspDelay() {
-	delete [] Tap;
+	free(Tap);
 }
 
 template <class type>
 void dspDelay<type>::Free(void) {
-	delete [] Tap;
+	free(Tap);
 	Tap = NULL;
 }
 
@@ -886,12 +891,12 @@ dspDelayLine<type>::dspDelayLine() {
 
 template <class type>
 dspDelayLine<type>::~dspDelayLine() {
-	delete [] Line;
+	free(Line);
 }
 
 template <class type>
 void dspDelayLine<type>::Free(void) {
-	delete [] Line;
+	free(Line);
 	Line = NULL;
 }
 

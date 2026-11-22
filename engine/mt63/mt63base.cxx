@@ -165,6 +165,10 @@ int MT63tx::Preset(double freq, int BandWidth, int LongInterleave)
 // Here we only compute indexes to the FFT twiddle factors
 // so the actual vector is FFT.Twiddle[TxVect[i]]
 
+	// wfview TCI Digi: mask was taken from FFT.Size before FFT.Preset() above,
+	// i.e. from an unset value on the first call (0 on Linux by luck).
+	mask = FFT.Size - 1;
+
 	for (step = 0, incr = 1, p = 0, i = 0; i < DataCarriers; i++) {
 		TxVect[i] = p;
 		step += incr;
@@ -894,7 +898,9 @@ int MT63rx::Preset(double freq, int BandWidth, int LongInterleave, int Integ,
 	DataProcPtr = (-ProcdspDelay);
 
 	DataScanLen = DataCarriers + 2 * DataScanMargin;
-	DataScanFirst = FirstDataCarr - DataScanMargin * DataCarrSepar;
+	// wfview TCI Digi: wrapped into the FFT, as every later index is (FFTbuff[c]
+	// read past its end for carriers above the FFT size, e.g. 500 Hz modes).
+	DataScanFirst = (FirstDataCarr - DataScanMargin * DataCarrSepar) & WindowLenMask;
 
 	if (dspRedspAllocArray(&RefDataSlice, DataScanLen)) goto Error;
 	dspClearArray(RefDataSlice, DataScanLen);
