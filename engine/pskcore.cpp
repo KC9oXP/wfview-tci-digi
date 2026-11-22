@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <iterator>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -483,3 +484,94 @@ PskDemodulator::Stats PskDemodulator::stats() const
     s.squelchOpen = m_quality >= m_squelch;
     return s;
 }
+
+namespace psk
+{
+namespace
+{
+constexpr double kMinScore = 60.0; // see SpeedGuess
+
+// Strength of the baud-rate line in the envelope of the signal at hz,
+// filtered to about 1.5 baud each side: |DFT of the envelope at baud|^2
+// over the envelope's variance.
+double baudLine(const float *x, size_t n, double fs, double hz, double baud)
+{
+    const size_t len = std::max<size_t>(1, size_t(fs / (1.5 * baud)));
+    std::vector<std::complex<double>> z(n);
+    double ph = 0.0;
+    const double inc = 2.0 * M_PI * hz / fs;
+    for (size_t i = 0; i < n; ++i)
+    {
+        z[i] = double(x[i]) * std::complex<double>(std::cos(ph), -std::sin(ph));
+        ph += inc;
+        if (ph > 2.0 * M_PI)
+            ph -= 2.0 * M_PI;
+    }
+    // Two moving averages: a low-pass with its first null at 1.5 baud.
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        std::complex<double> acc(0.0, 0.0);
+        std::vector<std::complex<double>> y(n);
+        for (size_t i = 0; i < n; ++i)
+        {
+            acc += z[i];
+            if (i >= len)
+                acc -= z[i - len];
+            y[i] = acc / double(len);
+        }
+        z.swap(y);
+    }
+    const size_t skip = 2 * len;
+    if (n <= skip + size_t(fs))
+        return 0.0;
+    const size_t m = n - skip;
+    std::vector<double> e(m);
+    double mean = 0.0;
+    for (size_t i = 0; i < m; ++i)
+    {
+        e[i] = std::abs(z[skip + i]);
+        mean += e[i];
+    }
+    mean /= double(m);
+    // Power at the baud rate against the envelope's own power just beside it
+    // (eight points 1-3 Hz away): noise reads about 1, a PSK signal hundreds.
+    static const double offsets[] = {-2.8, -2.2, -1.6, -1.0, 1.0, 1.6, 2.2, 2.8};
+    auto power = [&](double f)
+    {
+        std::complex<double> d(0.0, 0.0), rot(1.0, 0.0);
+        const std::complex<double> step = std::polar(1.0, -2.0 * M_PI * f / fs);
+        for (size_t i = 0; i < m; ++i)
+        {
+            d += (e[i] - mean) * rot;
+            rot *= step;
+            if ((i & 1023) == 1023)
+                rot /= std::abs(rot); // keep |rot| = 1
+        }
+        return std::norm(d);
+    };
+    double beside = 0.0;
+    for (double o : offsets)
+        beside += power(baud + o);
+    beside /= double(std::size(offsets));
+    return beside > 0.0 ? power(baud) / beside : 0.0;
+}
+} // namespace
+
+SpeedGuess detectSpeed(const float *x, size_t n, double fs, double approxHz)
+{
+    SpeedGuess g;
+    if (!x || fs <= 0.0 || n < size_t(2.0 * fs))
+        return g;
+    for (int sp = Bpsk31; sp <= Bpsk125; ++sp)
+        g.score[sp] = baudLine(x, n, fs, approxHz, baudFor(sp));
+    // A signal also shows lines at twice and four times its baud rate, never
+    // below it: the slowest speed with a clear line is the one.
+    for (int sp = Bpsk31; sp <= Bpsk125; ++sp)
+        if (g.score[sp] >= kMinScore)
+        {
+            g.speed = sp;
+            break;
+        }
+    return g;
+}
+} // namespace psk

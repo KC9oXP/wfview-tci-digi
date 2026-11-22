@@ -259,6 +259,63 @@ int main()
         CHECK(std::fabs(c2 - 1500.0) < 30.0);
     }
 
+    std::printf("\n=== detectSpeed (several seeds, 5 s of audio) ===\n");
+    {
+        std::string text;
+        while (text.size() < 200)
+            text += "CQ CQ DE KC9OXP KC9OXP EN71AR PSE K ";
+        for (double fs : {48000.0, 12000.0})
+            for (int sp = psk::Bpsk31; sp <= psk::Bpsk125; ++sp)
+                for (unsigned seed : {11u, 12u, 13u})
+                {
+                    std::vector<float> x = modulate(text, sp, 1508.0, fs, nullptr);
+                    x.resize(std::min(x.size(), size_t(5.5 * fs)));
+                    x.erase(x.begin(), x.begin() + std::ptrdiff_t(0.5 * fs));
+                    addNoise(x, 1.0, 0.6, seed); // weak: about -3 dB in 3 kHz
+                    const psk::SpeedGuess g = psk::detectSpeed(x.data(), x.size(), fs, 1500.0);
+                    std::printf("  %s fs %.0f seed %u: speed %d (%.0f %.0f %.0f)\n",
+                                psk::speedName(sp),
+                                fs,
+                                seed,
+                                g.speed,
+                                g.score[0],
+                                g.score[1],
+                                g.score[2]);
+                    CHECK(g.speed == sp);
+                }
+        // Idle reversals (no text yet) are enough.
+        for (int sp = psk::Bpsk31; sp <= psk::Bpsk125; ++sp)
+        {
+            PskModulator m;
+            m.setBaud(psk::baudFor(sp));
+            m.setCarrier(1000.0);
+            m.preroll(6.0);
+            std::vector<float> x(48000 * 5);
+            m.render(x.data(), x.size(), 48000.0);
+            const psk::SpeedGuess g = psk::detectSpeed(x.data(), x.size(), 48000.0, 1003.0);
+            std::printf("  idle %s: speed %d (%.0f %.0f %.0f)\n",
+                        psk::speedName(sp),
+                        g.speed,
+                        g.score[0],
+                        g.score[1],
+                        g.score[2]);
+            CHECK(g.speed == sp);
+        }
+        // Noise alone: no answer.
+        for (unsigned seed : {21u, 22u, 23u, 24u, 25u, 26u})
+        {
+            std::vector<float> n(48000 * 5, 0.0f);
+            addNoise(n, 0.0, 0.2, seed);
+            const psk::SpeedGuess g = psk::detectSpeed(n.data(), n.size(), 48000.0, 1500.0);
+            std::printf(
+                "  noise seed %u: speed %d (%.0f %.0f %.0f)\n", seed, g.speed, g.score[0], g.score[1], g.score[2]);
+            CHECK(g.speed == -1);
+        }
+        // Too little audio: no answer.
+        std::vector<float> s(48000, 0.0f);
+        CHECK(psk::detectSpeed(s.data(), s.size(), 48000.0, 1500.0).speed == -1);
+    }
+
     std::printf(g_fail ? "\nFAILED: %d\n" : "\nALL PASSED\n", g_fail);
     return g_fail ? 1 : 0;
 }

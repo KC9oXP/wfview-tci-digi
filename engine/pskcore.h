@@ -42,6 +42,26 @@ int varicodeDecode(uint32_t bits);
 // Finds the centre of a PSK signal near approxHz: the power-weighted centroid
 // of the spectrum within +/- 1.5 baud. Returns approxHz if nothing stands out.
 double findCenter(const float *x, size_t n, double sampleRate, double approxHz, double baud);
+
+// Which speed a signal near approxHz is sent at, from a few seconds of audio
+// (5 s is plenty). A PSK signal's envelope dips at every phase reversal, and
+// reversals can only happen on the symbol clock, so the envelope carries a
+// line at the baud rate: 31.25, 62.5 or 125 Hz (and at its multiples, never
+// below it). For each speed the signal is filtered to that speed's width and
+// the strength of that line is measured; the slowest speed with a clear line
+// is the answer. Works on idle
+// reversals as well as on text. speed is -1 when there is no clear winner
+// (no signal, or not PSK). The frequency is left alone: AFC pulls in from
+// within a baud or so.
+struct SpeedGuess
+{
+    int speed = -1;
+    // Line strength per speed: power at the baud rate over the envelope's
+    // power just beside it. Noise reads about 1 (rarely over 10); a PSK
+    // signal hundreds. A clear line is 60 or more.
+    double score[3] = {0.0, 0.0, 0.0};
+};
+SpeedGuess detectSpeed(const float *x, size_t n, double sampleRate, double approxHz);
 } // namespace psk
 
 class PskVaricodeDecoder

@@ -21,6 +21,8 @@ class PskPanel : public ModemPanel
 
 public:
     PskPanel(PskEngine *engine, QSettings *settings, QWidget *parent = nullptr);
+    // A line of its own in the receive pane, in amber (RSID notices).
+    void addNote(const QString &text);
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -39,6 +41,7 @@ private:
     QComboBox *m_speed = nullptr;
     QDoubleSpinBox *m_freq = nullptr;
     QCheckBox *m_afc = nullptr;
+    QCheckBox *m_autoSpeed = nullptr;
     QSlider *m_squelch = nullptr;
     QLabel *m_squelchValue = nullptr;
     QProgressBar *m_qualityBar = nullptr;

@@ -5,10 +5,12 @@
 
 #include <QAction>
 #include <QContextMenuEvent>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
 #include <QFrame>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLineEdit>
@@ -25,17 +27,61 @@
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QToolButton>
+#include <QVariant>
 
 namespace RxText
 {
 namespace
 {
-void insert(QPlainTextEdit *edit, const QString &text, const QTextCharFormat &fmt, int maxChars)
+// Received text that starts after this long without any decoded characters
+// starts a new paragraph: a blank line between overs.
+constexpr qint64 kBreakMs = 8000;
+
+// Newlines at the end of the document (0, 1 or 2 or more).
+int trailingNewlines(const QTextDocument *doc)
 {
-    if (!edit || text.isEmpty())
+    if (doc->isEmpty())
+        return 2; // nothing to separate from
+    QTextBlock b = doc->lastBlock();
+    int n = 0;
+    while (n < 2 && b.isValid() && b.text().isEmpty() && b.previous().isValid())
+    {
+        ++n;
+        b = b.previous();
+    }
+    return n;
+}
+
+// After a pause, put a blank line in front of text that has something to read
+// in it (never more than one blank line).
+QString breakAfterPause(QPlainTextEdit *edit, const QString &text)
+{
+    if (text.trimmed().isEmpty())
+        return text;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const QVariant last = edit->property("rxLastInkMs");
+    edit->setProperty("rxLastInkMs", now);
+    if (!last.isValid() || now - last.toLongLong() < kBreakMs)
+        return text;
+    int lead = 0;
+    while (lead < text.size() && lead < 2 && text.at(lead) == QLatin1Char('\n'))
+        ++lead;
+    const int need = 2 - trailingNewlines(edit->document()) - lead;
+    return need > 0 ? QString(need, QLatin1Char('\n')) + text : text;
+}
+
+void insert(QPlainTextEdit *edit, const QString &textIn, const QTextCharFormat &fmt, int maxChars)
+{
+    if (!edit || textIn.isEmpty())
         return;
+    const QString text = breakAfterPause(edit, textIn);
     QScrollBar *sb = edit->verticalScrollBar();
-    const bool following = sb->value() >= sb->maximum() - 2 && !edit->textCursor().hasSelection();
+    // Follow the newest text whenever the view is at the bottom. A selection
+    // (a double-clicked call sign, Ctrl+A, text marked for copying) no longer
+    // stops it; only a drag that is still in progress does, so the text does
+    // not run away under the mouse while marking.
+    const bool dragging = edit->textCursor().hasSelection() && (QGuiApplication::mouseButtons() & Qt::LeftButton);
+    const bool following = sb->value() >= sb->maximum() - 2 && !dragging;
     QTextCursor c(edit->document());
     c.movePosition(QTextCursor::End);
     c.insertText(text, fmt);
@@ -62,6 +108,16 @@ void appendStyled(QPlainTextEdit *edit, const QString &text, const QColor &color
     f.setForeground(color);
     f.setFontWeight(QFont::Bold);
     insert(edit, text, f, maxChars);
+}
+void appendNote(QPlainTextEdit *edit, const QString &text)
+{
+    if (!edit)
+        return;
+    const bool atLineStart = edit->document()->isEmpty() || edit->document()->lastBlock().text().isEmpty();
+    QTextCharFormat f;
+    f.setForeground(QColor(0xe8, 0xb0, 0x40));
+    f.setFontWeight(QFont::Bold);
+    insert(edit, (atLineStart ? QString() : QStringLiteral("\n")) + text + QLatin1Char('\n'), f, 400000);
 }
 } // namespace RxText
 
@@ -238,7 +294,11 @@ void RxScrollback::saveAs()
 
 bool RxScrollback::eventFilter(QObject *obj, QEvent *event)
 {
-    if (obj == m_edit && (event->type() == QEvent::Resize || event->type() == QEvent::Show))
+    // The viewport's own Resize: when the text edit's Resize reaches this
+    // filter the viewport still has its old size, so the Live button landed
+    // in the middle of the pane.
+    if ((obj == m_edit && event->type() == QEvent::Show)
+        || (obj == m_edit->viewport() && event->type() == QEvent::Resize))
         place();
     if (obj == m_edit->viewport() && event->type() == QEvent::MouseButtonDblClick)
     {

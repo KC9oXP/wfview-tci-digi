@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.9.13
+VERSION = 0.9.14
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -35,6 +35,7 @@ HEADERS += \
     src/RttyPanel.h \
     src/ModemEngine.h \
     src/PskEngine.h \
+    src/RsidEngine.h \
     src/HellEngine.h \
     src/SpectrumEngine.h \
     src/WaterfallWidget.h \
@@ -107,6 +108,7 @@ HEADERS += \
     engine/rttycore.h \
     engine/rttytxsource.h \
     engine/pskcore.h \
+    engine/rsidcore.h \
     engine/hellcore.h \
     engine/cwtxcore.h \
     engine/modemtxsource.h \
@@ -124,6 +126,7 @@ SOURCES += \
     src/RttyPanel.cpp \
     src/ModemEngine.cpp \
     src/PskEngine.cpp \
+    src/RsidEngine.cpp \
     src/HellEngine.cpp \
     src/SpectrumEngine.cpp \
     src/WaterfallWidget.cpp \
@@ -174,6 +177,7 @@ SOURCES += \
     engine/rttycore.cpp \
     engine/rttytxsource.cpp \
     engine/pskcore.cpp \
+    engine/rsidcore.cpp \
     engine/hellcore.cpp \
     engine/cwtxcore.cpp \
     engine/modemtxsource.cpp \

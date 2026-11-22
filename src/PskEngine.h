@@ -28,11 +28,13 @@ public slots:
     void setParams(double baud, double carrierHz, bool afc, double squelch, int generation);
     void resetDecoder();
     void findCenter(double approxHz);
+    void detectSpeed(double approxHz);
 
 signals:
     void textDecoded(QString text);
     void statsUpdated(double quality, double levelDb, double carrierHz, bool squelchOpen, int generation);
     void centerFound(double hz, double approxHz);
+    void speedDetected(int speed, double approxHz, double s31, double s63, double s125);
 
 private:
     PskDemodulator m_demod;
@@ -69,6 +71,11 @@ public:
     {
         return m_squelch;
     }
+    // Set the speed from the audio after each waterfall click (default on).
+    bool autoSpeed() const
+    {
+        return m_autoSpeed;
+    }
     double quality() const
     {
         return m_quality;
@@ -87,8 +94,12 @@ public slots:
     void setSpeed(int speed);
     void setAfc(bool on);
     void setSquelch(double q);
-    // Waterfall click: tune there, then snap to the signal centre.
+    void setAutoSpeed(bool on);
+    // Waterfall click: tune there, then snap to the signal centre (and set the
+    // speed, with Auto speed on).
     void tuneTo(double hz);
+    // Works out BPSK31/63/125 from the last 5 s of audio at the receive frequency.
+    void detectSpeed();
 
 protected:
     void applyConfig() override;
@@ -109,6 +120,7 @@ protected:
 private slots:
     void onStats(double quality, double levelDb, double carrierHz, bool squelchOpen, int generation);
     void onCenter(double hz, double approxHz);
+    void onSpeed(int speed, double approxHz, double s31, double s63, double s125);
 
 private:
     QThread *m_thread = nullptr;
@@ -116,6 +128,8 @@ private:
     int m_speed = psk::Bpsk31;
     bool m_afc = true;
     double m_squelch = 0.3;
+    bool m_autoSpeed = true;
+    bool m_speedAsked = false; // a Detect speed press is waiting for its answer
     double m_quality = 0.0;
     double m_levelDb = -120.0;
     bool m_squelchOpen = false;

@@ -24,6 +24,7 @@
 #include "PskReporter.h"
 #include "QsoLog.h"
 #include "RadioModes.h"
+#include "RsidEngine.h"
 #include "RttyEngine.h"
 #include "RttyPanel.h"
 #include "RxText.h"
@@ -42,6 +43,7 @@
 #include "WwvEngine.h"
 #include "WwvPanel.h"
 #include "modemtxsource.h"
+#include "rsidcore.h"
 #include "rttytxsource.h"
 #include "signalreport.h"
 
@@ -181,6 +183,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_wefax = new WefaxEngine(m_settings, this);
     m_wwv = new WwvEngine(m_settings, this);
     m_spectrum = new SpectrumEngine(this);
+    m_rsid = new RsidEngine(m_settings, this);
     m_audio = new AudioHub(this);
     m_audio->setRingSeconds(m_settings->value(QStringLiteral("Audio/RingSeconds"), 120).toInt());
     m_session = new SessionLog(m_settings, this);
@@ -373,6 +376,8 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_audio, &AudioHub::audio, m_wefax, &WefaxEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_wwv, &WwvEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_spectrum, &SpectrumEngine::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_rsid, &RsidEngine::pushAudio);
+    connect(m_rsid, &RsidEngine::detected, this, &MainWindow::onRsid);
     connect(m_spectrum, &SpectrumEngine::line, this, &MainWindow::trackSnr);
     m_snrShow.setInterval(300);
     connect(&m_snrShow, &QTimer::timeout, this, &MainWindow::updateSnrLabel);
@@ -981,6 +986,22 @@ void MainWindow::buildMenus()
     autoUpdate->setCheckable(true);
     autoUpdate->setChecked(m_update->automatic());
     connect(autoUpdate, &QAction::toggled, m_update, &UpdateCheck::setAutomatic);
+    QMenu *rsidMenu = opts->addMenu(tr("RSID (mode ID bursts)"));
+    rsidMenu->setToolTipsVisible(true);
+    QAction *rsidOn = rsidMenu->addAction(tr("Listen for RSID"));
+    rsidOn->setCheckable(true);
+    rsidOn->setChecked(m_rsid->enabled());
+    rsidOn->setToolTip(tr("Watch the receive audio, on every tab, for the short ID burst fldigi and other programs "
+                          "can send before a transmission. It names the mode and marks its frequency."));
+    connect(rsidOn, &QAction::toggled, m_rsid, &RsidEngine::setEnabled);
+    QAction *rsidSwitch = rsidMenu->addAction(tr("Switch to the mode it names"));
+    rsidSwitch->setCheckable(true);
+    rsidSwitch->setChecked(m_rsid->autoSwitch());
+    rsidSwitch->setToolTip(tr("When an ID for PSK, RTTY, Olivia/Contestia, Feld Hell or CW is heard: show that tab, "
+                              "set the mode and the frequency, and turn Decode on. Off: only a notice."));
+    connect(rsidSwitch, &QAction::toggled, m_rsid, &RsidEngine::setAutoSwitch);
+    connect(rsidOn, &QAction::toggled, rsidSwitch, &QAction::setEnabled);
+    rsidSwitch->setEnabled(m_rsid->enabled());
     QAction *egg = opts->addAction(tr("STANAG 4481 Easteregg"));
     egg->setCheckable(true);
     egg->setChecked(m_rtty->easterEgg());
@@ -1007,6 +1028,7 @@ void MainWindow::buildMenus()
                                "Hell: Feld Hell (Hellschreiber) send and painted receive.<br>"
                                "Olivia / Contestia: Pawel Jalocha's MFSK library, as in fldigi.<br>"
                                "NAVTEX / SITOR-B: receive (decoder after fldigi's).<br>"
+                               "RSID: mode ID bursts (after fldigi's, W1HKJ, M0GLD, VK2ETA).<br>"
                                "SSTV: Martin, Scottie, Robot, PD modes, VIS, auto slant; send pictures.<br>"
                                "WEFAX: HF weather fax receive with APT start/stop and phasing.<br>"
                                "AMTOR: FEC (mode B) send and receive (receiver as NAVTEX).<br>"
@@ -1195,9 +1217,96 @@ void MainWindow::onRadioTransmit(bool on)
     for (ModemEngine *e : m_txEngines)
         e->setRadioTransmitting(on);
     m_cw->setPaused(on); // do not decode our own sidetone / monitor
+    m_rsid->setTransmitting(on || anyTransmitting());
     m_txLamp->setText(on ? tr(" TX ") : tr(" RX "));
     m_txLamp->setStyleSheet(on ? QStringLiteral("background-color: #c02020; color: white; font-weight: bold;")
                                : QString());
+}
+
+void MainWindow::onRsid(int code, double centreHz, bool mirrored, int errors)
+{
+    const rsid::Mode *m = rsid::modeFor(code);
+    if (!m)
+        return;
+    const QString name = QString::fromStdString(rsid::displayName(*m));
+    const int hz = qRound(centreHz);
+    log(tr("RSID: %1 at %2 Hz%3%4")
+            .arg(name)
+            .arg(hz)
+            .arg(mirrored ? tr(", heard mirrored (other sideband)") : QString())
+            .arg(errors ? tr(", 1 tone wrong") : QString()));
+    if (m->target == rsid::Target::Eot)
+    {
+        statusBar()->showMessage(tr("RSID: end of transmission at %1 Hz").arg(hz), 8000);
+        return;
+    }
+    if (m->target == rsid::Target::None)
+    {
+        statusBar()->showMessage(tr("RSID: %1 at %2 Hz - not a mode this program decodes.").arg(name).arg(hz), 15000);
+        return;
+    }
+    const QString note = tr("RSID: %1 at %2 Hz").arg(name).arg(hz);
+    if (!m_rsid->autoSwitch() || anyTransmitting())
+    {
+        statusBar()->showMessage(
+            note + (anyTransmitting() ? tr(" (not switched while transmitting)") : tr(" (switching is off)")), 15000);
+        return;
+    }
+    if (centreHz < ModemEngine::kMinHz || centreHz > ModemEngine::kMaxHz)
+    {
+        statusBar()->showMessage(note + tr(" - outside %1-%2 Hz, not switched")
+                                            .arg(qRound(ModemEngine::kMinHz))
+                                            .arg(qRound(ModemEngine::kMaxHz)),
+                                 15000);
+        return;
+    }
+    auto show = [this](QWidget *panel)
+    {
+        const int i = m_tabs->indexOf(panel);
+        if (i >= 0)
+            m_tabs->setCurrentIndex(i);
+    };
+    switch (m->target)
+    {
+    case rsid::Target::Psk:
+        show(m_pskPanel);
+        m_psk->setSpeed(m->pskSpeed);
+        m_psk->setCarrierHz(centreHz);
+        m_psk->setDecoding(true);
+        m_pskPanel->addNote(note);
+        break;
+    case rsid::Target::Olivia:
+        show(m_oliviaPanel);
+        m_olivia->setMode(m->contestia, m->tones, m->bandwidth);
+        m_olivia->setCarrierHz(centreHz);
+        m_olivia->setDecoding(true);
+        m_oliviaPanel->addNote(note);
+        break;
+    case rsid::Target::Rtty:
+    {
+        show(m_rttyPanel);
+        m_rtty->setBaud(m->rttyBaud);
+        m_rtty->setShift(m->rttyShift);
+        // The ID marks the middle of mark and space.
+        m_rtty->setMarkHz(hz);
+        const double half = (m_rtty->spaceHz() - m_rtty->markHz()) / 2.0;
+        m_rtty->setMarkHz(qRound(centreHz - half));
+        m_rtty->setDecoding(true);
+        m_rttyPanel->addNote(note);
+        break;
+    }
+    case rsid::Target::Hell:
+        show(m_hellPanel);
+        m_hell->setCarrierHz(centreHz);
+        m_hell->setDecoding(true);
+        break;
+    case rsid::Target::Cw:
+        show(m_cwPanel);
+        break;
+    default:
+        break;
+    }
+    statusBar()->showMessage(note, 15000);
 }
 
 void MainWindow::onTransmitRequested(QObject *who, bool on)
@@ -1212,6 +1321,7 @@ void MainWindow::onTransmitRequested(QObject *who, bool on)
                 e->abortTx();
         if (m_txLimitMin > 0)
             m_txLimit.start(m_txLimitMin * 60 * 1000); // (re)started by each mode keying
+        m_rsid->setTransmitting(true);
     }
     else if (anyTransmitting())
     {

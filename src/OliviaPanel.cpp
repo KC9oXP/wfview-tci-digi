@@ -18,6 +18,14 @@
 #include <QVBoxLayout>
 #include <cmath>
 
+namespace
+{
+int packMode(bool contestia, int tones, int bandwidth)
+{
+    return (contestia ? 1 << 24 : 0) | (tones << 12) | bandwidth;
+}
+} // namespace
+
 OliviaPanel::OliviaPanel(OliviaEngine *engine, QSettings *settings, QWidget *parent)
     : ModemPanel(engine, settings, QStringLiteral("Olivia"), parent)
     , m_ol(engine)
@@ -53,7 +61,7 @@ QWidget *OliviaPanel::buildTop()
     r1->addWidget(m_decode);
     m_mode = new QComboBox();
     for (const OliviaEngine::Preset &p : OliviaEngine::presets())
-        m_mode->addItem(OliviaEngine::presetName(p));
+        m_mode->addItem(OliviaEngine::presetName(p), packMode(p.contestia, p.tones, p.bandwidth));
     m_mode->setToolTip(tr("Olivia or Contestia, tones / bandwidth. Both stations must use the same."));
     r1->addWidget(m_mode);
     r1->addWidget(new QLabel(tr("Centre")));
@@ -101,8 +109,9 @@ QWidget *OliviaPanel::buildTop()
             this,
             [this](int i)
             {
-                const OliviaEngine::Preset p = OliviaEngine::presets().at(i);
-                m_ol->setMode(p.contestia, p.tones, p.bandwidth);
+                // Item data, not the preset list: a mode set by RSID adds its own item.
+                const int v = m_mode->itemData(i).toInt();
+                m_ol->setMode((v >> 24) != 0, (v >> 12) & 0xfff, v & 0xfff);
             });
     connect(m_freq, &QDoubleSpinBox::valueChanged, m_ol, &ModemEngine::setCarrierHz);
     connect(m_squelch, &QSlider::valueChanged, this, [this](int val) { m_ol->setSquelch(val / 10.0); });
@@ -120,6 +129,9 @@ void OliviaPanel::syncSettings()
     ModemPanel::syncSettings();
     const QSignalBlocker b1(m_decode), b2(m_mode), b3(m_freq), b4(m_squelch);
     m_decode->setChecked(m_ol->decoding());
+    // A mode outside the list (set by RSID, e.g. Olivia 8/1000) gets an item of its own.
+    if (m_mode->findText(m_ol->modeName()) < 0)
+        m_mode->addItem(m_ol->modeName(), packMode(m_ol->contestia(), m_ol->tones(), m_ol->bandwidth()));
     m_mode->setCurrentText(m_ol->modeName());
     if (!m_freq->hasFocus())
         m_freq->setValue(m_ol->carrierHz());
@@ -147,4 +159,9 @@ bool OliviaPanel::eventFilter(QObject *obj, QEvent *event)
         return handled;
     }
     return ModemPanel::eventFilter(obj, event);
+}
+
+void OliviaPanel::addNote(const QString &text)
+{
+    RxText::appendNote(m_rx, text);
 }

@@ -3,8 +3,10 @@
 // Receive-pane helpers shared by every text mode.
 //
 // RxText::append() adds decoded text at the end without moving the reader:
-// if they have scrolled back (or selected text to copy) the view stays put,
-// otherwise it follows the new text.
+// if they have scrolled back (or are dragging to select) the view stays put,
+// otherwise it follows the new text, even with text selected. Text that
+// arrives after 8 s with nothing decoded starts after a blank line, so each
+// over stands apart (the transmit echo has blank lines around it too).
 //
 // RxScrollback::attach() adds to a QPlainTextEdit:
 //   - a "Live" button while scrolled back, to jump to the newest text
@@ -31,6 +33,8 @@ namespace RxText
 void append(QPlainTextEdit *edit, const QString &text, int maxChars = 400000);
 // The same, in bold and the given colour (the text after it is plain again).
 void appendStyled(QPlainTextEdit *edit, const QString &text, const QColor &color, int maxChars = 400000);
+// A notice on a line of its own (amber, bold), e.g. "RSID: Olivia 8/250 at 1500 Hz".
+void appendNote(QPlainTextEdit *edit, const QString &text);
 } // namespace RxText
 
 // Callsigns picked in any receive pane (double-click, or the context menu).

@@ -52,6 +52,7 @@ class QTabWidget;
 class RttyEngine;
 class RttyPanel;
 class SpectrumEngine;
+class RsidEngine;
 class TxPowerWatch;
 class TxTools;
 class CallLookup;
@@ -75,6 +76,7 @@ private slots:
     void onFrequency(qint64 hz);
     void onModulation(const QString &mode);
     void onRadioTransmit(bool on);
+    void onRsid(int code, double centreHz, bool mirrored, int errors);
     void log(const QString &line);
 
 private:
@@ -152,6 +154,7 @@ private:
     PskPanel *m_pskPanel = nullptr;
     HellPanel *m_hellPanel = nullptr;
     SpectrumEngine *m_spectrum = nullptr;
+    RsidEngine *m_rsid = nullptr;
     CwTxEngine *m_cwTx = nullptr;
     OliviaEngine *m_olivia = nullptr;
     OliviaPanel *m_oliviaPanel = nullptr;

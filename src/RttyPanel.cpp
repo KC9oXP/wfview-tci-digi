@@ -612,6 +612,11 @@ void RttyPanel::appendText(const QString &text)
     RxText::append(m_rx, text, maxRxChars);
 }
 
+void RttyPanel::addNote(const QString &text)
+{
+    RxText::appendNote(m_rx, text);
+}
+
 void RttyPanel::sendTyped()
 {
     const QString t = m_txText->toPlainText();

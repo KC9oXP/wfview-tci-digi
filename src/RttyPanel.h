@@ -28,6 +28,8 @@ class RttyPanel : public QWidget
 
 public:
     RttyPanel(RttyEngine *engine, QSettings *settings, QWidget *parent = nullptr);
+    // A line of its own in the receive pane, in amber (RSID notices).
+    void addNote(const QString &text);
     void saveState();
 
 public slots:

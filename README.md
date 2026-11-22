@@ -150,6 +150,12 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
 - Waterfall (0-3 kHz): click a signal to tune (the click snaps to the signal's centre),
   mouse wheel for 1 Hz steps. AFC within one baud, phase-quality squelch with a quality
   bar.
+- Speed detection: *Detect* sets BPSK31, 63 or 125 from the last 5 seconds of audio at the
+  receive frequency; with *Auto* on (the default) a waterfall click does the same. A PSK
+  signal's envelope dips at each phase reversal, on the symbol clock, so it carries a line at
+  the baud rate (31.25, 62.5 or 125 Hz); the slowest speed with a clear line is the answer.
+  It works on idle reversals before any text, and says so in the status line when there is
+  no clear answer (noise, or not PSK).
 - Transmit on the receive frequency: idle reversals before the text and a shaped fade-out
   after it, so no key clicks.
 
@@ -255,6 +261,22 @@ lamps tune the radio there in AM; the one you are on is green.
 ---
 
 ## In every tab
+
+**RSID** (Options > RSID): the receive audio is watched on every tab for the short ID burst
+fldigi and other programs can send before a transmission (15 tones, about 1.4 s, 170 Hz
+wide). It names the mode and marks its frequency. For PSK (BPSK31/63/125), RTTY (45.45/170,
+50/170, 75/850), Olivia, Contestia, Feld Hell and CW the program shows that tab, sets the
+mode and frequency, turns Decode on and prints an amber "RSID: Olivia 8/250 at 1500 Hz" line
+in the receive pane (*Switch to the mode it names*, on by default; off = only a notice in
+the status bar). Other modes (MT63, MFSK, THOR, DominoEX ...) are named in the status bar.
+Either sideband works: the burst is also looked for mirrored. Nothing is checked while
+transmitting. The decoder follows fldigi's (see License).
+
+**Receive pane**: a blank line separates overs. Text that arrives after 8 seconds with
+nothing decoded starts after a blank line, and the transmit echo (`[TX] ...`) has a blank
+line before and after it. The pane follows the newest text whenever it is scrolled to the
+bottom, also with text selected (a double-clicked call sign, Ctrl+A); scroll up to stop it
+and *Live* to go back.
 
 **Transmit**
 - Macros F1-F8 with `{MYCALL}` / `{CALL}`, a type-ahead box (text typed while
@@ -522,6 +544,8 @@ g++ -std=c++17 -O2 -Iengine tests/test_memories.cpp -o test_memories && ./test_m
 g++ -std=c++17 -O2 -Iengine tests/test_pskreporter.cpp -o test_pskreporter
 # Log uploads: QRZ form encoding and replies, TQSL command line and status codes
 g++ -std=c++17 -O2 -Iengine tests/test_upload.cpp -o test_upload
+# RSID: fldigi's code words, bursts at several rates/frequencies/sidebands, no false IDs
+g++ -std=c++17 -O2 -Iengine tests/test_rsid.cpp engine/rsidcore.cpp engine/spectrum.cpp engine/pskcore.cpp -o test_rsid
 
 # End to end against a mock of wfview's TCI server (~3 min); --new runs only the
 # newer parts (WAV playback into the newer decoders, logs, Olivia / SSTV / AMTOR
@@ -603,4 +627,7 @@ Feld Hell, SSTV, WEFAX and WWV engines and the 5x7 Hell font were written for th
 from NIST's published format). `engine/ggmorse` is ggmorse by Georgi Gerganov, MIT
 license (see its LICENSE). `engine/jalocha` is Pawel Jalocha's Olivia/Contestia MFSK
 library as distributed with fldigi (GPL); the NAVTEX decoder follows fldigi's (GPL) - see
-`engine/jalocha/README-WFVIEW.txt`.
+`engine/jalocha/README-WFVIEW.txt`. `engine/rsidcore` is adapted from fldigi's RSID code
+(`src/rsid/rsid.cxx` and `rsid_defs.cxx`, Copyright (C) 2008-2012 Dave Freese W1HKJ, Stelios
+Bounanos M0GLD and John Douyere VK2ETA, GPLv3 or later): the ID table, the GF(16) table, the
+encoder and the receive method are theirs.

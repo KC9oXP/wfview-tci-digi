@@ -19,6 +19,8 @@ class OliviaPanel : public ModemPanel
 
 public:
     OliviaPanel(OliviaEngine *engine, QSettings *settings, QWidget *parent = nullptr);
+    // A line of its own in the receive pane, in amber (RSID notices).
+    void addNote(const QString &text);
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

@@ -11,7 +11,8 @@
 namespace
 {
 constexpr int statsIntervalMs = 150;
-constexpr double historySeconds = 2.0; // audio kept for click-to-tune
+constexpr double historySeconds = 5.0; // audio kept for click-to-tune and speed detection
+constexpr double centreSeconds = 2.0; // the part used to find a signal's centre
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -68,7 +69,7 @@ void PskDecoderWorker::resetDecoder()
 
 void PskDecoderWorker::findCenter(double approxHz)
 {
-    const size_t keep = size_t(historySeconds * m_fs);
+    const size_t keep = size_t(centreSeconds * m_fs);
     const size_t n = std::min(m_history.size(), keep);
     if (m_fs <= 0.0 || n < size_t(0.5 * m_fs))
     {
@@ -77,6 +78,16 @@ void PskDecoderWorker::findCenter(double approxHz)
     }
     const float *start = m_history.data() + (m_history.size() - n);
     emit centerFound(psk::findCenter(start, n, m_fs, approxHz, m_baud), approxHz);
+}
+
+void PskDecoderWorker::detectSpeed(double approxHz)
+{
+    const size_t keep = size_t(historySeconds * m_fs);
+    const size_t n = std::min(m_history.size(), keep);
+    psk::SpeedGuess g;
+    if (m_fs > 0.0 && n >= size_t(2.0 * m_fs))
+        g = psk::detectSpeed(m_history.data() + (m_history.size() - n), n, m_fs, approxHz);
+    emit speedDetected(g.speed, approxHz, g.score[0], g.score[1], g.score[2]);
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +106,7 @@ PskEngine::PskEngine(QObject *parent)
     connect(m_worker, &PskDecoderWorker::textDecoded, this, [this](const QString &t) { deliverText(t); });
     connect(m_worker, &PskDecoderWorker::statsUpdated, this, &PskEngine::onStats);
     connect(m_worker, &PskDecoderWorker::centerFound, this, &PskEngine::onCenter);
+    connect(m_worker, &PskDecoderWorker::speedDetected, this, &PskEngine::onSpeed);
     m_thread->start(QThread::LowPriority);
     applyConfig();
 }
@@ -113,6 +125,7 @@ void PskEngine::loadSettings(QSettings *s)
         m_speed = std::clamp(s->value(QStringLiteral("Speed"), m_speed).toInt(), 0, 2);
         m_afc = s->value(QStringLiteral("AFC"), m_afc).toBool();
         m_squelch = std::clamp(s->value(QStringLiteral("Squelch"), m_squelch).toDouble(), 0.0, 0.95);
+        m_autoSpeed = s->value(QStringLiteral("AutoSpeed"), m_autoSpeed).toBool();
         s->endGroup();
     }
     ModemEngine::loadSettings(s); // applies
@@ -182,11 +195,60 @@ void PskEngine::setSquelch(double q)
     emit settingsChanged();
 }
 
+void PskEngine::setAutoSpeed(bool on)
+{
+    if (on == m_autoSpeed)
+        return;
+    m_autoSpeed = on;
+    save("AutoSpeed", m_autoSpeed);
+    emit settingsChanged();
+}
+
 void PskEngine::tuneTo(double hz)
 {
     setCarrierHz(hz);
-    if (decoding())
-        QMetaObject::invokeMethod(m_worker, "findCenter", Qt::QueuedConnection, Q_ARG(double, hz));
+    if (!decoding())
+        return;
+    // Speed first: the centre is looked for within one baud of the right speed.
+    if (m_autoSpeed && !transmitting())
+        QMetaObject::invokeMethod(m_worker, "detectSpeed", Qt::QueuedConnection, Q_ARG(double, hz));
+    QMetaObject::invokeMethod(m_worker, "findCenter", Qt::QueuedConnection, Q_ARG(double, hz));
+}
+
+void PskEngine::detectSpeed()
+{
+    if (!decoding())
+    {
+        setStatus(tr("Detect speed needs Decode on (it looks at the last 5 seconds of receive audio)."));
+        return;
+    }
+    if (transmitting())
+        return;
+    m_speedAsked = true;
+    setStatus(tr("Looking at the last 5 seconds at %1 Hz...").arg(qRound(m_carrierHz)));
+    QMetaObject::invokeMethod(m_worker, "detectSpeed", Qt::QueuedConnection, Q_ARG(double, m_carrierHz));
+}
+
+void PskEngine::onSpeed(int speed, double approxHz, double s31, double s63, double s125)
+{
+    const bool asked = m_speedAsked;
+    m_speedAsked = false;
+    // Only if the user has not tuned somewhere else meanwhile.
+    if (std::fabs(approxHz - m_carrierHz) > 1.5 * psk::baudFor(psk::Bpsk125) || transmitting())
+        return;
+    const QString lines = tr("baud-rate lines %1 / %2 / %3").arg(qRound(s31)).arg(qRound(s63)).arg(qRound(s125));
+    if (speed < 0)
+    {
+        if (asked)
+            setStatus(tr("No clear PSK speed at %1 Hz (%2; 60 needed). Tune onto the signal and give it 5 s.")
+                          .arg(qRound(approxHz))
+                          .arg(lines));
+        return;
+    }
+    const bool changed = speed != m_speed;
+    setSpeed(speed);
+    if (changed || asked)
+        setStatus(tr("Speed: %1 (%2)").arg(QString::fromLatin1(psk::speedName(speed)), lines));
 }
 
 void PskEngine::onCenter(double hz, double approxHz)

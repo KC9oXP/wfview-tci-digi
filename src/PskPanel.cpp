@@ -64,6 +64,14 @@ QWidget *PskPanel::buildTop()
     for (int s = psk::Bpsk31; s <= psk::Bpsk125; ++s)
         m_speed->addItem(QString::fromLatin1(psk::speedName(s)), s);
     r1->addWidget(m_speed);
+    m_autoSpeed = new QCheckBox(tr("Auto"));
+    m_autoSpeed->setToolTip(tr("When you click a signal on the waterfall, also set BPSK31 / 63 / 125 from the "
+                               "last 5 seconds of it."));
+    r1->addWidget(m_autoSpeed);
+    auto *detect = new QPushButton(tr("Detect"));
+    detect->setToolTip(tr("Set BPSK31 / 63 / 125 from the last 5 seconds of audio at the receive frequency "
+                          "(works on idle signals too)."));
+    r1->addWidget(detect);
     r1->addWidget(new QLabel(tr("Freq")));
     m_freq = new QDoubleSpinBox();
     m_freq->setRange(ModemEngine::kMinHz, ModemEngine::kMaxHz);
@@ -121,6 +129,8 @@ QWidget *PskPanel::buildTop()
     connect(m_speed, &QComboBox::activated, this, [this](int i) { m_psk->setSpeed(m_speed->itemData(i).toInt()); });
     connect(m_freq, &QDoubleSpinBox::valueChanged, m_psk, &ModemEngine::setCarrierHz);
     connect(m_afc, &QCheckBox::toggled, m_psk, &PskEngine::setAfc);
+    connect(m_autoSpeed, &QCheckBox::toggled, m_psk, &PskEngine::setAutoSpeed);
+    connect(detect, &QPushButton::clicked, m_psk, &PskEngine::detectSpeed);
     connect(m_squelch, &QSlider::valueChanged, this, [this](int val) { m_psk->setSquelch(val / 100.0); });
     connect(clear, &QPushButton::clicked, this, [this]() { m_rx->clear(); });
     return top;
@@ -134,7 +144,8 @@ double PskPanel::markerBandwidth() const
 void PskPanel::syncSettings()
 {
     ModemPanel::syncSettings();
-    const QSignalBlocker b1(m_decode), b2(m_speed), b3(m_freq), b4(m_afc), b5(m_squelch);
+    const QSignalBlocker b1(m_decode), b2(m_speed), b3(m_freq), b4(m_afc), b5(m_squelch), b6(m_autoSpeed);
+    m_autoSpeed->setChecked(m_psk->autoSpeed());
     m_decode->setChecked(m_psk->decoding());
     m_speed->setCurrentIndex(m_speed->findData(m_psk->speed()));
     if (!m_freq->hasFocus())
@@ -156,6 +167,11 @@ void PskPanel::syncStats()
 void PskPanel::appendText(const QString &text)
 {
     RxText::append(m_rx, text, maxRxChars);
+}
+
+void PskPanel::addNote(const QString &text)
+{
+    RxText::appendNote(m_rx, text);
 }
 
 bool PskPanel::eventFilter(QObject *obj, QEvent *event)

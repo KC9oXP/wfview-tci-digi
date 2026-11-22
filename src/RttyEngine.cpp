@@ -688,7 +688,9 @@ void RttyEngine::keyUp()
     emit transmittingChanged(true);
     emit transmitRequested(true);
     m_txPoll.start();
-    emit textAppended((m_atLineStart ? QString() : QStringLiteral("\n")) + QStringLiteral("[TX] "));
+    // A blank line before each transmission and after it (see RxText for the
+    // breaks between received overs).
+    emit textAppended((m_atLineStart ? QStringLiteral("\n") : QStringLiteral("\n\n")) + QStringLiteral("[TX] "));
     m_atLineStart = false;
     setStatus(tr("Transmitting"));
 }
@@ -714,6 +716,7 @@ void RttyEngine::release(const QString &why)
     QString tail = QString::fromLatin1(sent.data(), static_cast<int>(sent.size()));
     if (!tail.endsWith(QLatin1Char('\n')))
         tail += QLatin1Char('\n');
+    tail += QLatin1Char('\n'); // blank line after the transmission
     emit textAppended(tail);
     m_atLineStart = true;
     resync();

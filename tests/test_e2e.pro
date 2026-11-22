@@ -25,6 +25,7 @@ HEADERS += \
     ../src/RttyPanel.h \
     ../src/ModemEngine.h \
     ../src/PskEngine.h \
+    ../src/RsidEngine.h \
     ../src/HellEngine.h \
     ../src/SpectrumEngine.h \
     ../src/WaterfallWidget.h \
@@ -90,6 +91,7 @@ SOURCES += \
     ../src/RttyPanel.cpp \
     ../src/ModemEngine.cpp \
     ../src/PskEngine.cpp \
+    ../src/RsidEngine.cpp \
     ../src/HellEngine.cpp \
     ../src/SpectrumEngine.cpp \
     ../src/WaterfallWidget.cpp \
@@ -140,6 +142,7 @@ SOURCES += \
     ../engine/rttycore.cpp \
     ../engine/rttytxsource.cpp \
     ../engine/pskcore.cpp \
+    ../engine/rsidcore.cpp \
     ../engine/hellcore.cpp \
     ../engine/cwtxcore.cpp \
     ../engine/modemtxsource.cpp \
