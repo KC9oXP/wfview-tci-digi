@@ -50,9 +50,11 @@
 #include "signalreport.h"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
+#include <QCoreApplication>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -67,6 +69,7 @@
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
+#include <QLocale>
 #include <QLineEdit>
 #include <QMap>
 #include <QMenuBar>
@@ -910,6 +913,89 @@ void MainWindow::buildMenus()
 
     QMenu *opts = menuBar()->addMenu(tr("&Options"));
     opts->setToolTipsVisible(true);
+
+    // Language changes are saved immediately and applied on the next launch.
+    // This avoids partially re-translating a complex UI while modem/TCI objects
+    // and active receive/transmit sessions are running.
+    QMenu *languageMenu = opts->addMenu(tr("Language"));
+    auto *languageGroup = new QActionGroup(languageMenu);
+    languageGroup->setExclusive(true);
+
+    const QString selectedLanguage =
+        m_settings->value(QStringLiteral("UI/Language"), QStringLiteral("system")).toString();
+
+    auto addLanguageAction = [languageMenu, languageGroup, selectedLanguage](const QString &code,
+                                                                            const QString &label)
+    {
+        QAction *action = languageMenu->addAction(label);
+        action->setCheckable(true);
+        action->setData(code);
+        action->setChecked(selectedLanguage == code);
+        languageGroup->addAction(action);
+    };
+
+    addLanguageAction(QStringLiteral("system"), tr("System language"));
+    addLanguageAction(QStringLiteral("en"), QStringLiteral("English"));
+
+    const QDir translationDir(
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("translations")));
+    const QStringList translationFiles =
+        translationDir.entryList(QStringList() << QStringLiteral("wfview_tci_digi_*.qm"),
+                                 QDir::Files,
+                                 QDir::Name);
+    for (const QString &file : translationFiles)
+    {
+        QString code = file;
+        code.remove(QStringLiteral("wfview_tci_digi_"));
+        code.chop(3); // ".qm"
+        if (code.isEmpty() || code == QStringLiteral("en") || code == QStringLiteral("en_US"))
+            continue;
+
+        const QLocale locale(code);
+        QString label = locale.nativeLanguageName();
+        if (label.isEmpty())
+            label = code;
+        label += QStringLiteral(" [") + code + QStringLiteral("]");
+        addLanguageAction(code, label);
+    }
+
+    connect(languageGroup, &QActionGroup::triggered, this, [this, languageGroup](QAction *action)
+    {
+        const QString newLanguage = action->data().toString();
+        const QString oldLanguage =
+            m_settings->value(QStringLiteral("UI/Language"), QStringLiteral("system")).toString();
+        if (newLanguage == oldLanguage)
+            return;
+
+        const QString description =
+            newLanguage == QStringLiteral("system")
+                ? tr("the operating-system language")
+                : (newLanguage == QStringLiteral("en") ? QStringLiteral("English") : newLanguage);
+
+        const auto answer = QMessageBox::question(
+            this,
+            tr("Change language"),
+            tr("Change the interface language to %1?\n\n"
+               "The setting will be saved now and will take effect the next time you start wfview TCI Digi.")
+                .arg(description),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::Yes);
+
+        if (answer != QMessageBox::Yes)
+        {
+            for (QAction *item : languageGroup->actions())
+                item->setChecked(item->data().toString() == oldLanguage);
+            return;
+        }
+
+        m_settings->setValue(QStringLiteral("UI/Language"), newLanguage);
+        m_settings->sync();
+        QMessageBox::information(
+            this,
+            tr("Language"),
+            tr("Language setting saved. Restart wfview TCI Digi to apply it."));
+    });
+
     QAction *onStart = opts->addAction(tr("Connect on start"));
     onStart->setCheckable(true);
     onStart->setChecked(m_settings->value(QStringLiteral("TCI/ConnectOnStart"), false).toBool());

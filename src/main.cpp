@@ -5,6 +5,10 @@
 #include <QTextStream>
 #include <QIcon>
 #include <QSettings>
+#include <QTranslator>
+#include <QLocale>
+#include <QDir>
+#include <QStringList>
 
 int main(int argc, char *argv[])
 {
@@ -38,6 +42,41 @@ int main(int argc, char *argv[])
 
     QSettings settings(
         QSettings::IniFormat, QSettings::UserScope, QStringLiteral("KC9oXP"), QStringLiteral("wfview-tci-digi"));
+
+    // UI language: "system" follows the operating-system locale; a locale such
+    // as "ja_JP" selects a language explicitly. English is the source language.
+    const QString requestedLanguage =
+        settings.value(QStringLiteral("UI/Language"), QStringLiteral("system")).toString();
+    const QString localeName = requestedLanguage == QStringLiteral("system")
+                                   ? QLocale::system().name()
+                                   : requestedLanguage;
+
+    // Keep the translator alive for the whole QApplication lifetime.
+    QTranslator translator;
+    if (localeName != QStringLiteral("en") && localeName != QStringLiteral("en_US"))
+    {
+        const QString translationDir =
+            QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("translations"));
+        QStringList candidates;
+        if (!localeName.isEmpty())
+            candidates << localeName;
+
+        const QString languageOnly = localeName.section(QLatin1Char('_'), 0, 0);
+        if (!languageOnly.isEmpty() && !candidates.contains(languageOnly))
+            candidates << languageOnly;
+
+        for (const QString &candidate : candidates)
+        {
+            const QString translationFile =
+                QStringLiteral("wfview_tci_digi_") + candidate + QStringLiteral(".qm");
+            if (translator.load(QDir(translationDir).filePath(translationFile)))
+            {
+                app.installTranslator(&translator);
+                break;
+            }
+        }
+    }
+
     MainWindow w(&settings);
     w.show();
     return app.exec();
