@@ -5,7 +5,8 @@ runtime catalogs).
 
 ## Current catalog
 
-- `wfview_tci_digi_ja_JP.ts` — Japanese starter translation.
+- `wfview_tci_digi_ja_JP.ts` — Japanese, by **JG3HLX** (partly done: about 210 of
+  the 1,025 texts so far).
 - English is the source language and is used whenever a translated entry or
   catalog is unavailable.
 
@@ -83,3 +84,10 @@ is not present.
 - A language change is saved in QSettings and takes effect after restarting
   the application. The running UI is deliberately not retranslated in place,
   to avoid disrupting active modem and TCI state.
+
+## Translators
+
+Thank you to everyone who translates wfview TCI Digi. Translators are credited
+here, in Help > About and in the release notes.
+
+- Japanese (日本語): JG3HLX
