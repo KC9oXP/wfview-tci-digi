@@ -136,6 +136,20 @@ double valueHz(double v)
     return valueToHz(v);
 }
 
+int rsvReadability(double f)
+{
+    return f >= 0.95 ? 5 : f >= 0.80 ? 4 : f >= 0.60 ? 3 : f >= 0.40 ? 2 : 1;
+}
+
+int rsvVideo(double n)
+{
+    static const double lim[8] = {3.0, 5.0, 8.0, 12.0, 18.0, 26.0, 36.0, 50.0};
+    for (int i = 0; i < 8; ++i)
+        if (n <= lim[i])
+            return 9 - i;
+    return 1;
+}
+
 double syncOffsetMs(int mode)
 {
     const ModeInfo &m = info(mode);
@@ -199,6 +213,20 @@ int SstvDecoder::width() const
 int SstvDecoder::height() const
 {
     return m_mode < 0 ? 0 : info(m_mode).height;
+}
+
+SstvDecoder::Quality SstvDecoder::quality() const
+{
+    Quality q;
+    if (m_mode < 0)
+        return q;
+    q.periods = m_periodsDone;
+    q.syncFraction = m_periodsDone > 0 ? std::min(1.0, double(m_syncHits) / m_periodsDone) : 0.0;
+    q.pixelNoise = m_noiseDf > 0 ? std::sqrt(m_noiseSq / m_noiseDf) * 255.0 / (kWhiteHz - kBlackHz) : 999.0;
+    q.r = rsvReadability(q.syncFraction);
+    q.v = m_noiseDf >= 20 ? rsvVideo(q.pixelNoise) : 1;
+    q.valid = m_periodsDone >= 16;
+    return q;
 }
 
 int SstvDecoder::linesDone() const
@@ -454,6 +482,9 @@ void SstvDecoder::begin(int mode, double t0, Events &ev, bool periodStart)
     m_manual = false;
     m_phaseLocked = false;
     m_wideAgree = 0;
+    m_syncHits = 0;
+    m_noiseSq = 0.0;
+    m_noiseDf = 0.0;
     m_syncs.clear();
     m_img.assign(size_t(m.width) * size_t(m.height), 0u);
     m_cr.assign(size_t(m.width) * size_t(m.height), 128);
@@ -670,6 +701,32 @@ void SstvDecoder::measureSync(int p)
         if (m_syncs.empty() || m_syncs.back().first < at)
             m_syncs.emplace_back(at, double(bestT));
         m_noSyncRun = 0;
+        ++m_syncHits;
+        {
+            // Pixel noise: the sync is a steady tone, so the spread of pixel-length means over
+            // its middle half is exactly the noise a picture pixel gets.
+            const double px = m.scanMs / m.width * m_rate / 1000.0 * k;
+            const double from = double(bestT) + L / 4.0, to = double(bestT) + 3.0 * L / 4.0;
+            const int nw = int((to - from) / px);
+            if (nw >= 2)
+            {
+                std::vector<double> means(static_cast<size_t>(nw));
+                const int sub = std::max(1, int(std::ceil(px)));
+                double all = 0.0;
+                for (int i = 0; i < nw; ++i)
+                {
+                    double acc = 0.0;
+                    for (int j = 0; j < sub; ++j)
+                        acc += trackAt(from + i * px + px * (j + 0.5) / sub);
+                    means[size_t(i)] = acc / sub;
+                    all += means[size_t(i)];
+                }
+                all /= nw;
+                for (double v : means)
+                    m_noiseSq += (v - all) * (v - all);
+                m_noiseDf += nw - 1;
+            }
+        }
         if (m_autoOffOn)
         {
             // The middle half of the pulse is 1200 Hz + offset.

@@ -17,6 +17,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QTableWidget>
+#include <QTimer>
 #include <QTimeZone>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -223,6 +224,40 @@ QsoLogDock::QsoLogDock(QSettings *settings, QWidget *parent)
             [this](bool on) { m_settings->setValue(QStringLiteral("QsoLog/AddSignal"), on); });
     v->addWidget(m_addSignal);
 
+    m_measuredBox = new QCheckBox(tr("Fill RST sent with a measured report (SSTV RSV, PSK RSQ)"));
+    m_measuredBox->setToolTip(
+        tr("Puts a report measured from the received signal in \"RST sent\" instead of the usual 595 / 599. "
+           "Type in the box to override it; Clear or a new QSO starts measuring again.\n"
+           "SSTV (RSV), from the last picture received: R = share of line syncs found (95 % -> 5, 80 % -> 4, "
+           "60 % -> 3, 40 % -> 2); S = the radio's S-meter when the picture ended (the SNR if wfview gives no "
+           "S-meter); V = picture noise, measured on the sync pulses (9 and 8 look clean, 7-6 fine grain, 5-4 "
+           "clear snow, 3 and below heavy snow).\n"
+           "PSK (RSQ): R = share of characters copied, worked out from the phase quality (95 % -> 5, 80 % -> 4, "
+           "40 % -> 3, 20 % -> 2); S = the trace's SNR (3 dB -> 1, one per 3 dB, 27 dB -> 9); Q = sideband pairs "
+           "measured on the idle at the start or end of an over: 3rd-order IMD -30 dB or better -> 9, -27 -> 8, "
+           "-24 -> 7 (one barely visible pair), -21 -> 6, -18 -> 5 (easily visible), -15 -> 4; several pairs "
+           "-> 3 or 2, splatter -> 1. Q needs a second or so of idle, so the report appears after it.\n"
+           "Only on the SSTV and PSK tabs: the other modes have no measurable report."));
+    m_measuredBox->setChecked(m_settings->value(QStringLiteral("QsoLog/MeasuredRst"), true).toBool());
+    connect(m_measuredBox,
+            &QCheckBox::toggled,
+            this,
+            [this](bool on)
+            {
+                m_settings->setValue(QStringLiteral("QsoLog/MeasuredRst"), on);
+                if (!on && m_rstS->text() == m_rstSAuto)
+                {
+                    setRstSent(defaultRst());
+                    m_rstS->setToolTip(QString());
+                }
+                updateMeasured();
+            });
+    v->addWidget(m_measuredBox);
+    auto *measureTimer = new QTimer(this);
+    measureTimer->setInterval(1000);
+    connect(measureTimer, &QTimer::timeout, this, &QsoLogDock::updateMeasured);
+    measureTimer->start();
+
     m_info = new QLabel();
     m_info->setWordWrap(true);
     v->addWidget(m_info);
@@ -298,6 +333,33 @@ QString QsoLogDock::defaultRst() const
     return QStringLiteral("59");
 }
 
+void QsoLogDock::setRstSent(const QString &text)
+{
+    m_rstSAuto = text;
+    m_rstS->setText(text);
+}
+
+void QsoLogDock::updateMeasured()
+{
+    const bool can = measurable(m_mode);
+    if (m_measuredBox->isHidden() == can)
+        m_measuredBox->setHidden(!can);
+    if (!can || !m_measuredBox->isChecked() || !m_measured)
+    {
+        m_measuredComment.clear();
+        return;
+    }
+    if (m_rstS->text() != m_rstSAuto)
+        return; // typed by the user: theirs
+    const Measured r = m_measured();
+    if (r.rst.isEmpty())
+        return; // keeps the last one (or the default) until there is something to measure
+    m_measuredComment = r.comment;
+    if (m_rstS->text() != r.rst)
+        setRstSent(r.rst);
+    m_rstS->setToolTip(tr("Measured: %1").arg(r.how));
+}
+
 void QsoLogDock::setRadio(qint64 hz, const QString &modulation)
 {
     Q_UNUSED(modulation);
@@ -314,9 +376,11 @@ void QsoLogDock::setMode(const QString &mode, const QString &submode, const QStr
     m_submode = submode;
     if (changed || m_rstS->text().isEmpty())
     {
-        m_rstS->setText(defaultRst());
+        setRstSent(defaultRst());
+        m_rstS->setToolTip(QString());
         m_rstR->setText(defaultRst());
     }
+    updateMeasured();
     setRadio(m_hz, QString());
     m_log->setEnabled(!m_mode.isEmpty());
     m_log->setToolTip(m_mode.isEmpty() ? tr("This tab's mode is receive-only (no QSOs).")
@@ -410,7 +474,9 @@ void QsoLogDock::clearForm()
     m_grid->clear();
     m_comment->clear();
     m_filledCall.clear();
-    m_rstS->setText(defaultRst());
+    setRstSent(defaultRst());
+    m_rstS->setToolTip(QString());
+    m_measuredComment.clear();
     m_rstR->setText(defaultRst());
     m_start = QDateTime();
 }
@@ -437,7 +503,9 @@ void QsoLogDock::logQso()
     q.comment = m_comment->text().trimmed();
     if (m_addSignal->isChecked() && m_signalNote && !q.comment.contains(QLatin1String("SNR")))
     {
-        const QString note = m_signalNote();
+        QString note = m_signalNote();
+        if (m_rstS->text() == m_rstSAuto && !m_measuredComment.isEmpty())
+            note = note.isEmpty() ? m_measuredComment : note + QStringLiteral(", ") + m_measuredComment;
         if (!note.isEmpty())
             q.comment = q.comment.isEmpty() ? note : q.comment + QStringLiteral("  ") + note;
     }

@@ -49,6 +49,8 @@ void PskDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
         m_statsTimer.restart();
         const PskDemodulator::Stats s = m_demod.stats();
         emit statsUpdated(s.quality, s.levelDb, s.carrierHz, s.squelchOpen, m_generation);
+        if (++m_rsqTick % 5 == 0)
+            emit rsqUpdated(m_demod.rsq(), m_generation);
     }
 }
 
@@ -98,6 +100,7 @@ PskEngine::PskEngine(QObject *parent)
     : ModemEngine(QStringLiteral("PSK"), std::make_shared<PskTxSource>(), parent)
 {
     qRegisterMetaType<QVector<float>>("QVector<float>");
+    qRegisterMetaType<PskDemodulator::Rsq>("PskDemodulator::Rsq");
     m_thread = new QThread(this);
     m_thread->setObjectName(QStringLiteral("pskDecoder"));
     m_worker = new PskDecoderWorker();
@@ -105,6 +108,16 @@ PskEngine::PskEngine(QObject *parent)
     connect(m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
     connect(m_worker, &PskDecoderWorker::textDecoded, this, [this](const QString &t) { deliverText(t); });
     connect(m_worker, &PskDecoderWorker::statsUpdated, this, &PskEngine::onStats);
+    connect(m_worker,
+            &PskDecoderWorker::rsqUpdated,
+            this,
+            [this](const PskDemodulator::Rsq &r, int generation)
+            {
+                if (generation != m_generation || transmitting())
+                    return;
+                m_rsq = r;
+                m_rsqTimer.start();
+            });
     connect(m_worker, &PskDecoderWorker::centerFound, this, &PskEngine::onCenter);
     connect(m_worker, &PskDecoderWorker::speedDetected, this, &PskEngine::onSpeed);
     m_thread->start(QThread::LowPriority);

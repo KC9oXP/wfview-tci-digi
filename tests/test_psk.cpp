@@ -4,6 +4,7 @@
 
 #include "pskcore.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -314,6 +315,140 @@ int main()
         // Too little audio: no answer.
         std::vector<float> s(48000, 0.0f);
         CHECK(psk::detectSpeed(s.data(), s.size(), 48000.0, 1500.0).speed == -1);
+    }
+
+    std::printf("RSQ report: IMD measured on idle, Q from it\n");
+    {
+        const double fs = 48000.0, car = 1500.0;
+        for (int speed : {int(psk::Bpsk31), int(psk::Bpsk63)})
+            for (double target : {-40.0, -25.0, -20.0})
+            {
+                // y = x + c x^3 on two tones of amplitude A: 3rd-order IMD = 0.75 c A^2 / (1 + 2.25 c A^2)
+                const double A = 0.5, R = std::pow(10.0, target / 20.0);
+                const double c = R / (0.75 * A * A - 2.25 * A * A * R);
+                PskModulator m;
+                m.setBaud(psk::baudFor(speed));
+                m.setCarrier(car);
+                m.preroll(2.5);
+                for (char ch : std::string("cq de kc9oxp k "))
+                    m.queueChar(ch);
+                m.tail(1.5);
+                std::vector<float> a(size_t(0.3 * fs)), block(1024);
+                while (!m.idle())
+                {
+                    m.render(block.data(), block.size(), fs);
+                    a.insert(a.end(), block.begin(), block.end());
+                }
+                double ps = 0.0;
+                long np = 0;
+                for (float &v : a)
+                {
+                    const double x = v;
+                    v = float(x + c * x * x * x);
+                    if (x != 0.0)
+                    {
+                        ps += double(v) * v;
+                        ++np;
+                    }
+                }
+                // 20 dB SNR in 2500 Hz
+                const double sigma = std::sqrt(ps / double(np) / 100.0 * (fs / 2.0) / 2500.0);
+                std::mt19937 rng(3 + speed);
+                std::normal_distribution<float> nd(0.0f, float(sigma));
+                for (float &v : a)
+                    v += nd(rng);
+                PskDemodulator d;
+                d.setSampleRate(fs);
+                d.setBaud(psk::baudFor(speed));
+                d.setCarrier(car + 1.3);
+                for (size_t p = 0; p < a.size(); p += 1024)
+                    d.process(a.data() + p, std::min<size_t>(1024, a.size() - p));
+                const PskDemodulator::Rsq r = d.rsq();
+                const int q = psk::rsqQuality(r);
+                std::printf("  %s IMD %.0f: measured %.1f%s (%d idle blocks), Q%d\n",
+                            psk::speedName(speed), target, r.imdDb, r.imdBelowNoise ? " (better than)" : "",
+                            r.idleBlocks, q);
+                CHECK(r.idleSeen && r.idleBlocks >= 4);
+                if (target == -40.0)
+                    CHECK(q == 9 && r.imdDb < -33.0);
+                else
+                    CHECK(std::fabs(r.imdDb - target) < 1.5);
+                if (target == -25.0)
+                    CHECK(q == 7);
+                if (target == -20.0)
+                    CHECK(q == 5);
+            }
+    }
+
+    std::printf("RSQ report: R from the phase quality matches the copy actually made\n");
+    {
+        const std::string text = "cq cq de kc9oxp kc9oxp the quick brown fox jumps over the lazy dog 0123456789 "
+                                 "name is michael qth elkhart indiana grid en71ar rig icom 7610 ant random wire how copy? "
+                                 "thanks for the qso and 73 hope to see you again on the bands soon. the weather here is "
+                                 "cold and clear today with a light wind from the west and a chance of snow later in the "
+                                 "week, so the antennas stay up. ";
+        const double fs = 48000.0, car = 1500.0;
+        const auto lev = [](const std::string &x, const std::string &y)
+        {
+            std::vector<int> p(y.size() + 1), c(y.size() + 1);
+            for (size_t j = 0; j <= y.size(); ++j)
+                p[j] = int(j);
+            for (size_t i = 1; i <= x.size(); ++i)
+            {
+                c[0] = int(i);
+                for (size_t j = 1; j <= y.size(); ++j)
+                    c[j] = std::min({p[j] + 1, c[j - 1] + 1, p[j - 1] + (x[i - 1] != y[j - 1] ? 1 : 0)});
+                std::swap(p, c);
+            }
+            return p[y.size()];
+        };
+        for (double snr : {-12.0, -9.0, -5.0})
+        {
+            const int speed = psk::Bpsk63;
+            PskModulator m;
+            m.setBaud(psk::baudFor(speed));
+            m.setCarrier(car);
+            m.preroll(1.0);
+            for (char ch : text)
+                m.queueChar(ch);
+            m.tail(0.5);
+            std::vector<float> a(size_t(0.4 * fs)), block(1024);
+            while (!m.idle())
+            {
+                m.render(block.data(), block.size(), fs);
+                a.insert(a.end(), block.begin(), block.end());
+            }
+            double ps = 0.0;
+            long np = 0;
+            for (float v : a)
+                if (v != 0.0f)
+                {
+                    ps += double(v) * v;
+                    ++np;
+                }
+            const double sigma = std::sqrt(ps / double(np) / std::pow(10.0, snr / 10.0) * (fs / 2.0) / 2500.0);
+            std::mt19937 rng(77);
+            std::normal_distribution<float> nd(0.0f, float(sigma));
+            for (float &v : a)
+                v += nd(rng);
+            PskDemodulator d;
+            d.setSampleRate(fs);
+            d.setBaud(psk::baudFor(speed));
+            d.setCarrier(car);
+            d.setSquelch(0.0);
+            std::string out;
+            for (size_t p = 0; p < a.size(); p += 1024)
+                out += d.process(a.data() + p, std::min<size_t>(1024, a.size() - p));
+            const double raw = std::max(0.0, 1.0 - double(lev(text, out)) / double(text.size()));
+            const double copy = std::max(0.0, (raw - 0.24) / 0.76); // less what random text matches
+            const double predicted = psk::copyFromQuality(d.rsq().phaseQuality);
+            std::printf("  BPSK63 %.0f dB/2500: quality %.2f, predicted copy %.0f %%, actual %.0f %% -> R%d\n", snr,
+                        d.rsq().phaseQuality, predicted * 100.0, copy * 100.0, psk::rsqReadability(predicted));
+            CHECK(std::fabs(predicted - copy) < 0.12);
+        }
+        CHECK(psk::rsqReadability(0.96) == 5 && psk::rsqReadability(0.85) == 4 && psk::rsqReadability(0.5) == 3);
+        CHECK(psk::rsqStrength(2.0) == 1 && psk::rsqStrength(15.0) == 5 && psk::rsqStrength(40.0) == 9);
+        CHECK(psk::copyFromQuality(0.0) == 0.0 && psk::copyFromQuality(1.0) == 1.0);
     }
 
     std::printf(g_fail ? "\nFAILED: %d\n" : "\nALL PASSED\n", g_fail);

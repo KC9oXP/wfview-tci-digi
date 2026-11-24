@@ -544,6 +544,34 @@ static void runNewModes()
         CHECK(q.first().on.isValid());
     }
 
+    // "Fill RST sent with a measured report": only on the tabs that can measure one (SSTV, PSK).
+    {
+        QCheckBox *measured = nullptr;
+        for (QCheckBox *c : qso->findChildren<QCheckBox *>())
+            if (c->text().startsWith(QStringLiteral("Fill RST sent with a measured report")))
+                measured = c;
+        CHECK(measured != nullptr);
+        if (measured)
+        {
+            CHECK(measured->isChecked()); // on by default
+            const auto hiddenOn = [&](const QString &tab)
+            {
+                for (int i = 0; i < tabs->count(); ++i)
+                    if (tabs->tabText(i) == tab)
+                        tabs->setCurrentIndex(i);
+                pump(50);
+                return measured->isHidden();
+            };
+            CHECK(hiddenOn(QStringLiteral("Olivia")));
+            CHECK(!hiddenOn(QStringLiteral("SSTV")));
+            CHECK(!hiddenOn(QStringLiteral("PSK")));
+            CHECK(hiddenOn(QStringLiteral("CW")));
+            CHECK(hiddenOn(QStringLiteral("RTTY")));
+            CHECK(hiddenOn(QStringLiteral("MT63")));
+            tabs->setCurrentWidget(oliviaTab);
+        }
+    }
+
     // Options > Language: System language (the default, checked) and English
     {
         int found = 0;

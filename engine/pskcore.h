@@ -159,6 +159,26 @@ public:
     std::string process(const float *x, size_t n);
     Stats stats() const;
 
+    // For an RSQ signal report (see psk::rsq*).
+    struct Rsq
+    {
+        // Mean cos(2 x phase change) over the recent symbols that carried the signal (the
+        // stronger ones of the last ~1000): 1 = clean, 0 = noise. -1 if too few.
+        double phaseQuality = -1.0;
+        int symbols = 0;
+        // Measured on idle reversals (two tones +/- baud/2): 3rd/5th/7th-order sideband
+        // pairs (+/- 1.5, 2.5, 3.5 baud) over the noise between the lines, dB, and the
+        // 3rd-order IMD (pair power over the main pair, noise taken off), dB.
+        bool idleSeen = false;
+        int idleBlocks = 0;
+        double side3Db = 0.0, side5Db = 0.0, side7Db = 0.0;
+        double imdDb = 0.0; // 3rd order
+        bool imdBelowNoise = false; // imdDb is then an upper bound ("better than")
+        double imd5Db = -99.0, imd7Db = -99.0; // 5th / 7th-order pairs over the main pair
+        double idleSnrDb = 0.0; // main pair over the noise
+    };
+    Rsq rsq() const;
+
 private:
     void rebuild();
     void onSample(std::complex<double> z);
@@ -188,4 +208,39 @@ private:
     double m_sigLevel = 0.0; // level while locked, for AFC weighting
     PskVaricodeDecoder m_vari;
     std::string m_out;
+
+    // RSQ measurement
+    void idleBlockDone();
+    double m_nIn = 0.0; // input samples so far
+    std::vector<std::pair<float, float>> m_symRing; // (cos 2 dphi, |z|), last kRing symbols
+    size_t m_symPos = 0;
+    std::vector<std::complex<double>> m_blk; // raw baseband of the block being collected
+    double m_blkStart = 0.0;
+    struct Block
+    {
+        double start, end;
+        double p[15]; // power at k * baud/2, k = -7..7
+    };
+    std::vector<Block> m_pending;
+    double m_runStart = -1.0; // decision time of the first 0 of the current run of zeros, -1 none
+    double m_acc[15] = {}; // smoothed idle-block powers
+    int m_idleBlocks = 0;
 };
+
+namespace psk
+{
+// RSQ digits (Readability, Strength, Quality: the PSK signal report).
+// R 1..5 from the expected share of characters copied (95 % -> 5, 80 % -> 4, 40 % -> 3,
+//   20 % -> 2), which comes from the phase quality (copyFromQuality, measured on this decoder).
+// S 1..9 from the trace's SNR: 3 dB -> 1, then one per 3 dB (15 dB -> 5, 27 dB -> 9).
+// Q 1..9 from the sideband pairs measured on idle (RSQ: 9 clean, 7 one barely visible pair,
+//   5 one easily visible pair, 3 several pairs, 1 splatter). A pair counts as visible when it
+//   is over the noise (3 dB) and within ~27 dB of the signal (a waterfall's colour range).
+//   3rd-order IMD -30 dB or better -> 9, -27 -> 8, -24 -> 7, -21 -> 6, -18 -> 5, -15 -> 4,
+//   worse -> 3; a visible 5th-order pair too -> at most 3 (2 if it is above -20 dB); a
+//   visible 7th-order pair as well -> 1.
+double copyFromQuality(double phaseQuality); // 0..1
+int rsqReadability(double copy);
+int rsqStrength(double snrDb);
+int rsqQuality(const PskDemodulator::Rsq &m);
+} // namespace psk

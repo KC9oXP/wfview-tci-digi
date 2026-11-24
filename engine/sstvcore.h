@@ -87,6 +87,16 @@ double imageSeconds(int mode); // without the VIS header
 // How far (in pixels) the last line ends up shifted against the first when the
 // picture's timing is off by ppm: what a sound card clock error does to a picture.
 double leanPixels(int mode, double ppm);
+// SSTV signal report digits (RSV: Readability, Signal, Video), each from a measurement.
+//  R 1..5 from the share of line syncs found (95 % -> 5, 80 % -> 4, 60 % -> 3, 40 % -> 2).
+//  V 1..9 from the noise on one pixel (one colour channel), in levels 0..255, measured on
+//    the sync pulses (a steady tone, so their spread is the noise any pixel gets):
+//    <= 3 -> 9, 5 -> 8, 8 -> 7, 12 -> 6, 18 -> 5, 26 -> 4, 36 -> 3, 50 -> 2, more -> 1
+//    (picture peak signal-to-noise 39, 34, 30, 27, 23, 20, 17, 14 dB: 9 and 8 look clean,
+//    7-6 a fine grain, 5-4 clear snow, 3 and below heavy snow).
+//  S 1..9 is not the decoder's: the radio's S-meter (or the SNR) gives it.
+int rsvReadability(double syncFraction);
+int rsvVideo(double pixelNoiseLevels);
 // Where the sync pulse starts within a sync period, ms.
 double syncOffsetMs(int mode);
 } // namespace sstv
@@ -183,6 +193,17 @@ public:
     {
         return m_img; // 0x00RRGGBB, width() * height()
     }
+    // What the current (or last) picture was like, for a signal report.
+    struct Quality
+    {
+        bool valid = false; // enough lines measured
+        int periods = 0; // sync periods decoded
+        double syncFraction = 0.0; // share of them whose sync was found
+        double pixelNoise = 0.0; // rms noise of one pixel, grey levels 0..255
+        int r = 0; // RSV readability 1..5
+        int v = 0; // RSV video 1..9
+    };
+    Quality quality() const;
     // Line period found by the slant fit, relative to nominal (1.0 = exact).
     double periodRatio() const;
     double levelDb() const
@@ -241,6 +262,9 @@ private:
     bool m_manual = false; // started by hand: runs the whole mode, never ends on "signal gone"
     bool m_phaseLocked = false; // manual start: line phase confirmed by agreeing syncs
     int m_wideAgree = 0; // manual start: wide-search hits in a row at the same phase
+    int m_syncHits = 0; // syncs found in this picture (for the report)
+    double m_noiseSq = 0.0; // pixel-mean deviations on the sync pulses, squared, Hz^2
+    double m_noiseDf = 0.0; // their degrees of freedom
     std::vector<std::pair<int, double>> m_syncs; // period, absolute sync start
     std::vector<uint32_t> m_img;
     std::vector<uint8_t> m_cr, m_cb; // Robot 36 chroma per line

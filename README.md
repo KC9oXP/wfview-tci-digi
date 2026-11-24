@@ -207,6 +207,10 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
   mode and *Start now*. The mode list follows each picture received, and with *Follow
   received* ticked (beside the send mode) the send mode changes to the mode of a picture
   that came in with its VIS header, so you answer in the mode the other station used.
+- *Start now* runs for the whole length of the chosen mode (it does not give up when no sync
+  is found): it searches the whole line for the sync until three agree, and again if it loses
+  them. Only the last line, *Stop* or a real VIS header end it. *Stop* saves what came in,
+  however short (`..._stopped.png`).
 - Tuning: click the middle of the signal on the small waterfall (or drag, or the wheel
   for 1 Hz steps); markers show sync, black and white. *Auto* offset refines it from the
   1900 Hz VIS leader and the 1200 Hz sync pulses.
@@ -463,6 +467,25 @@ logged QSO is always written to the ADIF file. Each one can also go, as soon as 
   frequency of the tab in use, smoothed over a few seconds and never measured while you transmit
   (it is not WSJT-X's 2500 Hz-referenced SNR); below 3 dB it is left out. The S-meter is asked from wfview (TCI `rx_smeter`,
   dBm, S9 = -73 dBm); if wfview does not answer, only the SNR is added.
+- *Fill RST sent with a measured report* (on by default, shown only on the SSTV and PSK tabs):
+  instead of the usual 595 / 599, "RST sent" gets a report measured from the signal. Type in
+  the box to override it.
+  - SSTV (RSV), from the last picture (up to 15 minutes old): **R** from the share of line
+    syncs found (95 % -> 5, 80 % -> 4, 60 % -> 3, 40 % -> 2); **S** from the S-meter when the
+    picture ended (the SNR if wfview gives no S-meter); **V** from the picture noise, measured
+    on the sync pulses (a steady tone, so their spread is the noise every pixel gets), in
+    levels of 255: up to 3 -> 9, 5 -> 8, 8 -> 7, 12 -> 6, 18 -> 5, 26 -> 4, 36 -> 3, 50 -> 2.
+    9 and 8 look clean, 7-6 show a fine grain, 5-4 clear snow, 3 and below heavy snow.
+  - PSK (RSQ, Readability / Strength / Quality): **R** from the share of characters copied
+    (95 % -> 5, 80 % -> 4, 40 % -> 3, 20 % -> 2), worked out from the decoder's phase quality
+    (calibrated on this decoder; BPSK31, 63 and 125 give the same curve); **S** from the trace's
+    SNR (3 dB -> 1, one per 3 dB, 27 dB -> 9); **Q** from the sideband pairs measured on the
+    idle at the start or end of an over (IMD, as fldigi shows it): -30 dB or better -> 9,
+    -27 -> 8, -24 -> 7 (one barely visible pair), -21 -> 6, -18 -> 5 (one easily visible pair),
+    -15 -> 4, several pairs -> 3 or 2, splatter -> 1. A pair counts as visible when it is over
+    the noise and within about 27 dB of the signal. The IMD is added to the comment.
+  - CW, RTTY, Hell, Olivia, MT63 and AMTOR have no report that can be measured honestly (the
+    T of RST, or the share of a free-text over copied correctly), so the box is not shown there.
 - Receive panes keep a long history: scroll back and the view stays put while new text
   arrives (*Live* returns), Ctrl+F finds text, right-click saves it.
 - Waterfalls keep the last few minutes: Shift+wheel or PgUp/PgDn scrolls back, Esc

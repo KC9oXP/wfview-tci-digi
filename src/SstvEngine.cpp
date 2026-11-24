@@ -40,7 +40,15 @@ void SstvDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
     const SstvDecoder::Events ev = m_dec.process(mono.constData(), size_t(mono.size()));
     if (ev.finished && !ev.started)
     {
-        emit imageFinished(snapshot(), m_dec.mode(), m_dec.linesDone());
+        const SstvDecoder::Quality q = m_dec.quality();
+        emit imageFinished(snapshot(),
+                           m_dec.mode(),
+                           m_dec.linesDone(),
+                           false,
+                           q.valid ? q.r : 0,
+                           q.valid ? q.v : 0,
+                           q.syncFraction,
+                           q.pixelNoise);
         m_pending = false;
     }
     if (ev.started)
@@ -90,7 +98,15 @@ void SstvDecoderWorker::stopImage()
     if (m_dec.state() != SstvDecoder::State::Receiving)
         return;
     m_dec.stop();
-    emit imageFinished(snapshot(), m_dec.mode(), m_dec.linesDone());
+    const SstvDecoder::Quality q = m_dec.quality();
+    emit imageFinished(snapshot(),
+                       m_dec.mode(),
+                       m_dec.linesDone(),
+                       true,
+                       q.valid ? q.r : 0,
+                       q.valid ? q.v : 0,
+                       q.syncFraction,
+                       q.pixelNoise);
 }
 
 void SstvDecoderWorker::resetDecoder()
@@ -144,32 +160,56 @@ SstvEngine::SstvEngine(QObject *parent)
     connect(m_worker,
             &SstvDecoderWorker::imageFinished,
             this,
-            [this](const QImage &img, int mode, int lines)
+            [this](const QImage &img, int mode, int lines, bool stopped, int r, int v, double syncs, double noise)
             {
                 m_receiving = false;
                 m_img = img;
                 emit imageUpdated(img, lines);
                 if (mode < 0 || img.isNull())
                     return;
+                if (r > 0 && v > 0)
+                {
+                    m_report.valid = true;
+                    m_report.mode = mode;
+                    m_report.lines = lines;
+                    m_report.r = r;
+                    m_report.v = v;
+                    m_report.syncFraction = syncs;
+                    m_report.pixelNoise = noise;
+                    m_report.at = QDateTime::currentDateTimeUtc();
+                    emit reportReady();
+                }
                 const int h = sstv::info(mode).height;
-                if (lines < h / 4)
+                // Stop keeps whatever came in, however short; a picture that ends by itself
+                // that early was noise or a lost signal.
+                if (lines <= 0 || (!stopped && lines < h / 4))
                 {
                     setStatus(tr("%1 picture lost after %2 lines (not saved).")
                                   .arg(QLatin1String(sstv::info(mode).name))
                                   .arg(lines));
                     return;
                 }
-                const QString path = saveImage(img, mode, lines < h ? QStringLiteral("partial") : QString());
-                setStatus(tr("Received %1 (%2 of %3 lines), saved %4")
-                              .arg(QLatin1String(sstv::info(mode).name))
-                              .arg(lines)
-                              .arg(h)
-                              .arg(QDir::toNativeSeparators(path)));
+                const QString note
+                    = lines >= h ? QString() : (stopped ? QStringLiteral("stopped") : QStringLiteral("partial"));
+                const QString path = saveImage(img, mode, note);
+                const QString name = QLatin1String(sstv::info(mode).name);
+                const QString shown = QDir::toNativeSeparators(path);
+                if (stopped && lines < h)
+                {
+                    setStatus(tr("Stopped %1 at %2 of %3 lines, saved %4").arg(name).arg(lines).arg(h).arg(shown));
+                    emit logLine(tr("[SSTV] stopped %1 at %2 of %3 lines, saved %4\n")
+                                     .arg(name)
+                                     .arg(lines)
+                                     .arg(h)
+                                     .arg(shown));
+                    return;
+                }
+                setStatus(tr("Received %1 (%2 of %3 lines), saved %4").arg(name).arg(lines).arg(h).arg(shown));
                 emit logLine(tr("[SSTV] received %1, %2 of %3 lines, saved %4\n")
-                                 .arg(QLatin1String(sstv::info(mode).name))
+                                 .arg(name)
                                  .arg(lines)
                                  .arg(h)
-                                 .arg(QDir::toNativeSeparators(path)));
+                                 .arg(shown));
             });
     connect(m_worker,
             &SstvDecoderWorker::statsUpdated,

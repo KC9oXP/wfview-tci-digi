@@ -685,6 +685,59 @@ int main()
         CHECK(std::fabs(dec.offsetHz() + 285.0) < 15.0);
     }
 
+    std::printf("RSV report: pixel noise measured on the syncs matches the picture's own noise\n");
+    for (int mode : {int(sstv::Martin1), int(sstv::Robot36), int(sstv::PD120)})
+        for (double noise : {0.0, 0.05, 0.15, 0.3})
+        {
+            const sstv::ModeInfo &m = sstv::info(mode);
+            const double fs = 48000.0;
+            const std::vector<uint32_t> img(size_t(m.width) * size_t(m.height), 0x808080u);
+            SstvEncoder enc;
+            enc.start(mode, img);
+            std::vector<float> a(size_t(0.3 * fs)), block(4096);
+            while (!enc.done())
+            {
+                enc.render(block.data(), block.size(), fs);
+                a.insert(a.end(), block.begin(), block.end());
+            }
+            a.insert(a.end(), size_t(fs), 0.0f);
+            std::mt19937 rng(11 + mode);
+            std::normal_distribution<float> nd(0.0f, float(noise));
+            for (float &v : a)
+                v = 0.5f * v + nd(rng);
+            SstvDecoder dec;
+            dec.setSampleRate(fs);
+            for (size_t p = 0; p < a.size(); p += 1000)
+                dec.process(a.data() + p, std::min<size_t>(1000, a.size() - p));
+            // One channel's noise: green for Martin, Y (all equal on grey) for Robot / PD.
+            double s1 = 0.0, s2 = 0.0;
+            long n = 0;
+            for (int y = 4; y < dec.linesDone() - 4; ++y)
+                for (int x = 10; x < m.width - 10; ++x)
+                {
+                    const double g = double((dec.image()[size_t(y) * m.width + x] >> 8) & 0xff);
+                    s1 += g;
+                    s2 += g * g;
+                    ++n;
+                }
+            const double mean = n ? s1 / double(n) : 0.0;
+            const double actual = n ? std::sqrt(std::max(0.0, s2 / double(n) - mean * mean)) : 0.0;
+            const SstvDecoder::Quality q = dec.quality();
+            std::printf(" %-10s noise %.2f: syncs %3.0f%% R%d, pixel noise measured %.1f actual %.1f, V%d\n",
+                        m.name, noise, q.syncFraction * 100.0, q.r, q.pixelNoise, actual, q.v);
+            CHECK(q.valid);
+            CHECK(q.r == 5);
+            if (noise == 0.0)
+                CHECK(q.v == 9);
+            else
+            {
+                CHECK(q.pixelNoise > 0.75 * actual && q.pixelNoise < 1.3 * actual);
+                CHECK(q.v == sstv::rsvVideo(actual) || std::abs(q.v - sstv::rsvVideo(actual)) == 1);
+            }
+        }
+    CHECK(sstv::rsvVideo(2.0) == 9 && sstv::rsvVideo(4.9) == 8 && sstv::rsvVideo(60.0) == 1);
+    CHECK(sstv::rsvReadability(0.97) == 5 && sstv::rsvReadability(0.85) == 4 && sstv::rsvReadability(0.1) == 1);
+
     std::printf("Send trim: +1000 ppm makes the picture 1000 ppm longer in samples\n");
     {
         const int mode = int(sstv::Martin1);

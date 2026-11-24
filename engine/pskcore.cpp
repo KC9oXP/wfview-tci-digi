@@ -329,8 +329,17 @@ void PskDemodulator::setBaud(double baud)
 
 void PskDemodulator::setCarrier(double hz)
 {
+    const bool moved = std::fabs(hz - m_setHz) > m_baud;
     m_setHz = hz;
     m_hz = hz;
+    if (!moved)
+        return; // settings re-sent, or AFC: same signal
+    // Another signal: its report starts afresh.
+    m_symRing.clear();
+    m_symPos = 0;
+    m_pending.clear();
+    m_runStart = -1.0;
+    m_idleBlocks = 0;
 }
 
 void PskDemodulator::rebuild()
@@ -365,6 +374,13 @@ void PskDemodulator::reset()
     m_quality = 0.0;
     m_sigLevel = 0.0;
     m_vari.reset();
+    m_symRing.clear();
+    m_symPos = 0;
+    m_blk.clear();
+    m_blkStart = m_nIn;
+    m_pending.clear();
+    m_runStart = -1.0;
+    m_idleBlocks = 0;
 }
 
 std::string PskDemodulator::process(const float *x, size_t n)
@@ -377,6 +393,10 @@ std::string PskDemodulator::process(const float *x, size_t n)
     {
         const double v = x[i];
         m_buf[m_pos] = std::complex<double>(v * std::cos(m_ncoPhase), -v * std::sin(m_ncoPhase));
+        m_blk.push_back(m_buf[m_pos]);
+        m_nIn += 1.0;
+        if (double(m_blk.size()) >= std::round(8.0 * m_fs / m_baud))
+            idleBlockDone();
         m_ncoPhase += 2.0 * M_PI * m_hz / m_fs;
         if (m_ncoPhase > 2.0 * M_PI)
             m_ncoPhase -= 2.0 * M_PI;
@@ -457,6 +477,52 @@ void PskDemodulator::onSymbol(std::complex<double> z)
     }
 
     const int bit = d.real() > 0.0 ? 1 : 0;
+    {
+        constexpr size_t kRing = 1024;
+        const std::pair<float, float> e(float(d2.real()), float(mag));
+        if (m_symRing.size() < kRing)
+            m_symRing.push_back(e);
+        else
+            m_symRing[m_symPos] = e;
+        m_symPos = (m_symPos + 1) % kRing;
+
+        // Idle (a run of 0 bits = reversals): blocks wholly inside the run are measured.
+        const double sym = m_fs / m_baud;
+        if (bit == 1)
+        {
+            m_runStart = -1.0;
+            m_pending.clear();
+        }
+        else
+        {
+            if (m_runStart < 0.0)
+                m_runStart = m_nIn;
+            for (size_t i = 0; i < m_pending.size();)
+            {
+                const Block &b = m_pending[i];
+                if (b.start < m_runStart)
+                    m_pending.erase(m_pending.begin() + long(i));
+                else if (b.end <= m_nIn - 3.0 * sym)
+                {
+                    double noise = 0.0;
+                    for (int k = -6; k <= 6; k += 2)
+                        noise += b.p[k + 7];
+                    noise /= 7.0;
+                    const double main = 0.5 * (b.p[-1 + 7] + b.p[1 + 7]);
+                    if (noise > 0.0 && main > 31.6 * noise) // a clear signal (15 dB), not noise zeros
+                    {
+                        const double a = 1.0 / std::min(m_idleBlocks + 1, 8);
+                        for (int k = 0; k < 15; ++k)
+                            m_acc[k] = m_idleBlocks == 0 ? b.p[k] : (1.0 - a) * m_acc[k] + a * b.p[k];
+                        ++m_idleBlocks;
+                    }
+                    m_pending.erase(m_pending.begin() + long(i));
+                }
+                else
+                    ++i;
+            }
+        }
+    }
     const int c = m_vari.push(bit);
     // A symbol far below the locked level means the signal has just stopped:
     // drop the partial character instead of printing noise.
@@ -475,6 +541,94 @@ void PskDemodulator::onSymbol(std::complex<double> z)
         m_out.push_back(char(c));
 }
 
+void PskDemodulator::idleBlockDone()
+{
+    Block b;
+    b.start = m_blkStart;
+    b.end = m_nIn;
+    const size_t n = m_blk.size();
+    for (int k = -7; k <= 7; ++k)
+    {
+        // Hann-windowed DFT at k * baud/2 from the carrier.
+        const double w = -2.0 * M_PI * (k * m_baud / 2.0) / m_fs;
+        std::complex<double> acc(0.0, 0.0), rot(1.0, 0.0);
+        const std::complex<double> step(std::cos(w), std::sin(w));
+        for (size_t i = 0; i < n; ++i)
+        {
+            const double win = 0.5 - 0.5 * std::cos(2.0 * M_PI * (double(i) + 0.5) / double(n));
+            acc += m_blk[i] * win * rot;
+            rot *= step;
+            if ((i & 1023) == 1023)
+                rot /= std::abs(rot);
+        }
+        b.p[k + 7] = std::norm(acc);
+    }
+    m_blk.clear();
+    m_blkStart = m_nIn;
+    if (m_runStart >= 0.0)
+    {
+        m_pending.push_back(b);
+        if (m_pending.size() > 64)
+            m_pending.erase(m_pending.begin());
+    }
+}
+
+PskDemodulator::Rsq PskDemodulator::rsq() const
+{
+    Rsq r;
+    if (m_symRing.size() >= 64)
+    {
+        std::vector<float> mags;
+        mags.reserve(m_symRing.size());
+        for (const auto &e : m_symRing)
+            mags.push_back(e.second);
+        const size_t k = mags.size() * 9 / 10;
+        std::nth_element(mags.begin(), mags.begin() + long(k), mags.end());
+        const float gate = 0.5f * mags[k]; // the symbols that carried the signal
+        double sum = 0.0;
+        int n = 0;
+        for (const auto &e : m_symRing)
+            if (e.second >= gate)
+            {
+                sum += e.first;
+                ++n;
+            }
+        if (n >= 64)
+        {
+            r.phaseQuality = std::max(0.0, sum / n);
+            r.symbols = n;
+        }
+    }
+    if (m_idleBlocks > 0)
+    {
+        double noise = 0.0;
+        for (int k = -6; k <= 6; k += 2)
+            noise += m_acc[k + 7];
+        noise = std::max(noise / 7.0, 1e-30);
+        const auto pair = [&](int k) { return 0.5 * (m_acc[-k + 7] + m_acc[k + 7]); };
+        const double p1 = pair(1), p3 = pair(3);
+        r.idleSeen = true;
+        r.idleBlocks = m_idleBlocks;
+        r.side3Db = 10.0 * std::log10(std::max(p3, 1e-30) / noise);
+        r.side5Db = 10.0 * std::log10(std::max(pair(5), 1e-30) / noise);
+        r.side7Db = 10.0 * std::log10(std::max(pair(7), 1e-30) / noise);
+        r.idleSnrDb = 10.0 * std::log10(std::max(p1, 1e-30) / noise);
+        // Within 3 dB of the noise the pair's own power is too uncertain: say "better than".
+        const double main = std::max(p1 - noise, 1e-30);
+        if (p3 > 2.0 * noise)
+            r.imdDb = 10.0 * std::log10((p3 - noise) / main);
+        else
+        {
+            r.imdBelowNoise = true;
+            r.imdDb = 10.0 * std::log10(noise / main);
+        }
+        const auto imdOf = [&](double p) { return p > noise ? 10.0 * std::log10((p - noise) / main) : -99.0; };
+        r.imd5Db = imdOf(pair(5));
+        r.imd7Db = imdOf(pair(7));
+    }
+    return r;
+}
+
 PskDemodulator::Stats PskDemodulator::stats() const
 {
     Stats s;
@@ -487,6 +641,50 @@ PskDemodulator::Stats PskDemodulator::stats() const
 
 namespace psk
 {
+int rsqReadability(double copy)
+{
+    return copy >= 0.95 ? 5 : copy >= 0.80 ? 4 : copy >= 0.40 ? 3 : copy >= 0.20 ? 2 : 1;
+}
+
+int rsqStrength(double snrDb)
+{
+    if (!(snrDb >= 3.0))
+        return 1;
+    return std::clamp(1 + int(std::floor((snrDb - 3.0) / 3.0)), 1, 9);
+}
+
+int rsqQuality(const PskDemodulator::Rsq &m)
+{
+    if (!m.idleSeen)
+        return 0;
+    int q = 9;
+    if (!m.imdBelowNoise && m.side3Db > 3.0)
+    {
+        const double i = m.imdDb;
+        q = i <= -30.0 ? 9 : i <= -27.0 ? 8 : i <= -24.0 ? 7 : i <= -21.0 ? 6 : i <= -18.0 ? 5 : i <= -15.0 ? 4 : 3;
+    }
+    if (m.side5Db > 3.0 && m.imd5Db > -27.0)
+        q = std::min(q, m.imd5Db > -20.0 ? 2 : 3);
+    if (m.side7Db > 3.0 && m.imd7Db > -27.0 && m.side5Db > 3.0 && m.imd5Db > -27.0)
+        q = 1;
+    return q;
+}
+
+double copyFromQuality(double q)
+{
+    // Measured on this decoder (BPSK31/63/125 give the same curve within ~2 %): English
+    // text through PskModulator + white noise, characters copied (edit distance, corrected
+    // for what random text matches by chance) against the phase quality.
+    static const double tq[] = {0.00, 0.15, 0.25, 0.35, 0.43, 0.50, 0.57, 0.64, 0.70, 0.75, 0.79, 0.83, 0.89, 1.00};
+    static const double tc[] = {0.00, 0.01, 0.09, 0.30, 0.42, 0.56, 0.69, 0.79, 0.85, 0.91, 0.94, 0.965, 0.99, 1.00};
+    constexpr int n = int(sizeof tq / sizeof tq[0]);
+    q = std::clamp(q, 0.0, 1.0);
+    for (int i = 1; i < n; ++i)
+        if (q <= tq[i])
+            return tc[i - 1] + (tc[i] - tc[i - 1]) * (q - tq[i - 1]) / (tq[i] - tq[i - 1]);
+    return 1.0;
+}
+
 namespace
 {
 constexpr double kMinScore = 60.0; // see SpeedGuess

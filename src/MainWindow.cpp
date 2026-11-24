@@ -359,6 +359,20 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_lookup = new CallLookup(m_settings, this);
     m_qso->setLookup(m_lookup);
     m_qso->setSignalNote([this]() { return signalNote(); });
+    m_qso->setMeasuredReport([this]() { return measuredReport(); });
+    // The S of an SSTV report is the signal when the picture ended.
+    connect(m_sstv,
+            &SstvEngine::reportReady,
+            this,
+            [this]()
+            {
+                m_sstvReportDbm = m_client ? m_client->sMeterDbm() : std::nan("");
+                // The SNR is of the tab in use: only an SSTV one counts.
+                m_sstvReportSnr = (m_tabs->currentWidget() == m_sstvPanel && m_snrAge.isValid()
+                                   && m_snrAge.elapsed() < 10000)
+                                      ? m_snr
+                                      : std::nan("");
+            });
     addDockWidget(Qt::RightDockWidgetArea, m_qso);
     m_qso->hide();
     buildFileMenu();
@@ -2907,6 +2921,75 @@ QString MainWindow::signalNote() const
     // Measured within the last minute of receiving (you may have transmitted since).
     const double snr = (m_snrAge.isValid() && m_snrAge.elapsed() < 60000) ? m_snr : std::nan("");
     return QString::fromStdString(sigrep::note(snr, m_client ? m_client->sMeterDbm() : std::nan("")));
+}
+
+QsoLogDock::Measured MainWindow::measuredReport() const
+{
+    QsoLogDock::Measured out;
+    QWidget *w = m_tabs->currentWidget();
+    if (w == m_sstvPanel)
+    {
+        const SstvEngine::RxReport r = m_sstv->lastReport();
+        // The picture you are answering: the last one, if it ended in the last 15 minutes.
+        if (!r.valid || !r.at.isValid() || r.at.secsTo(QDateTime::currentDateTimeUtc()) > 15 * 60)
+            return out;
+        int sDigit = 0;
+        QString sHow;
+        if (!std::isnan(m_sstvReportDbm))
+        {
+            sDigit = int(std::clamp(std::lround((m_sstvReportDbm + 127.0) / 6.0), 1L, 9L));
+            sHow = tr("S-meter %1").arg(QString::fromStdString(sigrep::sUnits(m_sstvReportDbm)));
+        }
+        else if (!std::isnan(m_sstvReportSnr))
+        {
+            sDigit = psk::rsqStrength(m_sstvReportSnr);
+            sHow = tr("SNR %1 dB (no S-meter)").arg(qRound(m_sstvReportSnr));
+        }
+        if (sDigit <= 0)
+            return out; // no strength known: no report
+        out.rst = QStringLiteral("%1%2%3").arg(r.r).arg(sDigit).arg(r.v);
+        out.how = tr("RSV %1 from the %2 picture at %3Z: R%4 (%5 % of line syncs found), S%6 (%7), V%8 (picture "
+                     "noise %9 of 255)")
+                      .arg(out.rst,
+                           QLatin1String(sstv::info(r.mode).name),
+                           r.at.toString(QStringLiteral("HH:mm")))
+                      .arg(r.r)
+                      .arg(qRound(r.syncFraction * 100.0))
+                      .arg(sDigit)
+                      .arg(sHow)
+                      .arg(r.v)
+                      .arg(r.pixelNoise, 0, 'f', 1);
+        return out;
+    }
+    if (w == m_pskPanel)
+    {
+        // Only while the signal is there (the box keeps the last report when it goes).
+        if (anyTransmitting() || std::isnan(m_snr) || !m_snrAge.isValid() || m_snrAge.elapsed() > 2000
+            || m_snr < sigrep::kMinSnrDb)
+            return out;
+        if (m_psk->rsqAgeMs() < 0 || m_psk->rsqAgeMs() > 3000)
+            return out;
+        const PskDemodulator::Rsq m = m_psk->rsq();
+        if (m.phaseQuality < 0.0 || !m.idleSeen)
+            return out; // Q needs idle reversals (the start or end of an over)
+        const double copy = psk::copyFromQuality(m.phaseQuality);
+        const int rd = psk::rsqReadability(copy), sd = psk::rsqStrength(m_snr), qd = psk::rsqQuality(m);
+        out.rst = QStringLiteral("%1%2%3").arg(rd).arg(sd).arg(qd);
+        const QString imd = m.imdBelowNoise ? tr("IMD better than %1 dB").arg(qRound(m.imdDb))
+                                            : tr("IMD %1 dB").arg(qRound(m.imdDb));
+        out.how = tr("RSQ %1: R%2 (about %3 % copy, phase quality %4), S%5 (trace %6 dB over the noise), Q%7 (%8)")
+                      .arg(out.rst)
+                      .arg(rd)
+                      .arg(qRound(copy * 100.0))
+                      .arg(m.phaseQuality, 0, 'f', 2)
+                      .arg(sd)
+                      .arg(qRound(m_snr))
+                      .arg(qd)
+                      .arg(imd);
+        out.comment = imd;
+        return out;
+    }
+    return out;
 }
 
 void MainWindow::editCallLookup()

@@ -13,6 +13,7 @@
 #include "ModemEngine.h"
 #include "sstvcore.h"
 
+#include <QDateTime>
 #include <QElapsedTimer>
 #include <QImage>
 
@@ -33,7 +34,9 @@ public slots:
 signals:
     void imageStarted(int mode, bool noVis);
     void imageUpdated(QImage img, int linesDone, double slant);
-    void imageFinished(QImage img, int mode, int linesDone);
+    // stopped: ended by Stop. r / v: RSV digits measured on this picture (0 = too short to say).
+    void imageFinished(QImage img, int mode, int linesDone, bool stopped, int r, int v, double syncFraction,
+                       double pixelNoise);
     void statsUpdated(double levelDb, double hz, bool receiving, double offsetHz);
 
 private:
@@ -117,6 +120,23 @@ public:
     int txLine() const; // image line on the air, -1 in the VIS header
     int txLines() const; // lines in the picture being sent
 
+    // The last received picture's signal report digits (RSV without S, which the radio's
+    // S-meter gives): R from the syncs found, V from the pixel noise measured on them.
+    struct RxReport
+    {
+        bool valid = false;
+        int mode = -1;
+        int lines = 0;
+        int r = 0, v = 0;
+        double syncFraction = 0.0; // 0..1
+        double pixelNoise = 0.0; // grey levels rms
+        QDateTime at; // UTC, when the picture ended
+    };
+    RxReport lastReport() const
+    {
+        return m_report;
+    }
+
     // Scales img to the mode's size (filling it, cropped to fit).
     static QImage fitToMode(const QImage &img, int mode);
 
@@ -140,6 +160,7 @@ signals:
     void imageStarted(int mode, bool noVis);
     void imageUpdated(QImage img, int linesDone);
     void imageSaved(QString path, QImage img);
+    void reportReady(); // lastReport() has a new picture's report
     void logLine(QString text); // for the session log
 
 protected:
@@ -171,4 +192,5 @@ private:
     QImage m_img;
     double m_levelDb = -120.0;
     double m_hz = 0.0;
+    RxReport m_report;
 };

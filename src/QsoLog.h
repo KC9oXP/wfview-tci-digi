@@ -63,6 +63,23 @@ public:
         m_signalNote = std::move(note);
     }
 
+    // A signal report measured from the signal (SSTV RSV, PSK RSQ) for "RST sent".
+    struct Measured
+    {
+        QString rst; // "595"; empty: nothing measured (yet) on this tab
+        QString how; // how it was measured, for the tooltip
+        QString comment; // extra for the comment with "Add signal report" (e.g. "IMD -27 dB")
+    };
+    void setMeasuredReport(std::function<Measured()> f)
+    {
+        m_measured = std::move(f);
+    }
+    // Modes the measured report exists for (the checkbox is hidden on the others).
+    static bool measurable(const QString &mode)
+    {
+        return mode == QLatin1String("SSTV") || mode == QLatin1String("PSK");
+    }
+
 signals:
     void logged(const QString &line); // for the TCI log / status bar
     void qsoLogged(const Qso &q); // the record just written (PSK Reporter)
@@ -76,6 +93,8 @@ private:
     void addRow(const Qso &q, bool top);
     QString defaultRst() const;
     void startLookup();
+    void updateMeasured();
+    void setRstSent(const QString &text); // what we put there (not the user)
 
     QSettings *m_settings;
     qint64 m_hz = 0;
@@ -99,6 +118,10 @@ private:
     QPushButton *m_log = nullptr;
     QTableWidget *m_table = nullptr;
     QCheckBox *m_addSignal = nullptr;
+    QCheckBox *m_measuredBox = nullptr;
     CallLookup *m_lookup = nullptr;
     std::function<QString()> m_signalNote;
+    std::function<Measured()> m_measured;
+    QString m_rstSAuto; // last text the app put in RST sent: anything else was typed
+    QString m_measuredComment;
 };

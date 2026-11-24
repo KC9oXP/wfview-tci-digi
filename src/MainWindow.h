@@ -3,6 +3,7 @@
 #include "TciClient.h"
 #include "inputlevel.h"
 #include "memories.h"
+#include "QsoLog.h"
 
 #include <QElapsedTimer>
 #include <QMainWindow>
@@ -121,6 +122,7 @@ private:
     double currentAudioHz(double *halfWidthHz = nullptr) const;
     void trackSnr(const QVector<float> &db, double hzPerBin);
     QString signalNote() const;
+    QsoLogDock::Measured measuredReport() const; // RST sent from the signal (SSTV, PSK tabs)
     void updateSnrLabel();
     void updateInputLevel();
     void editCallLookup();
@@ -186,6 +188,8 @@ private:
     TxTools *m_tools = nullptr;
     UpdateCheck *m_update = nullptr;
     CallLookup *m_lookup = nullptr;
+    double m_sstvReportDbm = std::nan(""); // S-meter / SNR when the last SSTV picture ended
+    double m_sstvReportSnr = std::nan("");
     double m_snr = std::nan(""); // smoothed SNR of the signal being decoded
     double m_snrHz = 0.0; // audio frequency it was measured at
     QElapsedTimer m_snrAge;
