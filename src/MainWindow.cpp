@@ -48,6 +48,7 @@
 #include "rsidcore.h"
 #include "rttytxsource.h"
 #include "signalreport.h"
+#include "UiLanguage.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -934,30 +935,10 @@ void MainWindow::buildMenus()
         languageGroup->addAction(action);
     };
 
-    addLanguageAction(QStringLiteral("system"), tr("System language"));
-    addLanguageAction(QStringLiteral("en"), QStringLiteral("English"));
-
-    const QDir translationDir(
-        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("translations")));
-    const QStringList translationFiles =
-        translationDir.entryList(QStringList() << QStringLiteral("wfview_tci_digi_*.qm"),
-                                 QDir::Files,
-                                 QDir::Name);
-    for (const QString &file : translationFiles)
-    {
-        QString code = file;
-        code.remove(QStringLiteral("wfview_tci_digi_"));
-        code.chop(3); // ".qm"
-        if (code.isEmpty() || code == QStringLiteral("en") || code == QStringLiteral("en_US"))
-            continue;
-
-        const QLocale locale(code);
-        QString label = locale.nativeLanguageName();
-        if (label.isEmpty())
-            label = code;
-        label += QStringLiteral(" [") + code + QStringLiteral("]");
-        addLanguageAction(code, label);
-    }
+    addLanguageAction(QStringLiteral("system"), UiLanguage::displayName(QStringLiteral("system")));
+    addLanguageAction(QStringLiteral("en"), UiLanguage::displayName(QStringLiteral("en")));
+    for (const UiLanguage::Entry &e : UiLanguage::available())
+        addLanguageAction(e.code, e.label);
 
     connect(languageGroup, &QActionGroup::triggered, this, [this, languageGroup](QAction *action)
     {
@@ -967,10 +948,9 @@ void MainWindow::buildMenus()
         if (newLanguage == oldLanguage)
             return;
 
-        const QString description =
-            newLanguage == QStringLiteral("system")
-                ? tr("the operating-system language")
-                : (newLanguage == QStringLiteral("en") ? QStringLiteral("English") : newLanguage);
+        const QString description = newLanguage == QStringLiteral("system")
+                                        ? tr("the operating-system language")
+                                        : UiLanguage::displayName(newLanguage);
 
         const auto answer = QMessageBox::question(
             this,
@@ -1157,6 +1137,7 @@ void MainWindow::buildMenus()
                                "WEFAX: HF weather fax receive with APT start/stop and phasing.<br>"
                                "AMTOR: FEC (mode B) send and receive (receiver as NAVTEX).<br>"
                                "WWV Time: time code, clock comparison, audio clock and carrier calibration.<br><br>"
+                               "Japanese translation: JG3HLX.<br><br>"
                                "License: GPLv3.<br><br>"
                                "Problems and feature requests: "
                                "<a href=\"https://github.com/KC9oXP/wfview-tci-digi/issues\">"

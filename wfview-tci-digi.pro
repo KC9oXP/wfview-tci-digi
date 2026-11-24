@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.9.14
+VERSION = 0.9.15
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -26,6 +26,7 @@ RESOURCES += wfview-tci-digi.qrc
 macx: ICON = icons/wfview-tci-digi.icns
 
 HEADERS += \
+    src/UiLanguage.h \
     src/tciprotocol.h \
     src/TciClient.h \
     src/CwDecoder.h \
@@ -119,6 +120,7 @@ HEADERS += \
     engine/ggmorse/include/ggmorse/ggmorse.h
 
 SOURCES += \
+    src/UiLanguage.cpp \
     src/main.cpp \
     src/tciprotocol.cpp \
     src/TciClient.cpp \
@@ -193,7 +195,19 @@ SOURCES += \
     engine/ggmorse/src/ggmorse.cpp \
     engine/ggmorse/src/resampler.cpp
 
-# Qt Linguist translations. Build .qm files with lrelease; the application
-# loads them from a "translations" directory beside the executable.
+# Qt Linguist translations (Options > Language). The .ts catalogs are compiled
+# with lrelease at build time and built into the executable under :/i18n, so the
+# Windows zip and the Linux AppImage carry them with nothing extra to deploy.
+# A .qm placed in a "translations" folder beside the executable is also picked
+# up (and wins over the built-in one of the same name). See translations/README.md.
 TRANSLATIONS += \
     translations/wfview_tci_digi_ja_JP.ts
+
+# lrelease ships with Qt (Qt Linguist tools). Without it the app still builds,
+# in English only.
+exists($$[QT_HOST_BINS]/lrelease*)|exists($$[QT_INSTALL_BINS]/lrelease*) {
+    CONFIG += lrelease embed_translations
+    QM_FILES_RESOURCE_PREFIX = /i18n
+} else {
+    warning("lrelease not found in Qt's bin folder: building without translations")
+}

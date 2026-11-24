@@ -490,6 +490,14 @@ logged QSO is always written to the ADIF file. Each one can also go, as soon as 
   updates at start-up* switches the start-up check off.
 - The only thing sent is the request for the public list of releases.
 
+**Language**
+- Options > *Language*: *System language* (default, follows Windows / Linux), *English*,
+  or any translation the program has. The choice is saved and used from the next start
+  (the window is not re-labelled while it is running, so nothing on the air is disturbed).
+- Translations so far: Japanese (JG3HLX), partly done; anything not yet translated stays
+  in English. They are built into the program. How to add or finish a language:
+  [translations/README.md](translations/README.md).
+
 ---
 
 ## Setting up wfview (v3)

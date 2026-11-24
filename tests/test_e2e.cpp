@@ -544,6 +544,19 @@ static void runNewModes()
         CHECK(q.first().on.isValid());
     }
 
+    // Options > Language: System language (the default, checked) and English
+    {
+        int found = 0;
+        for (QAction *a : w.findChildren<QAction *>())
+        {
+            if (a->text() == QStringLiteral("System language") && a->isCheckable() && a->isChecked())
+                ++found;
+            if (a->text() == QStringLiteral("English") && a->isCheckable() && !a->isChecked())
+                ++found;
+        }
+        CHECK(found == 2);
+    }
+
     // window screenshot (F12)
     for (QAction *a : w.findChildren<QAction *>())
         if (a->text() == QStringLiteral("Save window screenshot"))

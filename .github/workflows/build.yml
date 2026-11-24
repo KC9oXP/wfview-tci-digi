@@ -123,6 +123,9 @@ jobs:
             echo "missing libraries in the AppImage"; exit 1
           fi
           QT_QPA_PLATFORM=offscreen timeout 30 ./"$out" --version
+          # The translations are built into the program (lrelease + embed_translations).
+          QT_QPA_PLATFORM=offscreen timeout 30 ./"$out" --list-languages | tee languages.txt
+          grep -q '^ja_JP ' languages.txt || { echo "Japanese translation missing from the build"; exit 1; }
           echo "APPIMAGE=$out" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
@@ -169,7 +172,13 @@ jobs:
           $out = "wfview-tci-digi-$ver-win64"
           New-Item -ItemType Directory $out | Out-Null
           Copy-Item build\release\wfview-tci-digi.exe $out\
-          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw "$out\wfview-tci-digi.exe"
+          # Qt's own Japanese texts (Yes / No ...) for the Japanese translation; add a
+          # language here when a new catalog is added to TRANSLATIONS.
+          windeployqt --release --translations ja --no-system-d3d-compiler --no-opengl-sw "$out\wfview-tci-digi.exe"
+          # The translations are built into the program (lrelease + embed_translations).
+          $p = Start-Process -FilePath "$out\wfview-tci-digi.exe" -ArgumentList "--list-languages" -Wait -PassThru -NoNewWindow -RedirectStandardOutput languages.txt
+          Get-Content languages.txt
+          if (-not (Select-String -Path languages.txt -Pattern '^ja_JP ' -Quiet)) { throw "Japanese translation missing from the build" }
           Copy-Item README.md, LICENSE $out\
           Compress-Archive -Path "$out\*" -DestinationPath "$out.zip"
           "ZIP=$out.zip" | Out-File -FilePath $env:GITHUB_ENV -Append

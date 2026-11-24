@@ -62,6 +62,7 @@ HEADERS += \
     ../src/WwvEngine.h \
     ../src/WwvPanel.h \
     ../src/ClockSet.h \
+    ../src/UiLanguage.h \
     ../src/UpdateCheck.h \
     ../src/MemoriesDialog.h \
     ../src/PskReporter.h \
@@ -128,6 +129,7 @@ SOURCES += \
     ../src/WwvEngine.cpp \
     ../src/WwvPanel.cpp \
     ../src/ClockSet.cpp \
+    ../src/UiLanguage.cpp \
     ../src/UpdateCheck.cpp \
     ../src/MemoriesDialog.cpp \
     ../src/PskReporter.cpp \
