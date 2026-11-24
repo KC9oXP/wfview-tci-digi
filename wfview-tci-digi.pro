@@ -180,3 +180,8 @@ SOURCES += \
     engine/spectrum.cpp \
     engine/ggmorse/src/ggmorse.cpp \
     engine/ggmorse/src/resampler.cpp
+
+# Qt Linguist translations. Build .qm files with lrelease; the application
+# loads them from a "translations" directory beside the executable.
+TRANSLATIONS += \
+    translations/wfview_tci_digi_ja_JP.ts
