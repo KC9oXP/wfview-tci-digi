@@ -326,7 +326,7 @@ SstvDecoder::Events SstvDecoder::process(const float *x, size_t n)
                     renderPeriod(q);
                 ev.redraw = true;
             }
-            if (m_noSyncRun >= kMaxNoSync && m_periodsDone > kMaxNoSync)
+            if (!m_manual && m_noSyncRun >= kMaxNoSync && m_periodsDone > kMaxNoSync)
             {
                 // Signal gone: keep what we have.
                 m_state = State::Idle;
@@ -452,6 +452,8 @@ void SstvDecoder::begin(int mode, double t0, Events &ev, bool periodStart)
     m_periodsDone = 0;
     m_noSyncRun = 0;
     m_manual = false;
+    m_phaseLocked = false;
+    m_wideAgree = 0;
     m_syncs.clear();
     m_img.assign(size_t(m.width) * size_t(m.height), 0u);
     m_cr.assign(size_t(m.width) * size_t(m.height), 128);
@@ -589,6 +591,8 @@ void SstvDecoder::startManual(int mode)
     Events ev;
     begin(std::clamp(mode, 0, int(ModeCount) - 1), m_now, ev);
     m_manual = true;
+    m_phaseLocked = false;
+    m_wideAgree = 0;
 }
 
 void SstvDecoder::stop()
@@ -602,11 +606,19 @@ void SstvDecoder::measureSync(int p)
     const double k = m_period / nominalPeriod();
     const double L = m.syncMs * m_rate / 1000.0 * k;
     const double expect = m_t0 + p * m_period + syncOffsetMs(m_mode) * m_rate / 1000.0 * k;
-    // Before the first timing fit of a manual start the phase is unknown.
-    const bool wide = m_manual && m_syncs.empty() && p < 8;
+    // Manual start: until the line phase is confirmed, search a whole sync
+    // period, ending at the newest sample already received (later samples
+    // would only repeat the last one).
+    const bool wide = m_manual && !m_phaseLocked;
     const double w = wide ? m_period / 2.0 : 10.0 * m_rate / 1000.0;
-    const long a = long(std::floor(expect - w - L));
-    const long b = long(std::ceil(expect + w + 2 * L));
+    double lo = expect - w, hi = expect + w;
+    if (wide)
+    {
+        hi = std::min(hi, m_now - 2.0 * L - 2.0);
+        lo = hi - m_period;
+    }
+    const long a = long(std::floor(lo - L));
+    const long b = long(std::ceil(hi + 2 * L));
     std::vector<int> pre(size_t(b - a + 2), 0);
     for (long t = a; t <= b; ++t)
         pre[size_t(t - a + 1)] = pre[size_t(t - a)] + (val(double(t)) < 1350.0f ? 1 : 0);
@@ -620,7 +632,7 @@ void SstvDecoder::measureSync(int p)
     double bestScore = -1e9;
     long bestT = 0;
     double bestIn = 0.0;
-    for (long t = long(std::lround(expect - w)); t <= long(std::lround(expect + w)); ++t)
+    for (long t = long(std::lround(lo)); t <= long(std::lround(hi)); ++t)
     {
         const double in = double(count(t, t + Li)) / Li;
         const double out = double(count(t - Li / 2, t) + count(t + Li, t + Li + Li / 2)) / Li;
@@ -634,12 +646,29 @@ void SstvDecoder::measureSync(int p)
     }
     if (bestIn > 0.65 && bestScore > 0.4)
     {
+        int at = p;
         if (wide)
         {
-            // First sync of a manual start: move the timing onto it.
-            m_t0 += double(bestT) - expect;
+            // Move the timing onto this sync. It may belong to the period before
+            // or after p; a shift of less than 3 ms confirms the phase found
+            // last time, three in a row lock it.
+            double delta = double(bestT) - expect;
+            const int k = int(std::lround(delta / m_period));
+            delta -= k * m_period;
+            at = p + k;
+            if (std::fabs(delta) < 3.0 * m_rate / 1000.0 && m_wideAgree > 0)
+                ++m_wideAgree;
+            else
+            {
+                m_wideAgree = 1;
+                m_syncs.clear(); // syncs at another phase were not this signal
+            }
+            m_t0 += delta;
+            if (m_wideAgree >= 3)
+                m_phaseLocked = true;
         }
-        m_syncs.emplace_back(p, double(bestT));
+        if (m_syncs.empty() || m_syncs.back().first < at)
+            m_syncs.emplace_back(at, double(bestT));
         m_noSyncRun = 0;
         if (m_autoOffOn)
         {
@@ -659,6 +688,14 @@ void SstvDecoder::measureSync(int p)
     else
     {
         ++m_noSyncRun;
+        if (wide)
+            m_wideAgree = 0;
+        else if (m_manual && m_noSyncRun >= 8)
+        {
+            // Manual picture lost its line phase: search the whole period again.
+            m_phaseLocked = false;
+            m_wideAgree = 0;
+        }
     }
 }
 

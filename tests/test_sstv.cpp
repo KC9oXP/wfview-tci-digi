@@ -595,6 +595,96 @@ int main()
         CHECK(r.err < 20.0);
     }
 
+    std::printf("Manual start runs the whole mode: noise only, no early \"signal lost\"\n");
+    for (int mode : {int(sstv::Scottie1), int(sstv::Robot36), int(sstv::PD120)})
+    {
+        const sstv::ModeInfo &m = sstv::info(mode);
+        const double fs = 48000.0;
+        std::vector<float> a(size_t((sstv::imageSeconds(mode) + 5.0) * fs));
+        std::mt19937 rng(99 + mode);
+        std::normal_distribution<float> nd(0.0f, 0.3f);
+        for (float &v : a)
+            v = nd(rng);
+        SstvDecoder dec;
+        dec.setSampleRate(fs);
+        dec.process(a.data(), 4800);
+        dec.startManual(mode);
+        int lines = -1;
+        double secs = 0.0;
+        for (size_t pos = 4800; pos < a.size(); pos += 1000)
+        {
+            if (dec.process(a.data() + pos, std::min<size_t>(1000, a.size() - pos)).finished)
+            {
+                lines = dec.linesDone();
+                secs = double(pos - 4800) / fs;
+                break;
+            }
+        }
+        std::printf(" %-10s ended at %d of %d lines after %.1f s\n", m.name, lines, m.height, secs);
+        CHECK(lines == m.height);
+        CHECK(secs > sstv::imageSeconds(mode) - 1.0);
+    }
+
+    std::printf("Manual start mid-picture, mid-line, signal 285 Hz low (manual -300 + auto)\n");
+    {
+        const int mode = int(sstv::Scottie1);
+        const sstv::ModeInfo &m = sstv::info(mode);
+        const std::vector<uint32_t> img = testImage(m.width, m.height);
+        const double fs = 48000.0;
+        SstvEncoder enc;
+        enc.setOffsetHz(-285.0);
+        enc.start(mode, img);
+        std::vector<float> a, block(4096);
+        while (!enc.done())
+        {
+            enc.render(block.data(), block.size(), fs);
+            a.insert(a.end(), block.begin(), block.end());
+        }
+        a.insert(a.end(), size_t(40.0 * fs), 0.0f);
+        std::mt19937 rng(5);
+        std::normal_distribution<float> nd(0.0f, 0.1f);
+        for (float &v : a)
+            v = 0.5f * v + nd(rng);
+        SstvDecoder dec;
+        dec.setSampleRate(fs);
+        dec.setAutoStart(false);
+        dec.setOffsetHz(-300.0);
+        const size_t start = size_t(30.2 * fs); // ~line 68, partway through a line
+        dec.process(a.data(), start);
+        dec.startManual(mode);
+        bool ended = false;
+        for (size_t pos = start; pos < a.size() && !ended; pos += 1000)
+            ended = dec.process(a.data() + pos, std::min<size_t>(1000, a.size() - pos)).finished;
+        // Decoded row y is source row y + shift: find the shift, then the error.
+        const std::vector<uint32_t> &got = dec.image();
+        double best = 1e9;
+        int bestShift = 0;
+        for (int shift = 0; shift < m.height / 2; ++shift)
+        {
+            double e = 0.0;
+            long n = 0;
+            for (int y = 2; y + shift < m.height - 2; ++y)
+                for (int x = 8; x < m.width - 8; x += 2)
+                {
+                    const uint32_t p = got[size_t(y) * m.width + x], q = img[size_t(y + shift) * m.width + x];
+                    for (int c = 0; c < 24; c += 8)
+                        e += std::abs(int((p >> c) & 0xff) - int((q >> c) & 0xff));
+                    n += 3;
+                }
+            if (n > 0 && e / n < best)
+            {
+                best = e / n;
+                bestShift = shift;
+            }
+        }
+        std::printf("  lines %d, source row shift %d, err %.1f, offset %.0f Hz\n",
+                    dec.linesDone(), bestShift, best, dec.offsetHz());
+        CHECK(ended && dec.linesDone() == m.height);
+        CHECK(bestShift > 55 && bestShift < 80);
+        CHECK(best < 20.0);
+        CHECK(std::fabs(dec.offsetHz() + 285.0) < 15.0);
+    }
+
     std::printf("Send trim: +1000 ppm makes the picture 1000 ppm longer in samples\n");
     {
         const int mode = int(sstv::Martin1);

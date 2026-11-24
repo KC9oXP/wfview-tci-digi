@@ -158,7 +158,10 @@ public:
     }
     void reset(); // back to Idle, picture dropped
 
-    // Start receiving a picture now in the given mode (no VIS seen).
+    // Start receiving a picture now in the given mode (no VIS seen). It runs for
+    // the mode's whole length: only the last line, stop(), reset() or a new VIS
+    // header end it. The line phase is searched over the whole sync period until
+    // three syncs agree, and searched again if it is lost.
     void startManual(int mode);
     // Stop the current picture (keeps what was received).
     void stop();
@@ -235,7 +238,9 @@ private:
     double m_period = 0.0; // samples per sync period
     int m_periodsDone = 0;
     int m_noSyncRun = 0;
-    bool m_manual = false; // started by hand: the line phase is not known yet
+    bool m_manual = false; // started by hand: runs the whole mode, never ends on "signal gone"
+    bool m_phaseLocked = false; // manual start: line phase confirmed by agreeing syncs
+    int m_wideAgree = 0; // manual start: wide-search hits in a row at the same phase
     std::vector<std::pair<int, double>> m_syncs; // period, absolute sync start
     std::vector<uint32_t> m_img;
     std::vector<uint8_t> m_cr, m_cb; // Robot 36 chroma per line
