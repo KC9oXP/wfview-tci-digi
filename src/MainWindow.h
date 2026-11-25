@@ -82,6 +82,8 @@ private slots:
     void onRsid(int code, double centreHz, bool mirrored, int errors);
     void checkRsidReturn();
     // Mode first, then the dial; checked again after 1.5 s (as the WWV restore).
+    // The radio stays on the new sideband: going back to the previous tab does
+    // not retune it (user 2026-11-24).
     void tuneRadio(qint64 hz, const QString &mode, const QString &why);
     // A dot on a tab that is not showing when its decoder prints text.
     void markActivity(QWidget *panel);
@@ -176,13 +178,6 @@ private:
     qint64 m_rsidJumpMs = 0; // when it jumped
     qint64 m_rsidTextMs = 0; // last text on the tab it jumped to (0 = none yet)
     QTimer *m_rsidReturn = nullptr;
-    // Inverted-sideband fix after an RSID (0.9.16-6): where the radio was, and
-    // what we set, to put it back when the jump goes back (only if the user has
-    // not retuned meanwhile).
-    qint64 m_rsidRadioBackHz = 0;
-    QString m_rsidRadioBackMode;
-    qint64 m_rsidRadioSetHz = 0;
-    QString m_rsidRadioSetMode;
     NavtexEngine *m_navtex = nullptr;
     NavtexPanel *m_navtexPanel = nullptr;
     SstvEngine *m_sstv = nullptr;

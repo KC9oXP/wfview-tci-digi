@@ -38,12 +38,6 @@ inline long long usbDialForLsbSignal(long long lsbDialHz, double audioHz)
     return lsbDialHz - 2 * std::llround(audioHz);
 }
 
-// The dial back on LSB (for going back when the signal has ended).
-inline long long lsbDialForUsbSignal(long long usbDialHz, double audioHz)
-{
-    return usbDialHz + 2 * std::llround(audioHz);
-}
-
 inline std::string upper(std::string s)
 {
     std::string out;

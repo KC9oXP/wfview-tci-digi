@@ -861,7 +861,7 @@ static void renderScreens(const QString &dir)
 
 static void runRsidSideband()
 {
-    std::printf("\n=== 0.9.16-6: mirrored Olivia RSID on DIGL -> DIGU, dial moved, put back when it ends ===\n");
+    std::printf("\n=== 0.9.16-7: mirrored Olivia RSID on DIGL -> DIGU, dial moved, stays there when the tab goes back ===\n");
     MockTciServer server;
     server.listen();
     QTemporaryDir tmp;
@@ -899,11 +899,12 @@ static void runRsidSideband()
     std::printf("  Olivia pane: [%s]\n", qPrintable(pane.trimmed()));
     CHECK(pane.contains(QStringLiteral("radio set to DIGU 3.581.994")));
 
-    // Text arrives, then 10 s of nothing: back to CW, radio back to DIGL 3.586000.
+    // Text arrives, then 10 s of nothing: back to CW, but the radio stays on DIGU 3.581994.
     QMetaObject::invokeMethod(&w, "markActivity", Qt::DirectConnection, Q_ARG(QWidget *, oliviaTab));
     CHECK(waitFor([&] { return tabs->currentWidget() == startTab; }, 15000));
-    CHECK(waitFor([&] { return server.freq == 3586000 && server.lastMode.toLower() == QStringLiteral("digl"); }, 3000));
-    std::printf("  back: %lld %s\n", (long long)server.freq, qPrintable(server.lastMode));
+    pump(2000);
+    CHECK(server.freq == 3581994 && server.lastMode.toLower() == QStringLiteral("digu"));
+    std::printf("  after going back: %lld %s\n", (long long)server.freq, qPrintable(server.lastMode));
 
     // Radio already on DIGU: a mirrored ID means the sender is inverted; nothing is retuned.
     client->setModulation(QStringLiteral("digu"));

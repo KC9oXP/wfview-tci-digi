@@ -214,7 +214,6 @@ int main()
         // The user's case: 3.586000 DIGL, Olivia 8/500 at 2003 Hz -> DIGU 3.581994.
         CHECK(usbDialForLsbSignal(3586000, 2003.0) == 3581994);
         CHECK(usbDialForLsbSignal(3586000, 2002.6) == 3581994);
-        CHECK(lsbDialForUsbSignal(3581994, 2003.0) == 3586000);
         // RF stays put: LSB RF = dial - f, USB RF = dial + f.
         for (double f : {300.0, 1000.0, 1500.0, 2003.0, 2700.0})
         {

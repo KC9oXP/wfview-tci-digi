@@ -306,8 +306,8 @@ the ID is still found, but the mode prints only garbage. When such an ID is hear
 and the radio is on an LSB mode, the program switches the radio to the matching USB data
 mode (DIGL -> DIGU, DATA-L -> DATA-U ...) and moves the dial by twice the audio frequency so
 the signal stays where it was in the waterfall: 3.586.000 DIGL with the signal at 2003 Hz
-becomes 3.581.994 DIGU, still at 2003 Hz. With *Go back* on, the radio returns to the old
-mode and dial together with the tab, unless you retuned in between. A mirrored ID with the
+becomes 3.581.994 DIGU, still at 2003 Hz. The radio stays there afterwards (*Go back*
+only changes the tab). A mirrored ID with the
 radio already on USB means the other station sends inverted: only a note. Off: a note
 saying to switch by hand. Never while transmitting.
 

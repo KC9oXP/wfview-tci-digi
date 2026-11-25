@@ -1121,8 +1121,7 @@ void MainWindow::buildMenus()
     rsidFix->setChecked(m_rsid->fixSideband());
     rsidFix->setToolTip(tr("Olivia, Contestia and MT63 are sent on upper sideband. When their ID is heard mirrored "
                            "because the radio is on LSB (e.g. DIGL on 80 m), switch the radio to the USB data mode "
-                           "and move the dial so the signal stays on the same audio frequency. With \"Go back\" on, "
-                           "the radio is put back too when the signal ends, unless you retuned. Off: only a note."));
+                           "and move the dial so the signal stays on the same audio frequency. The radio stays there afterwards. Off: only a note."));
     connect(rsidFix, &QAction::toggled, m_rsid, &RsidEngine::setFixSideband);
     connect(rsidOn, &QAction::toggled, rsidSwitch, &QAction::setEnabled);
     connect(rsidOn, &QAction::toggled, rsidBack, &QAction::setEnabled);
@@ -1417,14 +1416,6 @@ void MainWindow::onRsid(int code, double centreHz, bool mirrored, int errors)
             else
             {
                 const qint64 newDial = sidebandfix::usbDialForLsbSignal(dial, centreHz);
-                // A second ID while already fixed keeps the first place to go back to.
-                if (m_rsidRadioSetHz == 0)
-                {
-                    m_rsidRadioBackHz = dial;
-                    m_rsidRadioBackMode = cur;
-                }
-                m_rsidRadioSetHz = newDial;
-                m_rsidRadioSetMode = usb;
                 tuneRadio(newDial, usb, tr("RSID inverted sideband"));
                 note2 += tr(" - heard on %1 (inverted): radio set to %2 %3")
                              .arg(cur.toUpper(), usb.toUpper(), formatFreq(newDial));
@@ -1497,14 +1488,6 @@ void MainWindow::onRsid(int code, double centreHz, bool mirrored, int errors)
     default:
         break;
     }
-    // The radio is only put back together with the tab (Go back); with no jump
-    // to go back from (already on that tab), keep the new sideband.
-    if (!m_rsidFrom || !m_rsidTo)
-    {
-        m_rsidRadioBackHz = m_rsidRadioSetHz = 0;
-        m_rsidRadioBackMode.clear();
-        m_rsidRadioSetMode.clear();
-    }
     statusBar()->showMessage(note2, 15000);
 }
 
@@ -1523,9 +1506,6 @@ void MainWindow::checkRsidReturn()
         // The user went elsewhere (or turned it off): forget the jump.
         m_rsidFrom = m_rsidTo = nullptr;
         m_rsidReturn->stop();
-        m_rsidRadioBackHz = m_rsidRadioSetHz = 0;
-        m_rsidRadioBackMode.clear();
-        m_rsidRadioSetMode.clear();
         return;
     }
     if (anyTransmitting())
@@ -1539,20 +1519,6 @@ void MainWindow::checkRsidReturn()
     QWidget *back = m_rsidFrom;
     m_rsidFrom = m_rsidTo = nullptr;
     m_rsidReturn->stop();
-    // Sideband fixed for this signal: put the radio back, unless it was retuned.
-    if (m_rsidRadioSetHz > 0 && m_rsidRadioBackHz > 0)
-    {
-        const bool untouched = m_client->frequencyHz() == m_rsidRadioSetHz
-            && RadioModes::normalised(m_client->modulation()) == RadioModes::normalised(m_rsidRadioSetMode);
-        if (untouched)
-            tuneRadio(m_rsidRadioBackHz, m_rsidRadioBackMode, tr("RSID signal ended"));
-        else
-            log(tr("RSID: the radio was retuned, not putting it back to %1 %2.")
-                    .arg(formatFreq(m_rsidRadioBackHz), m_rsidRadioBackMode));
-    }
-    m_rsidRadioBackHz = m_rsidRadioSetHz = 0;
-    m_rsidRadioBackMode.clear();
-    m_rsidRadioSetMode.clear();
     const int i = m_tabs->indexOf(back);
     if (i < 0)
         return;
