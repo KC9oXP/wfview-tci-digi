@@ -685,4 +685,37 @@ inline std::string toCsv(const std::vector<Memory> &list)
     }
     return out;
 }
+// Built-in rows that were moved in a later version (e.g. off FT8/FT4): a row in
+// the user's list that is still exactly an old built-in default (same name, tab,
+// sub-mode, dial, sideband and comment, so not edited by the user) is replaced
+// by the current built-in row of that name. Returns the names updated.
+inline std::vector<std::string> updateOldDefaults(std::vector<Memory> &list,
+                                                  const std::vector<Memory> &current,
+                                                  const std::vector<Memory> &old)
+{
+    auto same = [](const Memory &a, const Memory &b)
+    {
+        return a.name == b.name && a.tab == b.tab && a.subMode == b.subMode && a.dialHz == b.dialHz
+            && a.sideband == b.sideband && a.comment == b.comment;
+    };
+    std::vector<std::string> done;
+    for (Memory &m : list)
+    {
+        bool wasOld = false;
+        for (const Memory &o : old)
+            if (same(m, o))
+                wasOld = true;
+        if (!wasOld)
+            continue;
+        for (const Memory &c : current)
+            if (c.name == m.name && !same(m, c))
+            {
+                m = c;
+                done.push_back(c.name);
+                break;
+            }
+    }
+    return done;
+}
+
 } // namespace memories

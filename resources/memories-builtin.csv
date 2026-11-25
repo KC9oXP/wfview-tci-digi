@@ -27,10 +27,10 @@ RTTY 60 m segment,RTTY,45.45/170,5.3520,USB,60 m,"General, Advanced, Extra","60 
 RTTY 40 m DX,RTTY,45.45/170,7.038,USB,40 m,"General, Advanced, Extra",ARRL band plan: 7.040 RTTY/Data DX (tones at 2125/2295 Hz put the signal near 7.040)
 RTTY 40 m,RTTY,45.45/170,7.080,USB,40 m,"General, Advanced, Extra",ARRL band plan: 7.080-7.125 RTTY/Data
 RTTY 30 m,RTTY,45.45/170,10.130,USB,30 m,"General, Advanced, Extra",ARRL band plan: 10.130-10.140 RTTY
-RTTY 20 m,RTTY,45.45/170,14.080,USB,20 m,"General, Advanced, Extra",ARRL band plan: 14.070-14.095 RTTY
-RTTY 17 m,RTTY,45.45/170,18.100,USB,17 m,"General, Advanced, Extra",ARRL band plan: 18.100-18.105 RTTY
+RTTY 20 m,RTTY,45.45/170,14.083,USB,20 m,"General, Advanced, Extra",Common RTTY spot above FT4 (14.080); tones at 2125/2295 Hz put the signal near 14.085. ARRL band plan: 14.070-14.095 RTTY
+RTTY 17 m,RTTY,45.45/170,18.106,USB,17 m,"General, Advanced, Extra",Common RTTY spot since FT8 took 18.100 and FT4 18.104 (tones at 2125/2295 Hz put the signal near 18.108); ARRL band plan: 18.105-18.110 automatically controlled data
 RTTY 15 m,RTTY,45.45/170,21.080,USB,15 m,"General, Advanced, Extra",ARRL band plan: 21.070-21.110 RTTY/Data
-RTTY 12 m,RTTY,45.45/170,24.920,USB,12 m,"General, Advanced, Extra",ARRL band plan: 24.920-24.925 RTTY
+RTTY 12 m,RTTY,45.45/170,24.925,USB,12 m,"General, Advanced, Extra","Common RTTY spot above FT4 (24.919); tones at 2125/2295 Hz put the signal near 24.927. ARRL band plan: 24.920-24.925 RTTY, 24.925-24.930 automatically controlled data"
 RTTY 10 m,RTTY,45.45/170,28.080,USB,10 m,"Novice, Technician, General, Advanced, Extra",ARRL band plan: 28.070-28.150 RTTY; open to all classes
 PSK31 80 m,PSK,BPSK31,3.580,USB,80 m,"General, Advanced, Extra",Common PSK31 spot; ARRL band plan: 3.570-3.600 RTTY/Data
 PSK31 60 m 5332,PSK,BPSK31,5.3305,USB,60 m,"General, Advanced, Extra","60 m channel centred on 5332 kHz (FCC, General and up): 100 W ERP, 2.8 kHz max, USB dial 1.5 kHz below; put the signal at 1500 Hz audio (channel centre)"
@@ -41,9 +41,9 @@ PSK31 60 m segment,PSK,BPSK31,5.3520,USB,60 m,"General, Advanced, Extra","60 m s
 PSK31 40 m,PSK,BPSK31,7.070,USB,40 m,"General, Advanced, Extra","Common PSK31 spot (below the ARRL 7.080-7.125 RTTY/Data segment, but in the FCC data sub-band)"
 PSK31 30 m,PSK,BPSK31,10.142,USB,30 m,"General, Advanced, Extra",Common PSK31 spot; ARRL band plan lists 10.140-10.150 as packet
 PSK31 20 m,PSK,BPSK31,14.070,USB,20 m,"General, Advanced, Extra",Common PSK31 spot; ARRL band plan: 14.070-14.095 RTTY
-PSK31 17 m,PSK,BPSK31,18.100,USB,17 m,"General, Advanced, Extra",ARRL band plan: 18.100-18.105 RTTY
+PSK31 17 m,PSK,BPSK31,18.097,USB,17 m,"General, Advanced, Extra","PSK31 moved here from 18.100 when FT8 took 18.100 (signal at 1000 Hz audio = 18.098, below FT8); ARRL band plan: 18.095-18.105 data"
 PSK31 15 m,PSK,BPSK31,21.070,USB,15 m,"General, Advanced, Extra",Common PSK31 spot; ARRL band plan: 21.070-21.110 RTTY/Data
-PSK31 12 m,PSK,BPSK31,24.920,USB,12 m,"General, Advanced, Extra",ARRL band plan: 24.920-24.925 RTTY
+PSK31 12 m,PSK,BPSK31,24.920,USB,12 m,"General, Advanced, Extra","Common PSK31 spot (ARRL band plan: 24.920-24.925 RTTY). FT4 dials 24.919 and FT8 24.915: if busy, move the signal up the waterfall"
 PSK31 10 m,PSK,BPSK31,28.120,USB,10 m,"Novice, Technician, General, Advanced, Extra",Common PSK31 spot; ARRL band plan: 28.070-28.150 RTTY; open to all classes
 Olivia 160 m,Olivia,Olivia 8/250,1.8255,USB,160 m,"General, Advanced, Extra","Olivia community calling frequency (oliviadigitalmode.org, 2023 list): centre 1.8270 MHz with the waterfall at 1500 Hz; 8/250 to call, move off after the QSO starts (ITU Region 2)"
 Olivia 80 m,Olivia,Olivia 8/250,3.5815,USB,80 m,"General, Advanced, Extra","Olivia community calling frequency (oliviadigitalmode.org, 2023 list): centre 3.5830 MHz with the waterfall at 1500 Hz; 8/250 to call, move off after the QSO starts"
@@ -54,17 +54,17 @@ Olivia 60 m 5405,Olivia,Olivia 8/500,5.4035,USB,60 m,"General, Advanced, Extra",
 Olivia 60 m segment,Olivia,Olivia 8/500,5.3520,USB,60 m,"General, Advanced, Extra","60 m segment 5351.5-5366.5 kHz (FCC since 13 Feb 2026, General and up): 9.15 W ERP max, 2.8 kHz max; anywhere in the segment"
 Olivia 40 m,Olivia,Olivia 8/250,7.0385,USB,40 m,"General, Advanced, Extra","Olivia community calling frequency (oliviadigitalmode.org, 2023 list): centre 7.0400 MHz with the waterfall at 1500 Hz; 8/250 to call, move off after the QSO starts (ITU Region 2)"
 Olivia 40 m 7.0725,Olivia,Olivia 8/250,7.0710,USB,40 m,"General, Advanced, Extra","Olivia community calling frequency (oliviadigitalmode.org, 2023 list): centre 7.0725 MHz with the waterfall at 1500 Hz; 8/250 to call, move off after the QSO starts (secondary); FT8 starts at 7.074, keep below it"
-Olivia 30 m,Olivia,Olivia 8/250,10.1415,USB,30 m,"General, Advanced, Extra","Olivia community calling frequency (oliviadigitalmode.org, 2023 list): centre 10.1430 MHz with the waterfall at 1500 Hz; 8/250 to call, move off after the QSO starts"
+Olivia 30 m,Olivia,Olivia 8/250,10.1415,USB,30 m,"General, Advanced, Extra","Olivia community calling frequency (oliviadigitalmode.org, 2023 list): centre 10.1430 MHz with the waterfall at 1500 Hz; 8/250 to call, move off after the QSO starts. FT4 dials 10.140: its top edge is close, keep the waterfall at 1500 Hz or above"
 Olivia 20 m,Olivia,Olivia 8/250,14.0710,USB,20 m,"General, Advanced, Extra","Olivia community calling frequency (oliviadigitalmode.org, 2023 list): centre 14.0725 MHz with the waterfall at 1500 Hz; 8/250 to call, move off after the QSO starts; nothing at 14.0735 or above (FT8 / JT sub-band)"
 Olivia 20 m 32/1000,Olivia,Olivia 32/1000,14.1070,USB,20 m,"General, Advanced, Extra","Olivia community calling frequency for 32/1000 (oliviadigitalmode.org, 2023 list): centre 14.1085 MHz with the waterfall at 1500 Hz"
 Olivia 17 m,Olivia,Olivia 8/250,18.0975,USB,17 m,"General, Advanced, Extra","Olivia community calling frequency (oliviadigitalmode.org, 2023 list): centre 18.0990 MHz with the waterfall at 1500 Hz; 8/250 to call, move off after the QSO starts"
 Olivia 15 m,Olivia,Olivia 8/250,21.0710,USB,15 m,"General, Advanced, Extra","Olivia community calling frequency (oliviadigitalmode.org, 2023 list): centre 21.0725 MHz with the waterfall at 1500 Hz; 8/250 to call, move off after the QSO starts"
 Olivia 12 m,Olivia,Olivia 8/250,24.9210,USB,12 m,"General, Advanced, Extra","Olivia community calling frequency (oliviadigitalmode.org, 2023 list): centre 24.9225 MHz with the waterfall at 1500 Hz; 8/250 to call, move off after the QSO starts"
 Olivia 10 m,Olivia,Olivia 8/250,28.1210,USB,10 m,"Novice, Technician, General, Advanced, Extra","Olivia community calling frequency (oliviadigitalmode.org, 2023 list): centre 28.1225 MHz with the waterfall at 1500 Hz; 8/250 to call, move off after the QSO starts; ARRL band plan 28.070-28.150 RTTY/data, open to all classes"
-Hell 160 m,Hell,,1.842,USB,160 m,"General, Advanced, Extra",Feld Hell Club: 1.843-1.844 (FT8 took the old 1.840). Dial 1 kHz below so the signal is at 1000 Hz audio
-Hell 80 m,Hell,,3.577,USB,80 m,"General, Advanced, Extra",Feld Hell Club: 3.578-3.586 (FT8 took the old 3.573). Dial 1 kHz below so the signal is at 1000 Hz audio
+Hell 160 m,Hell,,1.8425,USB,160 m,"General, Advanced, Extra","Feld Hell Club: 1.843-1.844 (FT8 took the old 1.840). Dial so the signal is at 1.8435 (1000 Hz audio), clear of FT8 at 1.840"
+Hell 80 m,Hell,,3.584,USB,80 m,"General, Advanced, Extra","Feld Hell Club: 3.578-3.586 (FT8 took the old 3.573). Dial so the signal is at 3.585 (1000 Hz audio), the NA Feld Hell net frequency, clear of FT4 at 3.575"
 Hell 40 m,Hell,,7.079,USB,40 m,"General, Advanced, Extra",Feld Hell Club: 7.080-7.090. Dial 1 kHz below so the signal is at 1000 Hz audio
-Hell 30 m,Hell,,10.136,USB,30 m,"General, Advanced, Extra",Feld Hell Club: 10.137-10.143 (10.144 in Region 1). Dial 1 kHz below so the signal is at 1000 Hz audio
+Hell 30 m,Hell,,10.1385,USB,30 m,"General, Advanced, Extra","Feld Hell Club: 10.137-10.143. Dial so the signal is at 10.1395 (1000 Hz audio), in the gap between FT8 (10.136) and FT4 (10.140). NA Feld Hell net: Wed 20:00 ET at 10.1425"
 Hell 20 m,Hell,,14.062,USB,20 m,"General, Advanced, Extra","Feld Hell Club calling frequency 14.063 (activity up to 14.069; also 14.072-14.073, clear of FT8). Dial 1 kHz below so the signal is at 1000 Hz audio"
 Hell 17 m,Hell,,18.097,USB,17 m,"General, Advanced, Extra",Feld Hell Club: 18.098-18.105. Dial 1 kHz below so the signal is at 1000 Hz audio
 Hell 15 m,Hell,,21.062,USB,15 m,"General, Advanced, Extra",Feld Hell Club: 21.063. Dial 1 kHz below so the signal is at 1000 Hz audio

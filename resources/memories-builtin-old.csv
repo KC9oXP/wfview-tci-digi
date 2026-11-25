@@ -1,0 +1,16 @@
+Name,Tab,Sub-mode,Dial MHz,Sideband,Band,Classes,Comment
+RTTY 20 m,RTTY,45.45/170,14.080,USB,20 m,"General, Advanced, Extra",ARRL band plan: 14.070-14.095 RTTY
+RTTY 17 m,RTTY,45.45/170,18.100,USB,17 m,"General, Advanced, Extra",ARRL band plan: 18.100-18.105 RTTY
+RTTY 12 m,RTTY,45.45/170,24.920,USB,12 m,"General, Advanced, Extra",ARRL band plan: 24.920-24.925 RTTY
+PSK31 17 m,PSK,BPSK31,18.100,USB,17 m,"General, Advanced, Extra",ARRL band plan: 18.100-18.105 RTTY
+PSK31 12 m,PSK,BPSK31,24.920,USB,12 m,"General, Advanced, Extra",ARRL band plan: 24.920-24.925 RTTY
+Olivia 80 m,Olivia,Olivia 8/500,3.583,USB,80 m,"General, Advanced, Extra",Common Olivia spot; ARRL band plan: 3.570-3.600 RTTY/Data
+Olivia 40 m,Olivia,Olivia 8/500,7.072,USB,40 m,"General, Advanced, Extra","Common Olivia spot (below the ARRL 7.080 RTTY/Data segment, in the FCC data sub-band)"
+Olivia 20 m,Olivia,Olivia 8/500,14.072,USB,20 m,"General, Advanced, Extra",Common Olivia spot; ARRL band plan: 14.070-14.095 RTTY
+Olivia 10 m,Olivia,Olivia 8/500,28.120,USB,10 m,"Novice, Technician, General, Advanced, Extra",ARRL band plan: 28.070-28.150 RTTY; open to all classes
+Hell 80 m,Hell,,3.580,USB,80 m,"General, Advanced, Extra",No set Hell frequency in the ARRL plan; 3.570-3.600 RTTY/Data
+Hell 20 m,Hell,,14.080,USB,20 m,"General, Advanced, Extra",No set Hell frequency in the ARRL plan; 14.070-14.095 RTTY
+Hell 160 m,Hell,,1.842,USB,160 m,"General, Advanced, Extra",Feld Hell Club: 1.843-1.844 (FT8 took the old 1.840). Dial 1 kHz below so the signal is at 1000 Hz audio
+Hell 80 m,Hell,,3.577,USB,80 m,"General, Advanced, Extra",Feld Hell Club: 3.578-3.586 (FT8 took the old 3.573). Dial 1 kHz below so the signal is at 1000 Hz audio
+Hell 30 m,Hell,,10.136,USB,30 m,"General, Advanced, Extra",Feld Hell Club: 10.137-10.143 (10.144 in Region 1). Dial 1 kHz below so the signal is at 1000 Hz audio
+Olivia 30 m,Olivia,Olivia 8/250,10.1415,USB,30 m,"General, Advanced, Extra","Olivia community calling frequency (oliviadigitalmode.org, 2023 list): centre 10.1430 MHz with the waterfall at 1500 Hz; 8/250 to call, move off after the QSO starts"

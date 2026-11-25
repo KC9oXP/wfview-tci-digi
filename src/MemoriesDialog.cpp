@@ -297,8 +297,29 @@ void MemoriesDialog::load()
     }
     int skipped = 0;
     m_list = memories::fromCsv(f.readAll().toStdString(), &skipped);
-    m_status->setText(skipped ? tr("%1 rows in memories.csv were skipped (no name or no frequency).").arg(skipped)
-                              : QString());
+    f.close();
+    QString note = skipped ? tr("%1 rows in memories.csv were skipped (no name or no frequency).").arg(skipped)
+                           : QString();
+    // Built-in rows moved in a later version (e.g. off FT8 / FT4): update the
+    // user's copies that were never edited.
+    QFile o(QStringLiteral(":/resources/memories-builtin-old.csv"));
+    if (o.open(QIODevice::ReadOnly))
+    {
+        const std::vector<memories::Memory> old = memories::fromCsv(o.readAll().toStdString());
+        const std::vector<std::string> done = memories::updateOldDefaults(m_list, builtIn(), old);
+        if (!done.empty() && save())
+        {
+            QStringList names;
+            for (const std::string &n : done)
+                names << QString::fromStdString(n);
+            note = (note.isEmpty() ? QString() : note + QLatin1Char(' '))
+                + tr("Moved %n built-in memories to their new frequencies (clear of FT8/FT4): %1.",
+                     nullptr,
+                     int(done.size()))
+                      .arg(names.join(QStringLiteral(", ")));
+        }
+    }
+    m_status->setText(note);
     watch();
 }
 

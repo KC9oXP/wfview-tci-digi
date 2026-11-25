@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 
@@ -199,6 +200,88 @@ int main(int argc, char **argv)
             }
         }
         CHECK(bad == 0);
+
+        // Nothing on FT8 / FT4 (0.9.16-8): the signal (RTTY tones 2125-2295 Hz, PSK / Hell
+        // at 1000 Hz, Olivia centred on 1500 Hz) must stay out of dial+100..dial+2900 Hz of
+        // the WSJT-X FT8 and FT4 dials. Two community calling spots are kept on purpose.
+        const std::int64_t ft[] = {1840000,  3573000,  7074000,  10136000, 14074000, 18100000, 21074000,
+                                   24915000, 28074000, 50313000, 3575000,  7047500,  10140000, 14080000,
+                                   18104000, 21140000, 24919000, 28180000, 50318000};
+        int clash = 0;
+        for (const Memory &m : list)
+        {
+            if (m.name == "Olivia 30 m" || m.name == "PSK31 12 m")
+                continue;
+            double lo = 0, hi = 0;
+            if (m.tab == "RTTY")
+                lo = 2125, hi = 2295;
+            else if (m.tab == "PSK")
+                lo = 970, hi = 1030;
+            else if (m.tab == "Hell")
+                lo = 880, hi = 1120;
+            else if (m.tab == "Olivia")
+            {
+                const size_t sl = m.subMode.find('/');
+                const double bw = sl == std::string::npos ? 500 : std::atof(m.subMode.c_str() + sl + 1);
+                lo = 1500 - bw / 2, hi = 1500 + bw / 2;
+            }
+            else
+                continue;
+            for (std::int64_t d : ft)
+                if (m.dialHz + hi > d + 100 && m.dialHz + lo < d + 2900)
+                {
+                    std::printf("  FAIL %s %s on FT8/FT4 dial %s\n",
+                                m.name.c_str(),
+                                formatMHz(m.dialHz).c_str(),
+                                formatMHz(d).c_str());
+                    ++clash;
+                }
+        }
+        CHECK(clash == 0);
+
+        if (argc > 2)
+        {
+            // Old built-in defaults (rows moved in later versions) are updated in a user's
+            // list, but only when unedited.
+            std::printf("old defaults %s\n", argv[2]);
+            std::ifstream fo(argv[2], std::ios::binary);
+            std::stringstream so;
+            so << fo.rdbuf();
+            const auto old = fromCsv(so.str());
+            CHECK(old.size() >= 10);
+            for (const Memory &o : old)
+            {
+                bool named = false, differs = true;
+                for (const Memory &c : list)
+                    if (c.name == o.name)
+                    {
+                        named = true;
+                        differs = !(c.dialHz == o.dialHz && c.comment == o.comment && c.subMode == o.subMode);
+                    }
+                if (!named || !differs)
+                    std::printf("  FAIL old row %s: named %d differs %d\n", o.name.c_str(), named, differs);
+                CHECK(named && differs);
+            }
+            std::vector<Memory> user = old;
+            user[1].comment = "my own note"; // edited by the user: left alone
+            Memory mine;
+            mine.name = "My net";
+            mine.tab = "PSK";
+            mine.dialHz = 14070000;
+            user.push_back(mine);
+            const auto done = updateOldDefaults(user, list, old);
+            std::printf("  updated %zu of %zu\n", done.size(), user.size());
+            CHECK(done.size() == old.size() - 1);
+            CHECK(user[1].comment == "my own note" && user[1].dialHz == old[1].dialHz);
+            CHECK(user.back().name == "My net" && user.back().dialHz == 14070000);
+            for (size_t i = 0; i < old.size(); ++i)
+                if (i != 1)
+                    for (const Memory &c : list)
+                        if (c.name == user[i].name)
+                            CHECK(c.dialHz == user[i].dialHz && c.comment == user[i].comment);
+            // A second run changes nothing.
+            CHECK(updateOldDefaults(user, list, old).empty());
+        }
     }
 
     std::printf("band column order\n");

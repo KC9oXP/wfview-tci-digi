@@ -859,6 +859,53 @@ static void renderScreens(const QString &dir)
     CHECK(calls == 7); // RTTY, PSK, Hell, CW, Olivia, MT63, AMTOR
 }
 
+static void runMemoriesOldDefaults()
+{
+    std::printf("\n=== 0.9.16-8: unedited old built-in memories move off FT8/FT4 ===\n");
+    MockTciServer server;
+    server.listen();
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("TCI/Port"), server.port());
+    settings.setValue(QStringLiteral("TCI/ConnectOnStart"), true);
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    MainWindow w(&settings);
+    w.show();
+    pump(300);
+    // A user's file from an older version: PSK31 17 m on FT8 (unedited), RTTY 20 m
+    // with the user's own comment, and a memory of their own.
+    const QString path = MemoriesDialog::filePath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    {
+        QFile f(path);
+        CHECK(f.open(QIODevice::WriteOnly));
+        f.write("Name,Tab,Sub-mode,Dial MHz,Sideband,Band,Classes,Comment\n"
+                "PSK31 17 m,PSK,BPSK31,18.100,USB,17 m,\"General, Advanced, Extra\",ARRL band plan: 18.100-18.105 RTTY\n"
+                "RTTY 20 m,RTTY,45.45/170,14.080,USB,20 m,\"General, Advanced, Extra\",my contest spot\n"
+                "My net,PSK,BPSK31,14.0705,USB,20 m,\"General, Advanced, Extra\",Tuesday net\n");
+    }
+    QPushButton *memBtn = nullptr;
+    for (QPushButton *b : w.findChildren<QPushButton *>())
+        if (b->text() == QStringLiteral("Memories"))
+            memBtn = b;
+    CHECK(memBtn != nullptr);
+    if (!memBtn)
+        return;
+    memBtn->click();
+    pump(500);
+    QFile f(path);
+    CHECK(f.open(QIODevice::ReadOnly));
+    const QString text = QString::fromUtf8(f.readAll());
+    std::printf("  file now:\n%s\n", qPrintable(text));
+    CHECK(text.contains(QStringLiteral("PSK31 17 m,PSK,BPSK31,18.097")));
+    CHECK(text.contains(QStringLiteral("RTTY 20 m,RTTY,45.45/170,14.080")));
+    CHECK(text.contains(QStringLiteral("my contest spot")));
+    CHECK(text.contains(QStringLiteral("My net")));
+    auto *dlg = w.findChild<MemoriesDialog *>();
+    if (dlg)
+        dlg->close();
+}
+
 static void runRsidSideband()
 {
     std::printf("\n=== 0.9.16-7: mirrored Olivia RSID on DIGL -> DIGU, dial moved, stays there when the tab goes back ===\n");
@@ -1573,6 +1620,7 @@ int main(int argc, char *argv[])
     runWwv();
     runMemories();
     runRsidSideband();
+    runMemoriesOldDefaults();
     runPskReporterAndFreqBox();
     runGridTracker();
     runUploads();

@@ -400,6 +400,10 @@ type and press Enter; Esc cancels.
     PSK31 and Olivia (100 W ERP on the channels, signal centred on the channel at 1500 Hz
     audio; 9.15 W ERP in 5351.5-5366.5 kHz; 2.8 kHz bandwidth), and the NAVTEX, WEFAX and WWV receive frequencies. *Add built-in...* adds any
     built-in entries missing from your list later without touching your own.
+  - Built-in rows that a newer version moves (0.9.16: PSK31 and RTTY on 17 m, RTTY on 20 m
+    and 12 m, Feld Hell on 160, 80 and 30 m, all clear of FT8/FT4 now) are updated in your
+    list when the window opens, but only rows you never edited; your own rows and edited
+    ones stay as they are. The status line names the rows it moved.
   - Classes: an empty Classes cell is worked out from FCC Part 97 (ITU Region 2) for the
     tab's emission (CW, RTTY/data or SSTV image) across the 3 kHz the signal can occupy
     from the dial, e.g. SSTV on 7.171 LSB is Advanced and Extra only, data on 28.120 is open
@@ -608,8 +612,9 @@ g++ -std=c++17 -O2 -Iengine tests/test_wwv.cpp engine/wwvcore.cpp -o test_wwv
 g++ -std=c++17 -O2 -Iengine tests/test_version.cpp -o test_version
 g++ -std=c++17 -O2 -Iengine tests/test_txlevel.cpp -o test_txlevel
 g++ -std=c++17 -O2 -Iengine tests/test_freqdigits.cpp -o test_freqdigits
-# Memories file format and license-class rules (the argument also checks the built-in list)
-g++ -std=c++17 -O2 -Iengine tests/test_memories.cpp -o test_memories && ./test_memories resources/memories-builtin.csv
+# Memories file format and license-class rules (the arguments also check the built-in list:
+# classes, nothing on FT8/FT4, and updating unedited old defaults)
+g++ -std=c++17 -O2 -Iengine tests/test_memories.cpp -o test_memories && ./test_memories resources/memories-builtin.csv resources/memories-builtin-old.csv
 # PSK Reporter datagrams (checked byte for byte against the sample on pskreporter.info/pskdev)
 # and callsign spotting in decoded text
 g++ -std=c++17 -O2 -Iengine tests/test_pskreporter.cpp -o test_pskreporter
