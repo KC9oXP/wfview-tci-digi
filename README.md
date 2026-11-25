@@ -116,10 +116,10 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
 - *Multi-signal*: every CW signal from 200 to 2000 Hz with its pitch, speed, SNR and
   text. Each row has its own decoder: it learns that sender's speed and timing, follows its
   own pitch and is gated by its own tone (the Engine, Fixed speed, Pitch and Squelch settings
-  are for the main decoder only). Click Pitch, WPM or SNR to decode that station above: what
-  the row copied so far (its last ~2000 characters) is put in the main pane first. Double-click
-  a call sign in the Text column to put it in the QSO log (with its lookup) and the Call box.
-  Right-click a row for both (the row's call signs are listed). Each station's text also
+  are for the main decoder only). Click a row to decode that station above: what the row
+  copied so far (its last ~2000 characters) is put in the main pane first. Double-click a call
+  sign in the Text column to put it in the QSO log (with its lookup) and the Call box; that
+  station goes above too. Right-click a row for both (the row's call signs are listed). Each station's text also
   goes to PSK Reporter auto-detect and the GridTracker link on its own, like the main pane.
 - Transmit as **audio CW**: a keyed tone sent as TX audio with the radio in a data mode,
   the way fldigi does it. On the air it is a normal CW signal at the dial frequency plus

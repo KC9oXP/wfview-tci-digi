@@ -40,6 +40,8 @@ private slots:
     void syncTx();
 
 private:
+    // A multi-signal row: decode that station above, with what the row copied so far.
+    void decodeRow(int row);
     // A call sign picked in the multi-signal list: to the QSO log (lookup) and the Call box.
     void pickCall(const QString &call);
     void loadState();
