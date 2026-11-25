@@ -859,6 +859,74 @@ static void renderScreens(const QString &dir)
     CHECK(calls == 7); // RTTY, PSK, Hell, CW, Olivia, MT63, AMTOR
 }
 
+static void runRsidSideband()
+{
+    std::printf("\n=== 0.9.16-6: mirrored Olivia RSID on DIGL -> DIGU, dial moved, put back when it ends ===\n");
+    MockTciServer server;
+    server.listen();
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("TCI/Port"), server.port());
+    settings.setValue(QStringLiteral("TCI/ConnectOnStart"), true);
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    MainWindow w(&settings);
+    w.show();
+    auto *client = w.findChild<TciClient *>();
+    CHECK(waitFor([&] { return client->isReady(); }, 5000));
+    pump(300);
+    auto *tabs = w.findChild<QTabWidget *>();
+    QWidget *oliviaTab = nullptr;
+    for (int i = 0; i < tabs->count(); ++i)
+        if (tabs->tabText(i) == QStringLiteral("Olivia"))
+            oliviaTab = tabs->widget(i);
+    CHECK(oliviaTab != nullptr);
+    if (!oliviaTab)
+        return;
+    tabs->setCurrentIndex(0); // CW
+    QWidget *startTab = tabs->currentWidget();
+    client->setModulation(QStringLiteral("digl"));
+    client->setFrequency(3586000);
+    CHECK(waitFor([&] { return client->frequencyHz() == 3586000 && client->modulation() == QStringLiteral("digl"); },
+                  3000));
+
+    // The user's case: Olivia 8/500 (code 72) heard mirrored at 2003 Hz.
+    QMetaObject::invokeMethod(
+        &w, "onRsid", Qt::DirectConnection, Q_ARG(int, 72), Q_ARG(double, 2003.0), Q_ARG(bool, true), Q_ARG(int, 0));
+    CHECK(waitFor([&] { return server.freq == 3581994 && server.lastMode.toLower() == QStringLiteral("digu"); }, 3000));
+    std::printf("  radio now %lld %s\n", (long long)server.freq, qPrintable(server.lastMode));
+    CHECK(tabs->currentWidget() == oliviaTab);
+    const QString pane = paneText(oliviaTab);
+    std::printf("  Olivia pane: [%s]\n", qPrintable(pane.trimmed()));
+    CHECK(pane.contains(QStringLiteral("radio set to DIGU 3.581.994")));
+
+    // Text arrives, then 10 s of nothing: back to CW, radio back to DIGL 3.586000.
+    QMetaObject::invokeMethod(&w, "markActivity", Qt::DirectConnection, Q_ARG(QWidget *, oliviaTab));
+    CHECK(waitFor([&] { return tabs->currentWidget() == startTab; }, 15000));
+    CHECK(waitFor([&] { return server.freq == 3586000 && server.lastMode.toLower() == QStringLiteral("digl"); }, 3000));
+    std::printf("  back: %lld %s\n", (long long)server.freq, qPrintable(server.lastMode));
+
+    // Radio already on DIGU: a mirrored ID means the sender is inverted; nothing is retuned.
+    client->setModulation(QStringLiteral("digu"));
+    client->setFrequency(7072000);
+    CHECK(waitFor([&] { return client->frequencyHz() == 7072000 && client->modulation() == QStringLiteral("digu"); },
+                  3000));
+    tabs->setCurrentIndex(0);
+    QMetaObject::invokeMethod(
+        &w, "onRsid", Qt::DirectConnection, Q_ARG(int, 72), Q_ARG(double, 1500.0), Q_ARG(bool, true), Q_ARG(int, 0));
+    pump(800);
+    CHECK(server.freq == 7072000 && server.lastMode.toLower() == QStringLiteral("digu"));
+    CHECK(paneText(oliviaTab).contains(QStringLiteral("inverted sideband; it will not decode here")));
+
+    // Right way up on DIGL (an RTTY-style LSB station would not send an Olivia ID): no change either.
+    client->setModulation(QStringLiteral("digl"));
+    client->setFrequency(3586000);
+    CHECK(waitFor([&] { return client->modulation() == QStringLiteral("digl"); }, 3000));
+    QMetaObject::invokeMethod(
+        &w, "onRsid", Qt::DirectConnection, Q_ARG(int, 72), Q_ARG(double, 1500.0), Q_ARG(bool, false), Q_ARG(int, 0));
+    pump(800);
+    CHECK(server.freq == 3586000 && server.lastMode.toLower() == QStringLiteral("digl"));
+}
+
 static void runMemories()
 {
     std::printf("\n=== 0.6.0: memories window tunes tab, sub-mode, dial and sideband ===\n");
@@ -1503,6 +1571,7 @@ int main(int argc, char *argv[])
     runNewModesTx();
     runWwv();
     runMemories();
+    runRsidSideband();
     runPskReporterAndFreqBox();
     runGridTracker();
     runUploads();

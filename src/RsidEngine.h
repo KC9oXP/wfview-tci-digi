@@ -53,12 +53,19 @@ public:
     {
         return m_goBack;
     }
+    // Options > RSID: an Olivia/Contestia/MT63 ID heard mirrored while the radio
+    // is on LSB switches the radio to USB data and moves the dial (default on).
+    bool fixSideband() const
+    {
+        return m_fixSideband;
+    }
 
 public slots:
     void pushAudio(const QVector<float> &mono, float sampleRate);
     void setEnabled(bool on);
     void setAutoSwitch(bool on);
     void setGoBack(bool on);
+    void setFixSideband(bool on);
     // No listening while transmitting (our own ID, if we ever send one).
     void setTransmitting(bool on);
 
@@ -72,5 +79,6 @@ private:
     bool m_enabled = true;
     bool m_autoSwitch = true;
     bool m_goBack = true;
+    bool m_fixSideband = true;
     bool m_transmitting = false;
 };

@@ -6,6 +6,7 @@
 
 #include "pskcore.h"
 #include "rsidcore.h"
+#include "sidebandfix.h"
 
 #include <cmath>
 #include <cstdio>
@@ -191,6 +192,53 @@ int main()
         d.reset();
         std::printf("  %.0f s of BPSK63 text + carrier\n", double(p.size()) / 12000.0);
         CHECK(run(d, p, 1200).empty());
+    }
+
+
+    std::printf("\n=== inverted sideband: which modes, dial maths, USB mode name (0.9.16-6) ===\n");
+    {
+        using namespace sidebandfix;
+        int olivia = 0, mt63 = 0, other = 0;
+        for (const rsid::Mode &m : rsid::modes())
+        {
+            if (!sidebandMatters(m))
+                continue;
+            if (m.target == rsid::Target::Olivia)
+                ++olivia;
+            else if (m.target == rsid::Target::Mt63)
+                ++mt63;
+            else
+                ++other;
+        }
+        CHECK(olivia > 0 && mt63 > 0 && other == 0);
+        // The user's case: 3.586000 DIGL, Olivia 8/500 at 2003 Hz -> DIGU 3.581994.
+        CHECK(usbDialForLsbSignal(3586000, 2003.0) == 3581994);
+        CHECK(usbDialForLsbSignal(3586000, 2002.6) == 3581994);
+        CHECK(lsbDialForUsbSignal(3581994, 2003.0) == 3586000);
+        // RF stays put: LSB RF = dial - f, USB RF = dial + f.
+        for (double f : {300.0, 1000.0, 1500.0, 2003.0, 2700.0})
+        {
+            const long long d = 7040000;
+            const long long nd = usbDialForLsbSignal(d, f);
+            CHECK(d - std::llround(f) == nd + std::llround(f));
+        }
+        CHECK(usbTwin("digl") == "digu");
+        CHECK(usbTwin("DIGL") == "DIGU");
+        CHECK(usbTwin("DATA-L") == "DATA-U");
+        CHECK(usbTwin("LSB-D") == "USB-D");
+        CHECK(usbTwin("PKTLSB") == "PKTUSB");
+        CHECK(usbTwin("lsb") == "usb");
+        CHECK(usbTwin("digu").empty());
+        CHECK(usbTwin("am").empty());
+        const std::vector<std::string> wf = {"am", "sam", "lsb", "usb", "cw", "nfm", "wfm", "digl", "digu", "drm", "spec"};
+        CHECK(usbModeFor("digl", wf) == "digu");
+        CHECK(usbModeFor("DIGL", wf) == "digu");
+        const std::vector<std::string> yaesu = {"LSB", "USB", "CW-U", "FM", "AM", "RTTY-L", "DATA-L", "DATA-U", "DATA-FM"};
+        CHECK(usbModeFor("DATA-L", yaesu) == "DATA-U");
+        const std::vector<std::string> odd = {"lsb", "usb", "pktusb"};
+        CHECK(usbModeFor("digl", odd) == "pktusb");
+        CHECK(usbModeFor("digl", {}) == "digu");
+        CHECK(usbModeFor("digl", {"lsb", "usb"}).empty());
     }
 
     std::printf(g_fail ? "\nFAILED: %d\n" : "\nALL PASSED\n", g_fail);

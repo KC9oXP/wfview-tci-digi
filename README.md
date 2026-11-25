@@ -300,6 +300,16 @@ in the status bar). Other modes (MFSK, THOR, DominoEX ...) are named in the stat
 switched to has ended (no new text for 10 s, 20 s on MT63, or none for a minute) the tab
 you were on comes back, for example the Contestia net after a piece of MT63 traffic. It
 stays if you transmit or pick another tab yourself.
+*Fix an inverted sideband (switch to DIGU and retune)* (on by default): Olivia, Contestia
+and MT63 are sent on upper sideband. On LSB (e.g. DIGL on 80 m) their tones arrive reversed:
+the ID is still found, but the mode prints only garbage. When such an ID is heard mirrored
+and the radio is on an LSB mode, the program switches the radio to the matching USB data
+mode (DIGL -> DIGU, DATA-L -> DATA-U ...) and moves the dial by twice the audio frequency so
+the signal stays where it was in the waterfall: 3.586.000 DIGL with the signal at 2003 Hz
+becomes 3.581.994 DIGU, still at 2003 Hz. With *Go back* on, the radio returns to the old
+mode and dial together with the tab, unless you retuned in between. A mirrored ID with the
+radio already on USB means the other station sends inverted: only a note. Off: a note
+saying to switch by hand. Never while transmitting.
 
 **Every tab keeps decoding** while another is showing (with Decode on). A tab that is not
 showing gets an amber dot when its decoder prints something; the dot goes when you look.

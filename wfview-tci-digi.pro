@@ -113,6 +113,7 @@ HEADERS += \
     engine/rttytxsource.h \
     engine/pskcore.h \
     engine/rsidcore.h \
+    engine/sidebandfix.h \
     engine/hellcore.h \
     engine/cwtxcore.h \
     engine/modemtxsource.h \

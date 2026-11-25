@@ -46,6 +46,7 @@
 #include "WwvPanel.h"
 #include "modemtxsource.h"
 #include "rsidcore.h"
+#include "sidebandfix.h"
 #include "rttytxsource.h"
 #include "signalreport.h"
 #include "UiLanguage.h"
@@ -1115,10 +1116,20 @@ void MainWindow::buildMenus()
                             "changed tabs yourself. Every tab keeps decoding meanwhile; a dot on a tab means it has "
                             "new text."));
     connect(rsidBack, &QAction::toggled, m_rsid, &RsidEngine::setGoBack);
+    QAction *rsidFix = rsidMenu->addAction(tr("Fix an inverted sideband (switch to DIGU and retune)"));
+    rsidFix->setCheckable(true);
+    rsidFix->setChecked(m_rsid->fixSideband());
+    rsidFix->setToolTip(tr("Olivia, Contestia and MT63 are sent on upper sideband. When their ID is heard mirrored "
+                           "because the radio is on LSB (e.g. DIGL on 80 m), switch the radio to the USB data mode "
+                           "and move the dial so the signal stays on the same audio frequency. With \"Go back\" on, "
+                           "the radio is put back too when the signal ends, unless you retuned. Off: only a note."));
+    connect(rsidFix, &QAction::toggled, m_rsid, &RsidEngine::setFixSideband);
     connect(rsidOn, &QAction::toggled, rsidSwitch, &QAction::setEnabled);
     connect(rsidOn, &QAction::toggled, rsidBack, &QAction::setEnabled);
+    connect(rsidOn, &QAction::toggled, rsidFix, &QAction::setEnabled);
     rsidSwitch->setEnabled(m_rsid->enabled());
     rsidBack->setEnabled(m_rsid->enabled());
+    rsidFix->setEnabled(m_rsid->enabled());
     QAction *egg = opts->addAction(tr("STANAG 4481 Easteregg"));
     egg->setCheckable(true);
     egg->setChecked(m_rtty->easterEgg());
@@ -1379,6 +1390,47 @@ void MainWindow::onRsid(int code, double centreHz, bool mirrored, int errors)
                                  15000);
         return;
     }
+    QString note2 = note;
+    if (mirrored && sidebandfix::sidebandMatters(*m))
+    {
+        const QString cur = m_client->modulation();
+        const qint64 dial = m_client->frequencyHz();
+        if (!RadioModes::isLsb(cur))
+        {
+            // Radio on USB: the other station is sending inverted.
+            note2 += tr(" - sent on the inverted sideband; it will not decode here");
+        }
+        else if (!m_rsid->fixSideband() || dial <= 0)
+        {
+            note2 += tr(" - the radio is on %1: switch to the USB data mode to copy it").arg(cur.toUpper());
+        }
+        else
+        {
+            std::vector<std::string> avail;
+            for (const QString &s : m_client->modulations())
+                avail.push_back(s.toStdString());
+            const QString usb = QString::fromStdString(sidebandfix::usbModeFor(cur.toStdString(), avail));
+            if (usb.isEmpty())
+            {
+                note2 += tr(" - the radio is on %1 and lists no USB data mode: switch by hand").arg(cur.toUpper());
+            }
+            else
+            {
+                const qint64 newDial = sidebandfix::usbDialForLsbSignal(dial, centreHz);
+                // A second ID while already fixed keeps the first place to go back to.
+                if (m_rsidRadioSetHz == 0)
+                {
+                    m_rsidRadioBackHz = dial;
+                    m_rsidRadioBackMode = cur;
+                }
+                m_rsidRadioSetHz = newDial;
+                m_rsidRadioSetMode = usb;
+                tuneRadio(newDial, usb, tr("RSID inverted sideband"));
+                note2 += tr(" - heard on %1 (inverted): radio set to %2 %3")
+                             .arg(cur.toUpper(), usb.toUpper(), formatFreq(newDial));
+            }
+        }
+    }
     // Remember where we were, to go back when the signal has ended (Options >
     // RSID > Go back ...). A second ID while still away keeps the first tab.
     auto show = [this](QWidget *panel)
@@ -1412,14 +1464,14 @@ void MainWindow::onRsid(int code, double centreHz, bool mirrored, int errors)
         m_olivia->setMode(m->contestia, m->tones, m->bandwidth);
         m_olivia->setCarrierHz(centreHz);
         m_olivia->setDecoding(true);
-        m_oliviaPanel->addNote(note);
+        m_oliviaPanel->addNote(note2);
         break;
     case rsid::Target::Mt63:
         show(m_mt63Panel);
         m_mt63->setMode(m->bandwidth, m->longInterleave);
         m_mt63->setCarrierHz(centreHz);
         m_mt63->setDecoding(true);
-        m_mt63Panel->addNote(note);
+        m_mt63Panel->addNote(note2);
         break;
     case rsid::Target::Rtty:
     {
@@ -1445,7 +1497,15 @@ void MainWindow::onRsid(int code, double centreHz, bool mirrored, int errors)
     default:
         break;
     }
-    statusBar()->showMessage(note, 15000);
+    // The radio is only put back together with the tab (Go back); with no jump
+    // to go back from (already on that tab), keep the new sideband.
+    if (!m_rsidFrom || !m_rsidTo)
+    {
+        m_rsidRadioBackHz = m_rsidRadioSetHz = 0;
+        m_rsidRadioBackMode.clear();
+        m_rsidRadioSetMode.clear();
+    }
+    statusBar()->showMessage(note2, 15000);
 }
 
 // After an RSID jump: back to the tab we came from once the signal has ended
@@ -1463,6 +1523,9 @@ void MainWindow::checkRsidReturn()
         // The user went elsewhere (or turned it off): forget the jump.
         m_rsidFrom = m_rsidTo = nullptr;
         m_rsidReturn->stop();
+        m_rsidRadioBackHz = m_rsidRadioSetHz = 0;
+        m_rsidRadioBackMode.clear();
+        m_rsidRadioSetMode.clear();
         return;
     }
     if (anyTransmitting())
@@ -1476,11 +1539,57 @@ void MainWindow::checkRsidReturn()
     QWidget *back = m_rsidFrom;
     m_rsidFrom = m_rsidTo = nullptr;
     m_rsidReturn->stop();
+    // Sideband fixed for this signal: put the radio back, unless it was retuned.
+    if (m_rsidRadioSetHz > 0 && m_rsidRadioBackHz > 0)
+    {
+        const bool untouched = m_client->frequencyHz() == m_rsidRadioSetHz
+            && RadioModes::normalised(m_client->modulation()) == RadioModes::normalised(m_rsidRadioSetMode);
+        if (untouched)
+            tuneRadio(m_rsidRadioBackHz, m_rsidRadioBackMode, tr("RSID signal ended"));
+        else
+            log(tr("RSID: the radio was retuned, not putting it back to %1 %2.")
+                    .arg(formatFreq(m_rsidRadioBackHz), m_rsidRadioBackMode));
+    }
+    m_rsidRadioBackHz = m_rsidRadioSetHz = 0;
+    m_rsidRadioBackMode.clear();
+    m_rsidRadioSetMode.clear();
     const int i = m_tabs->indexOf(back);
     if (i < 0)
         return;
     m_tabs->setCurrentIndex(i);
     statusBar()->showMessage(tr("RSID: signal ended, back to %1.").arg(m_tabs->tabText(i)), 10000);
+}
+
+void MainWindow::tuneRadio(qint64 hz, const QString &mode, const QString &why)
+{
+    if (!m_client->isReady() || hz <= 0)
+        return;
+    // Mode first, then the frequency (on the FT-991A a mode change after the
+    // frequency moved the dial).
+    if (!mode.isEmpty() && RadioModes::normalised(m_client->modulation()) != RadioModes::normalised(mode))
+        m_client->setModulation(mode);
+    m_client->setFrequency(hz);
+    log(tr("%1: radio to %2 Hz %3").arg(why, formatFreq(hz), mode));
+    QTimer::singleShot(1500,
+                       this,
+                       [this, hz, mode, why]()
+                       {
+                           if (!m_client->isReady())
+                               return;
+                           const bool modeOk = mode.isEmpty()
+                               || RadioModes::normalised(m_client->modulation()) == RadioModes::normalised(mode);
+                           if (m_client->frequencyHz() == hz && modeOk)
+                               return;
+                           log(tr("%1: radio reports %2 Hz %3, sending %4 Hz %5 again.")
+                                   .arg(why,
+                                        formatFreq(m_client->frequencyHz()),
+                                        m_client->modulation(),
+                                        formatFreq(hz),
+                                        mode));
+                           if (!modeOk)
+                               m_client->setModulation(mode);
+                           m_client->setFrequency(hz);
+                       });
 }
 
 void MainWindow::markActivity(QWidget *panel)
