@@ -269,16 +269,24 @@ void CwDecoder::resync()
     apply();
 }
 
-void CwDecoder::decodeChannel(int pitchHz)
+void CwDecoder::decodeChannel(int pitchHz, const QString &history)
 {
     if (pitchHz < pitchMin() || pitchHz > pitchMax())
         return;
+    if (pitchHz == m_pickedHz && m_picked.isValid() && m_picked.elapsed() < 1500)
+        return; // the second click of a double-click
+    m_pickedHz = pitchHz;
+    m_picked.start();
     m_pitchHz = pitchHz;
     m_fixedPitch = true;
     QMetaObject::invokeMethod(m_worker, "resetDecoder", Qt::QueuedConnection);
     apply();
     emit settingsChanged();
-    emit textAppended(tr("\n[now decoding %1 Hz]\n").arg(pitchHz));
+    const QString h = history.trimmed();
+    if (h.isEmpty())
+        emit textAppended(tr("\n[now decoding %1 Hz]\n").arg(pitchHz));
+    else
+        emit textAppended(tr("\n[now decoding %1 Hz; copied so far:]\n%2\n").arg(pitchHz).arg(h));
 }
 
 void CwDecoder::apply()

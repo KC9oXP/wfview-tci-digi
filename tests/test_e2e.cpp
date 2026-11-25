@@ -572,6 +572,27 @@ static void runNewModes()
         }
     }
 
+    // CW multi-signal list: picking a row copies what it decoded so far into the main pane, once.
+    {
+        QWidget *cwTab = nullptr;
+        for (int i = 0; i < tabs->count(); ++i)
+            if (tabs->tabText(i) == QStringLiteral("CW"))
+                cwTab = tabs->widget(i);
+        auto *cwDec = w.findChild<CwDecoder *>();
+        CHECK(cwTab != nullptr && cwDec != nullptr);
+        if (cwTab && cwDec)
+        {
+            cwDec->decodeChannel(733, QStringLiteral("CQ CQ DE W1AW W1AW K"));
+            cwDec->decodeChannel(733, QStringLiteral("CQ CQ DE W1AW W1AW K")); // 2nd click of a double-click
+            pump(100);
+            const QString cwText = paneText(cwTab);
+            std::printf("  CW pane after picking 733 Hz: [%s]\n", qPrintable(cwText.trimmed().right(120)));
+            CHECK(cwText.contains(QStringLiteral("[now decoding 733 Hz; copied so far:]")));
+            CHECK(cwText.count(QStringLiteral("CQ CQ DE W1AW W1AW K")) == 1);
+            CHECK(cwDec->fixedPitch() && cwDec->pitchHz() == 733);
+        }
+    }
+
     // Options > Language: System language (the default, checked) and English
     {
         int found = 0;

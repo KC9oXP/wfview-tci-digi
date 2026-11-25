@@ -49,7 +49,7 @@ public:
     static constexpr float kLocalDb = 12.0f; // over the local floor
     static constexpr float kDelaySec = 0.75f;
     static constexpr float kDropSec = 20.0f;
-    static constexpr size_t kTextKeep = 400;
+    static constexpr size_t kTextKeep = 2000; // per channel: shown in the list, copied above on a click
 
     void setRange(float lo, float hi)
     {

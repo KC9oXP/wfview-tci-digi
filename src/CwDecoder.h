@@ -125,8 +125,9 @@ public slots:
     void setFixedSpeed(bool on);
     void setSpeedWpm(int wpm);
     void resync();
-    // Decode the station at this pitch (from the multi-signal list).
-    void decodeChannel(int pitchHz);
+    // Decode the station at this pitch (from the multi-signal list); history is what the
+    // list decoded from it so far, copied into the decode pane first.
+    void decodeChannel(int pitchHz, const QString &history = QString());
     // Hold off decoding (our own transmission).
     void setPaused(bool on);
 
@@ -158,6 +159,8 @@ private:
     bool m_fixedPitch = false;
     int m_pitchHz = 600;
     int m_lastPitchHz = 0;
+    int m_pickedHz = 0; // last station picked from the multi-signal list, and when
+    QElapsedTimer m_picked;
     bool m_fixedSpeed = false;
     int m_speedWpm = 20;
     QHash<int, quint64> m_channelSeen; // per channel id: characters already passed on
