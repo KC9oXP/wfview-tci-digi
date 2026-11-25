@@ -908,7 +908,7 @@ static void runMemoriesOldDefaults()
 
 static void runRsidSideband()
 {
-    std::printf("\n=== 0.9.16-7: mirrored Olivia RSID on DIGL -> DIGU, dial moved, stays there when the tab goes back ===\n");
+    std::printf("\n=== 0.9.16-9: mirrored Olivia RSID on DIGL -> DIGU, dial moved, stays there when the tab goes back ===\n");
     MockTciServer server;
     server.listen();
     QTemporaryDir tmp;
@@ -929,18 +929,39 @@ static void runRsidSideband()
     CHECK(oliviaTab != nullptr);
     if (!oliviaTab)
         return;
+    // The client reports modes in capitals (DIGL); the mock keeps what was sent (digl).
+    auto radioIs = [&](qint64 hz, const char *mode)
+    {
+        const QString m = QString::fromLatin1(mode);
+        return client->frequencyHz() == hz && client->modulation().compare(m, Qt::CaseInsensitive) == 0
+            && server.freq == hz && server.lastMode.compare(m, Qt::CaseInsensitive) == 0;
+    };
+    auto show = [&](const char *what)
+    {
+        std::printf("  %s: client %lld %s, mock %lld %s\n",
+                    what,
+                    (long long)client->frequencyHz(),
+                    qPrintable(client->modulation()),
+                    (long long)server.freq,
+                    qPrintable(server.lastMode));
+    };
+    auto setRadio = [&](qint64 hz, const char *mode)
+    {
+        client->setModulation(QString::fromLatin1(mode));
+        client->setFrequency(hz);
+        CHECK(waitFor([&] { return radioIs(hz, mode); }, 3000));
+        show("set");
+    };
     tabs->setCurrentIndex(0); // CW
+    pump(200);
     QWidget *startTab = tabs->currentWidget();
-    client->setModulation(QStringLiteral("digl"));
-    client->setFrequency(3586000);
-    CHECK(waitFor([&] { return client->frequencyHz() == 3586000 && client->modulation() == QStringLiteral("digl"); },
-                  3000));
+    setRadio(3586000, "digl");
 
     // The user's case: Olivia 8/500 (code 72) heard mirrored at 2003 Hz.
     QMetaObject::invokeMethod(
         &w, "onRsid", Qt::DirectConnection, Q_ARG(int, 72), Q_ARG(double, 2003.0), Q_ARG(bool, true), Q_ARG(int, 0));
-    CHECK(waitFor([&] { return server.freq == 3581994 && server.lastMode.toLower() == QStringLiteral("digu"); }, 3000));
-    std::printf("  radio now %lld %s\n", (long long)server.freq, qPrintable(server.lastMode));
+    CHECK(waitFor([&] { return radioIs(3581994, "digu"); }, 3000));
+    show("after the ID");
     CHECK(tabs->currentWidget() == oliviaTab);
     const QString pane = paneText(oliviaTab);
     std::printf("  Olivia pane: [%s]\n", qPrintable(pane.trimmed()));
@@ -950,29 +971,27 @@ static void runRsidSideband()
     QMetaObject::invokeMethod(&w, "markActivity", Qt::DirectConnection, Q_ARG(QWidget *, oliviaTab));
     CHECK(waitFor([&] { return tabs->currentWidget() == startTab; }, 15000));
     pump(2000);
-    CHECK(server.freq == 3581994 && server.lastMode.toLower() == QStringLiteral("digu"));
-    std::printf("  after going back: %lld %s\n", (long long)server.freq, qPrintable(server.lastMode));
+    CHECK(radioIs(3581994, "digu"));
+    show("after going back");
 
     // Radio already on DIGU: a mirrored ID means the sender is inverted; nothing is retuned.
-    client->setModulation(QStringLiteral("digu"));
-    client->setFrequency(7072000);
-    CHECK(waitFor([&] { return client->frequencyHz() == 7072000 && client->modulation() == QStringLiteral("digu"); },
-                  3000));
     tabs->setCurrentIndex(0);
+    pump(200);
+    setRadio(7072000, "digu");
     QMetaObject::invokeMethod(
         &w, "onRsid", Qt::DirectConnection, Q_ARG(int, 72), Q_ARG(double, 1500.0), Q_ARG(bool, true), Q_ARG(int, 0));
-    pump(800);
-    CHECK(server.freq == 7072000 && server.lastMode.toLower() == QStringLiteral("digu"));
+    pump(2000);
+    show("mirrored on DIGU");
+    CHECK(radioIs(7072000, "digu"));
     CHECK(paneText(oliviaTab).contains(QStringLiteral("inverted sideband; it will not decode here")));
 
-    // Right way up on DIGL (an RTTY-style LSB station would not send an Olivia ID): no change either.
-    client->setModulation(QStringLiteral("digl"));
-    client->setFrequency(3586000);
-    CHECK(waitFor([&] { return client->modulation() == QStringLiteral("digl"); }, 3000));
+    // Right way up on DIGL: no change either.
+    setRadio(3586000, "digl");
     QMetaObject::invokeMethod(
         &w, "onRsid", Qt::DirectConnection, Q_ARG(int, 72), Q_ARG(double, 1500.0), Q_ARG(bool, false), Q_ARG(int, 0));
-    pump(800);
-    CHECK(server.freq == 3586000 && server.lastMode.toLower() == QStringLiteral("digl"));
+    pump(2000);
+    show("not mirrored on DIGL");
+    CHECK(radioIs(3586000, "digl"));
 }
 
 static void runMemories()
