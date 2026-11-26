@@ -1,7 +1,7 @@
 #pragma once
 
 // Transmit area shared by the PSK, Hell and CW tabs: mode warning, Call /
-// My call, eight macro buttons (F1-F8 while the tab shows), the type-ahead
+// My call, ten macro buttons (F1-F10 while the tab shows), the type-ahead
 // box and Send / TX / RX / Abort / Hold TX / TX level.
 
 #include <QWidget>
@@ -23,7 +23,7 @@ public:
     // name is the mode as shown to the user ("PSK", "Hell", "CW").
     ModemTxBox(ModemEngine *engine, const QString &name, QWidget *parent = nullptr);
 
-    // Installs F1-F8 and Esc on shortcutParent (the whole tab).
+    // Installs F1-F10 and Esc on shortcutParent (the whole tab).
     void installShortcuts(QWidget *shortcutParent);
     QLineEdit *callField() const
     {

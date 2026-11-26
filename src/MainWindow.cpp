@@ -2636,6 +2636,17 @@ qint64 MainWindow::rfHz(double audioHz) const
 
 void MainWindow::feedPskr(const QString &tab, const QString &subMode, const QString &text, double audioHz)
 {
+    // The QSO log's RST rcvd: text received on the tab in use (not our own).
+    const QWidget *panel = tab == QLatin1String("CW")       ? static_cast<QWidget *>(m_cwPanel)
+                           : tab == QLatin1String("RTTY")   ? static_cast<QWidget *>(m_rttyPanel)
+                           : tab == QLatin1String("PSK")    ? static_cast<QWidget *>(m_pskPanel)
+                           : tab == QLatin1String("Olivia") ? static_cast<QWidget *>(m_oliviaPanel)
+                           : tab == QLatin1String("MT63")   ? static_cast<QWidget *>(m_mt63Panel)
+                           : tab == QLatin1String("AMTOR")  ? static_cast<QWidget *>(m_amtorPanel)
+                                                            : nullptr;
+    if (panel && m_tabs && m_tabs->currentWidget() == panel && !anyTransmitting() && !m_client->radioTransmitting()
+        && !text.contains(QLatin1String("[TX]")))
+        m_qso->receivedText(text);
     feedSpotters(tab, PskReporter::modeFor(tab, subMode), text, audioHz);
 }
 

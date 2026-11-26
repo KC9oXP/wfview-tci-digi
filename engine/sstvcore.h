@@ -96,6 +96,16 @@ double leanPixels(int mode, double ppm);
 //    7-6 a fine grain, 5-4 clear snow, 3 and below heavy snow).
 //  S 1..9 is not the decoder's: the radio's S-meter (or the SNR) gives it.
 int rsvReadability(double syncFraction);
+// Whether a received picture is worth saving. Every picture runs the whole mode now,
+// so the length no longer says much: one that ran to the end with syncs on fewer than
+// kMinSyncShare of its lines was a false VIS on noise. Stop keeps anything.
+constexpr double kMinSyncShare = 0.10;
+inline bool keepPicture(int lines, bool stopped, double syncFraction)
+{
+    if (lines <= 0)
+        return false;
+    return stopped || syncFraction >= kMinSyncShare;
+}
 int rsvVideo(double pixelNoiseLevels);
 // Where the sync pulse starts within a sync period, ms.
 double syncOffsetMs(int mode);

@@ -99,6 +99,7 @@ void PskDecoderWorker::detectSpeed(double approxHz)
 PskEngine::PskEngine(QObject *parent)
     : ModemEngine(QStringLiteral("PSK"), std::make_shared<PskTxSource>(), parent)
 {
+    setDecodeOnSend(true);
     qRegisterMetaType<QVector<float>>("QVector<float>");
     qRegisterMetaType<PskDemodulator::Rsq>("PskDemodulator::Rsq");
     m_thread = new QThread(this);

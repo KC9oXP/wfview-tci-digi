@@ -117,7 +117,7 @@ RttyPanel::RttyPanel(RttyEngine *engine, QSettings *settings, QWidget *parent)
             [this](const QString &t) { RxText::appendStyled(m_rx, t, QColor(0x50, 0xd0, 0x70), maxRxChars); });
     connect(m_rtty, &RttyEngine::scopePoints, m_scope, &ScopeWidget::addPoints);
 
-    // F1-F8 send macros, Esc aborts, while this tab is showing.
+    // F1-F10 send macros, Esc aborts, while this tab is showing.
     for (int i = 0; i < RttyEngine::kMacroCount; ++i)
     {
         auto *sc = new QShortcut(QKeySequence(Qt::Key_F1 + i), this);
@@ -398,7 +398,7 @@ QWidget *RttyPanel::buildTx()
         auto *b = new QPushButton();
         b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         connect(b, &QPushButton::clicked, this, [this, i]() { m_rtty->sendMacro(i); });
-        grid->addWidget(b, i / 4, i % 4);
+        grid->addWidget(b, i / 5, i % 5); // two rows: F1-F5, F6-F10
         m_macroButtons << b;
     }
     macroRow->addLayout(grid, 1);

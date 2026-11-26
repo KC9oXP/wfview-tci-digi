@@ -1,4 +1,5 @@
 #include "QsoLog.h"
+#include "rstparse.h"
 
 #include "AppPaths.h"
 #include "CallLookup.h"
@@ -183,6 +184,7 @@ QsoLogDock::QsoLogDock(QSettings *settings, QWidget *parent)
     m_call = edit(7);
     m_rstS = edit(3);
     m_rstR = edit(3);
+    m_rstR->setObjectName(QStringLiteral("rstRcvd"));
     m_name = edit(6);
     m_qth = edit(8);
     m_grid = edit(4);
@@ -253,6 +255,26 @@ QsoLogDock::QsoLogDock(QSettings *settings, QWidget *parent)
                 updateMeasured();
             });
     v->addWidget(m_measuredBox);
+
+    m_rcvdBox = new QCheckBox(tr("Fill RST rcvd from the report in the received text (UR 579, RST 599, 5NN)"));
+    m_rcvdBox->setToolTip(
+        tr("Puts the report the other station sends you in \"RST rcvd\": a number after UR, YR, RST, RPT or "
+           "REPORT (\"UR RST IS 579\" works too; CW cut numbers 5NN = 599), in text that also has your call "
+           "and, if it is in the Call box, theirs, within the 40 words before it. The latest one wins.\n"
+           "Type in the box to override it; Clear or Log QSO starts again.\n"
+           "Not on SSTV: the report there is drawn in the picture, so type it in."));
+    m_rcvdBox->setChecked(m_settings->value(QStringLiteral("QsoLog/RcvdFromText"), true).toBool());
+    connect(m_rcvdBox,
+            &QCheckBox::toggled,
+            this,
+            [this](bool on)
+            {
+                m_settings->setValue(QStringLiteral("QsoLog/RcvdFromText"), on);
+                if (!on && m_rstR->text() == m_rstRAuto)
+                    setRstRcvd(defaultRst());
+                updateRcvd();
+            });
+    v->addWidget(m_rcvdBox);
     auto *measureTimer = new QTimer(this);
     measureTimer->setInterval(1000);
     connect(measureTimer, &QTimer::timeout, this, &QsoLogDock::updateMeasured);
@@ -300,6 +322,7 @@ QsoLogDock::QsoLogDock(QSettings *settings, QWidget *parent)
             });
     // Look the call up once it is typed in (Enter or leaving the box).
     connect(m_call, &QLineEdit::editingFinished, this, &QsoLogDock::startLookup);
+    connect(m_call, &QLineEdit::editingFinished, this, &QsoLogDock::updateRcvd);
     connect(m_myGrid,
             &QLineEdit::editingFinished,
             this,
@@ -337,6 +360,46 @@ void QsoLogDock::setRstSent(const QString &text)
 {
     m_rstSAuto = text;
     m_rstS->setText(text);
+}
+
+void QsoLogDock::setRstRcvd(const QString &text)
+{
+    m_rstRAuto = text;
+    m_rstR->setText(text);
+    m_rstR->setToolTip(QString());
+}
+
+bool QsoLogDock::rcvdFromText() const
+{
+    return m_rcvdBox && m_rcvdBox->isChecked() && !m_mode.isEmpty() && m_mode != QLatin1String("SSTV");
+}
+
+void QsoLogDock::receivedText(const QString &text)
+{
+    m_rxText += text;
+    constexpr int kKeep = 3000;
+    if (m_rxText.size() > kKeep)
+        m_rxText = m_rxText.right(kKeep);
+    updateRcvd();
+}
+
+void QsoLogDock::updateRcvd()
+{
+    const bool can = !m_mode.isEmpty() && m_mode != QLatin1String("SSTV");
+    if (m_rcvdBox->isHidden() == can)
+        m_rcvdBox->setHidden(!can);
+    if (!rcvdFromText() || m_rxText.isEmpty())
+        return;
+    if (m_rstR->text() != m_rstRAuto)
+        return; // typed by the user: theirs
+    const rpt::Found f = rpt::findReport(
+        m_rxText.toLatin1().toStdString(), m_myCall.toStdString(), m_call->text().trimmed().toStdString());
+    if (f.report.empty())
+        return;
+    const QString r = QString::fromStdString(f.report);
+    if (m_rstR->text() != r)
+        setRstRcvd(r);
+    m_rstR->setToolTip(tr("From the received text: \"%1\"").arg(QString::fromStdString(f.context)));
 }
 
 void QsoLogDock::updateMeasured()
@@ -378,9 +441,10 @@ void QsoLogDock::setMode(const QString &mode, const QString &submode, const QStr
     {
         setRstSent(defaultRst());
         m_rstS->setToolTip(QString());
-        m_rstR->setText(defaultRst());
+        setRstRcvd(defaultRst());
     }
     updateMeasured();
+    updateRcvd();
     setRadio(m_hz, QString());
     m_log->setEnabled(!m_mode.isEmpty());
     m_log->setToolTip(m_mode.isEmpty() ? tr("This tab's mode is receive-only (no QSOs).")
@@ -399,6 +463,7 @@ void QsoLogDock::setCall(const QString &call)
     m_grid->clear();
     m_filledCall.clear();
     startLookup();
+    updateRcvd();
 }
 
 void QsoLogDock::newCall(const QString &call)
@@ -464,6 +529,7 @@ void QsoLogDock::startLookup()
 void QsoLogDock::setMyCall(const QString &call)
 {
     m_myCall = call;
+    updateRcvd();
 }
 
 void QsoLogDock::clearForm()
@@ -477,7 +543,8 @@ void QsoLogDock::clearForm()
     setRstSent(defaultRst());
     m_rstS->setToolTip(QString());
     m_measuredComment.clear();
-    m_rstR->setText(defaultRst());
+    setRstRcvd(defaultRst());
+    m_rxText.clear();
     m_start = QDateTime();
 }
 

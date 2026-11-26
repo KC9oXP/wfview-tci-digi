@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.9.17
+VERSION = 0.9.18
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -94,6 +94,7 @@ HEADERS += \
     engine/wsprd/wsprsim_utils.h \
     engine/lookupcore.h \
     engine/signalreport.h \
+    engine/rstparse.h \
     engine/uploadcore.h \
     engine/gridtrackerudp.h \
     engine/inputlevel.h \

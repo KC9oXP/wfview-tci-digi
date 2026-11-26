@@ -30,7 +30,7 @@ double levelDb(double level, double noise)
 }
 
 const char *const kDefaultMacroNames[RttyEngine::kMacroCount]
-    = {"CQ", "Answer", "599", "TU 73", "QRZ?", "AGN?", "BTU", "RYRY"};
+    = {"CQ", "Answer", "599", "TU 73", "QRZ?", "AGN?", "BTU", "RYRY", "M9", "M10"};
 const char *const kDefaultMacroTexts[RttyEngine::kMacroCount] = {
     "CQ CQ CQ DE {MYCALL} {MYCALL} {MYCALL} PSE K\n",
     "{CALL} {CALL} DE {MYCALL} {MYCALL} {MYCALL} K\n",
@@ -40,6 +40,8 @@ const char *const kDefaultMacroTexts[RttyEngine::kMacroCount] = {
     "AGN? AGN? K\n",
     "BTU {CALL} DE {MYCALL} K\n",
     "RYRYRYRYRYRYRYRYRYRYRYRYRYRYRYRYRYRYRYRY\n",
+    "",
+    "",
 };
 } // namespace
 
@@ -257,10 +259,15 @@ void RttyEngine::loadSettings(QSettings *settings)
     m_easterEgg = m_settings->value(QStringLiteral("Stanag4481Easteregg"), m_easterEgg).toBool();
     const QStringList names = m_settings->value(QStringLiteral("MacroNames")).toStringList();
     const QStringList texts = m_settings->value(QStringLiteral("MacroTexts")).toStringList();
-    if (names.size() == kMacroCount && texts.size() == kMacroCount)
+    // Saved before 0.9.18 with 8 macros: keep them, F9 and F10 start empty.
+    if (names.size() == texts.size() && names.size() >= 8 && names.size() <= kMacroCount)
     {
         m_macroNames = names;
         m_macroTexts = texts;
+        while (m_macroNames.size() < kMacroCount)
+            m_macroNames << QStringLiteral("M%1").arg(m_macroNames.size() + 1);
+        while (m_macroTexts.size() < kMacroCount)
+            m_macroTexts << QString();
     }
     m_settings->endGroup();
 
@@ -678,6 +685,9 @@ void RttyEngine::keyUp()
         setStatus(tr("The server reports this radio as receive only."));
         return;
     }
+    // Sending (Send, a macro, TX) turns Decode on, so the reply is copied.
+    if (!m_decoding)
+        setDecoding(true);
     QMetaObject::invokeMethod(m_worker, "resetTxScope", Qt::QueuedConnection);
     m_tx->start(prerollSeconds);
     m_keyed = true;
@@ -760,6 +770,11 @@ void RttyEngine::sendMacro(int index)
     if (index < 0 || index >= kMacroCount)
         return;
     const QString t = m_macroTexts.at(index);
+    if (t.trimmed().isEmpty())
+    {
+        setStatus(tr("F%1 has no text yet: set it with Edit... next to the macros.").arg(index + 1));
+        return;
+    }
     if (t.contains(QStringLiteral("{CALL}"), Qt::CaseInsensitive) && m_call.isEmpty())
     {
         setStatus(tr("Enter the other station's call first (the macro uses {CALL})."));

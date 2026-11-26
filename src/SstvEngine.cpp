@@ -121,6 +121,7 @@ void SstvDecoderWorker::resetDecoder()
 SstvEngine::SstvEngine(QObject *parent)
     : ModemEngine(QStringLiteral("SSTV"), std::make_shared<SstvTxSource>(), parent)
 {
+    setDecodeOnSend(true);
     qRegisterMetaType<QVector<float>>("QVector<float>");
     m_carrierHz = 1900.0;
     m_thread = new QThread(this);
@@ -180,13 +181,13 @@ SstvEngine::SstvEngine(QObject *parent)
                     emit reportReady();
                 }
                 const int h = sstv::info(mode).height;
-                // Stop keeps whatever came in, however short; a picture that ends by itself
-                // that early was noise or a lost signal.
-                if (lines <= 0 || (!stopped && lines < h / 4))
+                // Stop keeps whatever came in; a picture that ran to the end with almost
+                // no syncs was a false start on noise.
+                if (!sstv::keepPicture(lines, stopped, syncs))
                 {
-                    setStatus(tr("%1 picture lost after %2 lines (not saved).")
+                    setStatus(tr("%1: no picture found, only noise (%2% of lines had a sync); not saved.")
                                   .arg(QLatin1String(sstv::info(mode).name))
-                                  .arg(lines));
+                                  .arg(qRound(syncs * 100.0)));
                     return;
                 }
                 const QString note

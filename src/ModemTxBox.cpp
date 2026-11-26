@@ -70,7 +70,7 @@ ModemTxBox::ModemTxBox(ModemEngine *engine, const QString &name, QWidget *parent
         auto *b = new QPushButton();
         b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         connect(b, &QPushButton::clicked, this, [this, i]() { m_engine->sendMacro(i); });
-        grid->addWidget(b, i / 4, i % 4);
+        grid->addWidget(b, i / 5, i % 5); // two rows: F1-F5, F6-F10
         m_macroButtons << b;
     }
     macroRow->addLayout(grid, 1);

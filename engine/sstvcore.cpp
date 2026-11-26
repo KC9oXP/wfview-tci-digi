@@ -172,7 +172,6 @@ constexpr double kIdleKeepSec = 8.0; // the sync detector looks back this far
 constexpr int kSyncChain = 6; // sync pulses in a row at one mode's period
 constexpr double kMaxAutoOffHz = 300.0;
 constexpr int kFitEvery = 4;
-constexpr int kMaxNoSync = 16;
 } // namespace
 
 SstvDecoder::SstvDecoder() = default;
@@ -354,13 +353,8 @@ SstvDecoder::Events SstvDecoder::process(const float *x, size_t n)
                     renderPeriod(q);
                 ev.redraw = true;
             }
-            if (!m_manual && m_noSyncRun >= kMaxNoSync && m_periodsDone > kMaxNoSync)
-            {
-                // Signal gone: keep what we have.
-                m_state = State::Idle;
-                ev.finished = true;
-                break;
-            }
+            // No "signal gone" end: a fade can come back, so every picture runs the
+            // whole mode (or until Stop / a new VIS). keepPicture() decides at the end.
         }
         if (m_state == State::Receiving && m_periodsDone >= periods)
         {
@@ -750,6 +744,7 @@ void SstvDecoder::measureSync(int p)
         else if (m_manual && m_noSyncRun >= 8)
         {
             // Manual picture lost its line phase: search the whole period again.
+            // (A VIS picture keeps the phase from its header and the slant fit.)
             m_phaseLocked = false;
             m_wideAgree = 0;
         }

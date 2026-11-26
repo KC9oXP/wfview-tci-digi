@@ -26,7 +26,7 @@ class ModemEngine : public QObject
     Q_OBJECT
 
 public:
-    static constexpr int kMacroCount = 8;
+    static constexpr int kMacroCount = 10; // F1-F10 (F9 and F10 since 0.9.18; old settings have 8)
 
     ModemEngine(const QString &group, std::shared_ptr<ModemTxSource> tx, QObject *parent = nullptr);
     ~ModemEngine() override;
@@ -101,6 +101,12 @@ public slots:
     virtual void pushAudio(const QVector<float> &mono, float sampleRate) = 0;
 
     void setDecoding(bool on);
+    // Sending (Send, a macro, TX, an SSTV picture) turns Decode on, so the reply is
+    // copied. Off for Tune, CW ID and WSPR; the CW tab follows sendKeyed() instead.
+    void setDecodeOnSend(bool on)
+    {
+        m_decodeOnSend = on;
+    }
     void setCarrierHz(double hz);
     void setTxLevel(double level);
     void setMyCall(const QString &c);
@@ -128,6 +134,7 @@ signals:
     void statsChanged();
     void statusChanged(QString status);
     void transmittingChanged(bool on);
+    void sendKeyed(); // the radio was keyed for a transmission of this engine
     void textAppended(QString text);
     void transmitRequested(bool on);
     // A transmission that asked for it ended: send the CW ID now, at this level.
@@ -194,6 +201,7 @@ private:
     QSettings *m_settings = nullptr;
 
     bool m_decoding = false;
+    bool m_decodeOnSend = false;
     bool m_ready = false;
     bool m_canTransmit = false;
     double m_txLevel = 0.5;

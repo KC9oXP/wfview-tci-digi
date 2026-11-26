@@ -620,9 +620,77 @@ int main()
                 break;
             }
         }
-        std::printf(" %-10s ended at %d of %d lines after %.1f s\n", m.name, lines, m.height, secs);
+        const double share = dec.quality().syncFraction;
+        std::printf(" %-10s ended at %d of %d lines after %.1f s, syncs %.0f%% -> %s\n",
+                    m.name,
+                    lines,
+                    m.height,
+                    secs,
+                    share * 100.0,
+                    sstv::keepPicture(lines, false, share) ? "saved" : "not saved");
         CHECK(lines == m.height);
         CHECK(secs > sstv::imageSeconds(mode) - 1.0);
+        CHECK(!sstv::keepPicture(lines, false, share)); // noise only: not saved
+        CHECK(sstv::keepPicture(lines, true, share)); // Stop keeps anything
+    }
+
+    std::printf("0.9.18: a VIS picture with a 6 s fade runs to the end and fills in after it\n");
+    for (int mode : {int(sstv::Scottie2), int(sstv::Martin1), int(sstv::Robot36)})
+    {
+        const sstv::ModeInfo &m = sstv::info(mode);
+        const std::vector<uint32_t> img = testImage(m.width, m.height);
+        const double fs = 48000.0;
+        std::vector<float> a(size_t(0.5 * fs), 0.0f);
+        const std::vector<float> sig = encodeAll(mode, img, fs);
+        a.insert(a.end(), sig.begin(), sig.end());
+        a.insert(a.end(), size_t(2.0 * fs), 0.0f);
+        // Fade: the signal is gone from 35 % to 35 % + 6 s of the picture.
+        const size_t f0 = size_t(0.5 * fs + 0.35 * double(sig.size()));
+        const size_t f1 = f0 + size_t(6.0 * fs);
+        std::mt19937 rng(77 + mode);
+        std::normal_distribution<float> nd(0.0f, 0.05f);
+        for (size_t i = 0; i < a.size(); ++i)
+            a[i] = (i >= f0 && i < f1 ? 0.0f : 0.5f * a[i]) + nd(rng);
+        SstvDecoder dec;
+        dec.setSampleRate(fs);
+        bool started = false, finished = false;
+        size_t endPos = 0;
+        for (size_t pos = 0; pos < a.size() && !finished; pos += 1000)
+        {
+            const SstvDecoder::Events ev = dec.process(a.data() + pos, std::min<size_t>(1000, a.size() - pos));
+            started = started || ev.started;
+            if (ev.finished && !ev.started)
+            {
+                finished = true;
+                endPos = pos;
+            }
+        }
+        const int lines = dec.linesDone();
+        const double share = dec.quality().syncFraction;
+        // Error of the part after the fade (last 40 % of the lines).
+        std::vector<uint32_t> got = dec.image();
+        for (uint32_t &v : got)
+            v &= 0xffffff;
+        const int y0 = m.height * 6 / 10;
+        const double tailErr = meanError(std::vector<uint32_t>(img.begin() + size_t(y0) * m.width, img.end()),
+                                         std::vector<uint32_t>(got.begin() + size_t(y0) * m.width, got.end()),
+                                         m.width,
+                                         m.height - y0);
+        std::printf(" %-10s started %d finished %d lines %d/%d at %.1f s, syncs %.0f%%, error after fade %.1f -> %s\n",
+                    m.name,
+                    int(started),
+                    int(finished),
+                    lines,
+                    m.height,
+                    double(endPos) / fs,
+                    share * 100.0,
+                    tailErr,
+                    sstv::keepPicture(lines, false, share) ? "saved" : "not saved");
+        CHECK(started && finished);
+        CHECK(lines == m.height);
+        CHECK(double(endPos) / fs > sstv::imageSeconds(mode) - 1.0);
+        CHECK(tailErr < 20.0);
+        CHECK(sstv::keepPicture(lines, false, share));
     }
 
     std::printf("Manual start mid-picture, mid-line, signal 285 Hz low (manual -300 + auto)\n");

@@ -52,6 +52,9 @@ public slots:
     void setCall(const QString &call);
     void setMyCall(const QString &call);
     void setMyGrid(const QString &grid);
+    // Text received on the tab in use (not our own transmission): the report the other
+    // station sends us ("UR RST 579", "5NN") goes in "RST rcvd".
+    void receivedText(const QString &text);
 
 public:
     // Name / QTH / Grid filled from QRZ or HamQTH when a call is entered (blank fields only).
@@ -95,6 +98,9 @@ private:
     void startLookup();
     void updateMeasured();
     void setRstSent(const QString &text); // what we put there (not the user)
+    void setRstRcvd(const QString &text); // the same for RST rcvd
+    void updateRcvd();
+    bool rcvdFromText() const; // the box is ticked and this mode has text reports
 
     QSettings *m_settings;
     qint64 m_hz = 0;
@@ -119,9 +125,12 @@ private:
     QTableWidget *m_table = nullptr;
     QCheckBox *m_addSignal = nullptr;
     QCheckBox *m_measuredBox = nullptr;
+    QCheckBox *m_rcvdBox = nullptr;
     CallLookup *m_lookup = nullptr;
     std::function<QString()> m_signalNote;
     std::function<Measured()> m_measured;
     QString m_rstSAuto; // last text the app put in RST sent: anything else was typed
     QString m_measuredComment;
+    QString m_rstRAuto; // last text the app put in RST rcvd
+    QString m_rxText; // received text since Clear / the last Log QSO (tail kept)
 };

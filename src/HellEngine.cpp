@@ -48,6 +48,7 @@ void HellDecoderWorker::resetDecoder()
 HellEngine::HellEngine(QObject *parent)
     : ModemEngine(QStringLiteral("Hell"), std::make_shared<HellTxSource>(), parent)
 {
+    setDecodeOnSend(true);
     qRegisterMetaType<QVector<float>>("QVector<float>");
     m_thread = new QThread(this);
     m_thread->setObjectName(QStringLiteral("hellDecoder"));

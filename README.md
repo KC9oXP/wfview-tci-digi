@@ -77,7 +77,7 @@ above v2.25 (GitHub's "Latest" label still points at the v2 line, so look past i
 4. Start **wfview TCI Digi**, enter `127.0.0.1` (or the computer running wfview) and
    `50001`, and press **Connect**. The button turns green ("Disconnect") when connected.
 5. Pick a tab and press **Push To Decode**. To transmit, set *My call*, then type and
-   press *Send* (or use the F1-F8 macros). Start with a low *TX level* and keep ALC near
+   press *Send* (or use the F1-F10 macros). Start with a low *TX level* and keep ALC near
    zero.
 
 **Windows:** download the zip from [Releases](https://github.com/KC9oXP/wfview-tci-digi/releases),
@@ -135,7 +135,9 @@ The tabs that can transmit (CW, RTTY, PSK, Hell, Olivia, MT63, SSTV, AMTOR, WSPR
 to put them in your own order (kept across restarts); transmit tabs stay left of *Read only*
 and receive-only tabs right of it. *View > Reset tab order* puts them back. Every
 *Decode* button is dark red and reads "Push To Decode" when off, and green "Decode" when
-on. Only one tab transmits at a time; *My call* is shared by all tabs.
+on. Sending (*Send*, a macro, *TX*, an SSTV picture) turns that tab's Decode on, so the
+reply is copied; *Tune* and *CW ID* leave it as it is. Only one tab transmits at a time;
+*My call* is shared by all tabs.
 
 ### CW (receive and transmit)
 
@@ -242,10 +244,13 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
   mode and *Start now*. The mode list follows each picture received, and with *Follow
   received* ticked (beside the send mode) the send mode changes to the mode of a picture
   that came in with its VIS header, so you answer in the mode the other station used.
-- *Start now* runs for the whole length of the chosen mode (it does not give up when no sync
-  is found): it searches the whole line for the sync until three agree, and again if it loses
-  them. Only the last line, *Stop* or a real VIS header end it. *Stop* saves what came in,
-  however short (`..._stopped.png`).
+- Every picture runs for the whole length of its mode: a fade does not end it, and the
+  lines after it fill in when the signal comes back. Only the last line, *Stop* or a new
+  VIS header end a picture. *Stop* saves what came in, however short (`..._stopped.png`);
+  a picture that ran to the end with a sync on fewer than 10 % of its lines was a false
+  start on noise and is not saved.
+- *Start now* searches the whole line for the sync until three agree, and again if it
+  loses them.
 - Tuning: click the middle of the signal on the small waterfall (or drag, or the wheel
   for 1 Hz steps); markers show sync, black and white. *Auto* offset refines it from the
   1900 Hz VIS leader and the 1200 Hz sync pulses.
@@ -399,7 +404,8 @@ bottom, also with text selected (a double-clicked call sign, Ctrl+A); scroll up 
 and *Live* to go back.
 
 **Transmit**
-- Macros F1-F8 with `{MYCALL}` / `{CALL}`, a type-ahead box (text typed while
+- Macros F1-F10 with `{MYCALL}` / `{CALL}` (two rows of five; F9 and F10 start empty, set
+  them with *Edit...*), a type-ahead box (text typed while
   transmitting is added to the queue), *Hold TX*, *TX level*, Esc to abort.
 - *CW ID*: "DE <your call>" as keyed audio CW. `{CWID}` at the end of a macro sends it
   after the text without dropping PTT (Options > Tune tone, CW ID and Auto TX level).
@@ -579,6 +585,13 @@ logged QSO is always written to the ADIF file. Each one can also go, as soon as 
     the noise and within about 27 dB of the signal. The IMD is added to the comment.
   - CW, RTTY, Hell, Olivia, MT63 and AMTOR have no report that can be measured honestly (the
     T of RST, or the share of a free-text over copied correctly), so the box is not shown there.
+- *Fill RST rcvd from the report in the received text* (on by default; CW, RTTY, PSK, Olivia,
+  MT63 and AMTOR): "RST rcvd" gets the report the other station sends you - a number after
+  UR, YR, RST, RPT or REPORT (`UR RST IS 579` works; CW cut numbers `5NN` = 599), in text
+  received on the tab in use that also has your call (and theirs, if it is in the Call box)
+  within the 40 words before it. The latest one wins; the tooltip shows the text it came
+  from. Type in the box to override it; *Clear* or *Log QSO* starts again. Not on SSTV,
+  where the report is drawn in the picture: type it in.
 - Receive panes keep a long history: scroll back and the view stays put while new text
   arrives (*Live* returns), Ctrl+F finds text, right-click saves it.
 - Waterfalls keep the last few minutes: Shift+wheel or PgUp/PgDn scrolls back, Esc

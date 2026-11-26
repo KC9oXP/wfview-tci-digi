@@ -11,6 +11,7 @@
 AmtorEngine::AmtorEngine(QObject *parent)
     : ModemEngine(QStringLiteral("AMTOR"), std::make_shared<AmtorTxSource>(), parent)
 {
+    setDecodeOnSend(true);
     qRegisterMetaType<QVector<float>>("QVector<float>");
     m_carrierHz = 1500.0;
     m_thread = new QThread(this);

@@ -80,6 +80,7 @@ QString OliviaEngine::presetName(const Preset &p)
 OliviaEngine::OliviaEngine(QObject *parent)
     : ModemEngine(QStringLiteral("Olivia"), std::make_shared<OliviaTxSource>(), parent)
 {
+    setDecodeOnSend(true);
     qRegisterMetaType<QVector<float>>("QVector<float>");
     m_carrierHz = 1500.0;
     m_thread = new QThread(this);

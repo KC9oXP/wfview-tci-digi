@@ -16,6 +16,7 @@
 #include "MainWindow.h"
 #include "MemoriesDialog.h"
 #include "MockTciServer.h"
+#include "Mt63Engine.h"
 #include "NavtexEngine.h"
 #include "OliviaEngine.h"
 #include "PskEngine.h"
@@ -745,6 +746,211 @@ static void runNewModesTx()
     CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
     server.alcOnChangeOnly = false;
     server.alcFromLevel = false;
+}
+
+// 0.9.18: Send, a macro, TX and an SSTV picture turn Decode on in every transmit tab;
+// Tune and CW ID leave it off.
+static void runDecodeOnSend()
+{
+    std::printf("\n=== 0.9.18: sending turns Decode on; Tune and CW ID do not ===\n");
+    MockTciServer server;
+    server.listen();
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("TCI/Port"), server.port());
+    settings.setValue(QStringLiteral("TCI/ConnectOnStart"), true);
+    settings.setValue(QStringLiteral("Station/MyCall"), QStringLiteral("KC9OXP"));
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    MainWindow w(&settings);
+    w.show();
+    auto *client = w.findChild<TciClient *>();
+    CHECK(waitFor([&] { return client->isReady(); }, 5000));
+    pump(1500);
+    TxTools *tools = TxTools::instance();
+    CHECK(tools != nullptr);
+
+    auto modem = [&](ModemEngine *e, const char *name, int how)
+    {
+        CHECK(e != nullptr);
+        if (!e)
+            return;
+        e->setDecoding(false);
+        CHECK(!e->decoding());
+        if (how == 0)
+            e->send(QStringLiteral("TEST"));
+        else if (how == 1)
+            e->sendMacro(0); // CQ ... de {MYCALL}
+        else
+            e->startTx();
+        const bool on = e->decoding();
+        std::printf("  %-7s %s -> Decode %s\n", name, how == 0 ? "Send " : how == 1 ? "macro" : "TX   ", on ? "on" : "OFF");
+        CHECK(e->transmitting());
+        CHECK(on);
+        e->abortTx();
+        CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
+    };
+    modem(w.findChild<PskEngine *>(), "PSK", 0);
+    modem(w.findChild<HellEngine *>(), "Hell", 1);
+    modem(w.findChild<OliviaEngine *>(), "Olivia", 0);
+    modem(w.findChild<Mt63Engine *>(), "MT63", 1);
+    modem(w.findChild<AmtorEngine *>(), "AMTOR", 2);
+
+    auto *sstvEng = w.findChild<SstvEngine *>();
+    sstvEng->setDecoding(false);
+    QImage pic(320, 240, QImage::Format_RGB32);
+    pic.fill(Qt::blue);
+    sstvEng->setTxMode(sstv::Robot36);
+    sstvEng->sendImage(pic);
+    std::printf("  SSTV    picture -> Decode %s\n", sstvEng->decoding() ? "on" : "OFF");
+    CHECK(sstvEng->transmitting() && sstvEng->decoding());
+    sstvEng->abortTx();
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
+
+    auto *rtty = w.findChild<RttyEngine *>();
+    rtty->setDecoding(false);
+    rtty->sendMacro(0);
+    std::printf("  RTTY    macro -> Decode %s\n", rtty->decoding() ? "on" : "OFF");
+    CHECK(rtty->decoding());
+    rtty->abortTx();
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
+
+    auto *cwDec = w.findChild<CwDecoder *>();
+    auto *cwTx = w.findChild<CwTxEngine *>();
+    CHECK(cwDec && cwTx);
+    cwDec->setEnabled(false);
+    cwTx->send(QStringLiteral("TEST"));
+    pump(100);
+    std::printf("  CW      Send -> Decode %s\n", cwDec->enabled() ? "on" : "OFF");
+    CHECK(cwDec->enabled());
+    cwTx->abortTx();
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
+
+    std::printf("  F9 / F10: F9 with text sends (and turns Decode on), empty F10 does not\n");
+    {
+        auto *p = w.findChild<PskEngine *>();
+        CHECK(p->macroNames().size() == 10);
+        p->setMacro(8, QStringLiteral("Rig"), QStringLiteral("RIG IC-7610 DE {MYCALL}\n"));
+        p->setDecoding(false);
+        p->sendMacro(9);
+        CHECK(!p->transmitting());
+        p->sendMacro(8);
+        CHECK(p->transmitting() && p->decoding());
+        p->abortTx();
+        CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
+        rtty->setMacro(9, QStringLiteral("Stn"), QStringLiteral("STN IC-7610 DE {MYCALL}\n"));
+        rtty->sendMacro(9);
+        CHECK(rtty->transmitting());
+        rtty->abortTx();
+        CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
+        // The buttons: ten on the PSK tab, F9 / F10 labels.
+        bool f9 = false, f10 = false;
+        for (QPushButton *b : w.findChildren<QPushButton *>())
+        {
+            f9 = f9 || b->text() == QLatin1String("F9 Rig");
+            f10 = f10 || b->text() == QLatin1String("F10 Stn");
+        }
+        CHECK(f9 && f10);
+    }
+
+    // Tune and CW ID leave Decode as it was.
+    auto *psk = w.findChild<PskEngine *>();
+    psk->setDecoding(false);
+    rtty->setDecoding(false);
+    cwDec->setEnabled(false);
+    tools->startTune(0.2);
+    CHECK(waitFor([&] { return client->radioTransmitting(); }, 3000));
+    pump(300);
+    tools->stopTune();
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
+    tools->sendCwId(0.2);
+    CHECK(waitFor([&] { return tools->cwIdEngine()->transmitting(); }, 3000));
+    tools->cwIdEngine()->abortTx();
+    CHECK(waitFor([&] { return !client->radioTransmitting(); }, 3000));
+    pump(100);
+    std::printf("  after Tune + CW ID: PSK %s, RTTY %s, CW %s\n",
+                psk->decoding() ? "ON" : "off",
+                rtty->decoding() ? "ON" : "off",
+                cwDec->enabled() ? "ON" : "off");
+    CHECK(!psk->decoding() && !rtty->decoding() && !cwDec->enabled());
+}
+
+// 0.9.18: RST rcvd from the report in the received text (not on SSTV; typed wins).
+static void runRcvdFromText()
+{
+    std::printf("\n=== 0.9.18: RST rcvd from the received text ===\n");
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    QsoLogDock dock(&settings);
+    auto *rcvd = dock.findChild<QLineEdit *>(QStringLiteral("rstRcvd"));
+    CHECK(rcvd != nullptr);
+    if (!rcvd)
+        return;
+    dock.setMyCall(QStringLiteral("KC9OXP"));
+    dock.setMode(QStringLiteral("RTTY"), QString(), QStringLiteral("RTTY"));
+    CHECK(rcvd->text() == QLatin1String("599"));
+    dock.receivedText(QStringLiteral("CQ CQ DE K1LNF\nKC9OXP DE K1LNF GM UR RST "));
+    dock.receivedText(QStringLiteral("579 579 NAME GAV BTU"));
+    std::printf("  RTTY: rcvd %s (%s)\n", qPrintable(rcvd->text()), qPrintable(rcvd->toolTip()));
+    CHECK(rcvd->text() == QLatin1String("579"));
+    dock.setCall(QStringLiteral("K1LNF"));
+    CHECK(rcvd->text() == QLatin1String("579"));
+    // Typed by hand: kept.
+    rcvd->setText(QStringLiteral("559"));
+    dock.receivedText(QStringLiteral(" KC9OXP DE K1LNF UR 589"));
+    CHECK(rcvd->text() == QLatin1String("559"));
+    // CW cut numbers after a new mode.
+    dock.setMode(QStringLiteral("CW"), QString(), QStringLiteral("CW"));
+    dock.receivedText(QStringLiteral(" KC9OXP DE K1LNF TU UR 4NN 4NN"));
+    std::printf("  CW: rcvd %s\n", qPrintable(rcvd->text()));
+    CHECK(rcvd->text() == QLatin1String("499"));
+    // SSTV: never from text.
+    dock.setMode(QStringLiteral("SSTV"), QString(), QStringLiteral("SSTV"));
+    dock.receivedText(QStringLiteral(" KC9OXP DE K1LNF UR 455"));
+    std::printf("  SSTV: rcvd %s\n", qPrintable(rcvd->text()));
+    CHECK(rcvd->text() == QLatin1String("595"));
+}
+
+// 0.9.18: settings saved with 8 macros load unchanged; F9 and F10 start empty.
+static void runMacroMigration()
+{
+    std::printf("\n=== 0.9.18: 8 saved macros -> 10 (F9, F10 empty) ===\n");
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    QStringList names, texts;
+    for (int i = 0; i < 8; ++i)
+    {
+        names << QStringLiteral("Mine%1").arg(i + 1);
+        texts << QStringLiteral("my text %1\n").arg(i + 1);
+    }
+    for (const char *g : {"PSK", "RTTY"})
+    {
+        settings.setValue(QStringLiteral("%1/MacroNames").arg(QLatin1String(g)), names);
+        settings.setValue(QStringLiteral("%1/MacroTexts").arg(QLatin1String(g)), texts);
+    }
+    PskEngine psk;
+    psk.loadSettings(&settings);
+    RttyEngine rtty;
+    rtty.loadSettings(&settings);
+    for (const QStringList &n : {psk.macroNames(), rtty.macroNames()})
+    {
+        std::printf("  %d macros: F1 %s, F8 %s, F9 %s, F10 %s\n",
+                    int(n.size()),
+                    qPrintable(n.value(0)),
+                    qPrintable(n.value(7)),
+                    qPrintable(n.value(8)),
+                    qPrintable(n.value(9)));
+        CHECK(n.size() == 10);
+        CHECK(n.value(0) == QLatin1String("Mine1") && n.value(7) == QLatin1String("Mine8"));
+    }
+    CHECK(psk.macroTexts().value(7) == QLatin1String("my text 8\n"));
+    CHECK(psk.macroTexts().value(8).isEmpty() && psk.macroTexts().value(9).isEmpty());
+    CHECK(rtty.macroTexts().value(8).isEmpty() && rtty.macroTexts().value(9).isEmpty());
+    // Saved again with ten, and read back.
+    psk.setMacro(9, QStringLiteral("Ten"), QStringLiteral("ten\n"));
+    PskEngine again;
+    again.loadSettings(&settings);
+    CHECK(again.macroNames().value(9) == QLatin1String("Ten") && again.macroNames().value(0) == QLatin1String("Mine1"));
 }
 
 // WWV Time: 200 s of synthesized WWV straight into the engine (its own worker thread).
@@ -1636,6 +1842,9 @@ int main(int argc, char *argv[])
     }
     runNewModes();
     runNewModesTx();
+    runDecodeOnSend();
+    runRcvdFromText();
+    runMacroMigration();
     runWwv();
     runMemories();
     runRsidSideband();

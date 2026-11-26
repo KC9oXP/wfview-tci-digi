@@ -49,6 +49,7 @@ void Mt63DecoderWorker::resetDecoder()
 Mt63Engine::Mt63Engine(QObject *parent)
     : ModemEngine(QStringLiteral("MT63"), std::make_shared<Mt63TxSource>(), parent)
 {
+    setDecodeOnSend(true);
     qRegisterMetaType<QVector<float>>("QVector<float>");
     m_carrierHz = 1500.0;
     m_thread = new QThread(this);

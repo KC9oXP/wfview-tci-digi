@@ -90,7 +90,7 @@ class RttyEngine : public QObject
     Q_OBJECT
 
 public:
-    static constexpr int kMacroCount = 8;
+    static constexpr int kMacroCount = 10; // F1-F10 (F9 and F10 since 0.9.18; old settings have 8)
 
     enum Sideband
     {

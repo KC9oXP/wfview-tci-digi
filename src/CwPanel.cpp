@@ -215,6 +215,15 @@ CwPanel::CwPanel(CwDecoder *decoder, CwTxEngine *tx, QSettings *settings, QWidge
 
     // ---- wiring
     connect(m_decode, &QPushButton::toggled, m_dec, &CwDecoder::setEnabled);
+    // Sending (Send, a macro, TX) turns Decode on, so the reply is copied.
+    connect(m_tx,
+            &ModemEngine::sendKeyed,
+            this,
+            [this]()
+            {
+                if (!m_dec->enabled())
+                    m_dec->setEnabled(true); // the button follows (settingsChanged)
+            });
     connect(m_engine,
             &QComboBox::currentIndexChanged,
             this,

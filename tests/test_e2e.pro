@@ -78,6 +78,7 @@ HEADERS += \
     ../engine/wsprtxsource.h \
     ../engine/lookupcore.h \
     ../engine/signalreport.h \
+    ../engine/rstparse.h \
     ../engine/uploadcore.h \
     ../engine/gridtrackerudp.h \
     ../engine/inputlevel.h \

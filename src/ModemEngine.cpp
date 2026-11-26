@@ -78,10 +78,15 @@ void ModemEngine::loadSettings(QSettings *settings)
     m_txLevel = m_settings->value(QStringLiteral("TxLevel"), m_txLevel).toDouble();
     const QStringList names = m_settings->value(QStringLiteral("MacroNames")).toStringList();
     const QStringList texts = m_settings->value(QStringLiteral("MacroTexts")).toStringList();
-    if (names.size() == kMacroCount && texts.size() == kMacroCount)
+    // Saved before 0.9.18 with 8 macros: keep them, F9 and F10 start empty.
+    if (names.size() == texts.size() && names.size() >= 8 && names.size() <= kMacroCount)
     {
         m_macroNames = names;
         m_macroTexts = texts;
+        while (m_macroNames.size() < kMacroCount)
+            m_macroNames << QStringLiteral("M%1").arg(m_macroNames.size() + 1);
+        while (m_macroTexts.size() < kMacroCount)
+            m_macroTexts << QString();
     }
     m_settings->endGroup();
     // My call is shared by all modes (RTTY 0.1.0 kept its own; use it as the default).
@@ -298,6 +303,8 @@ void ModemEngine::keyUp()
         setStatus(tr("The server reports this radio as receive only."));
         return;
     }
+    if (m_decodeOnSend && !m_decoding)
+        setDecoding(true);
     applyConfig(); // carrier and level as shown now
     m_tx->start(prerollSeconds());
     m_keyed = true;
@@ -307,6 +314,7 @@ void ModemEngine::keyUp()
     m_keyedTimer.start();
     emit transmittingChanged(true);
     emit transmitRequested(true);
+    emit sendKeyed();
     m_txPoll.start();
     // A blank line before each transmission and after it (see RxText for the
     // breaks between received overs).
@@ -393,6 +401,11 @@ void ModemEngine::sendMacro(int index)
     if (index < 0 || index >= kMacroCount)
         return;
     const QString t = m_macroTexts.at(index);
+    if (t.trimmed().isEmpty())
+    {
+        setStatus(tr("F%1 has no text yet: set it with Edit... next to the macros.").arg(index + 1));
+        return;
+    }
     if (t.contains(QStringLiteral("{CALL}"), Qt::CaseInsensitive) && m_call.isEmpty())
     {
         setStatus(tr("Enter the other station's call first (the macro uses {CALL})."));
