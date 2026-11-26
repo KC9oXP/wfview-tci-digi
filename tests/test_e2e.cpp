@@ -818,8 +818,8 @@ static void renderScreens(const QString &dir)
     pump(12000); // enough for a few Hell words
     const QList<QSize> sizes = {QSize(1100, 760), QSize(640, 520), QSize(1600, 1000)};
     static const char *const names[]
-        = {"cw", "rtty", "psk", "hell", "olivia", "mt63", "sstv", "amtor", "divider", "navtex", "wefax"};
-    for (int tab = 0; tab < tabs->count() && tab < 11; ++tab)
+        = {"cw", "rtty", "psk", "hell", "olivia", "mt63", "sstv", "amtor", "wspr", "divider", "navtex", "wefax"};
+    for (int tab = 0; tab < tabs->count() && tab < 12; ++tab)
     {
         if (!tabs->isTabEnabled(tab))
             continue;
@@ -856,7 +856,7 @@ static void renderScreens(const QString &dir)
         if (e->text() == QStringLiteral("KC9OXP"))
             ++calls;
     std::printf("  My call fields showing KC9OXP: %d\n", calls);
-    CHECK(calls == 7); // RTTY, PSK, Hell, CW, Olivia, MT63, AMTOR
+    CHECK(calls == 8); // RTTY, PSK, Hell, CW, Olivia, MT63, AMTOR, WSPR
 }
 
 static void runMemoriesOldDefaults()
