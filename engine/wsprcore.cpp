@@ -626,33 +626,58 @@ double FreeFinder::clearance(std::int64_t now, double centreHz) const
     return best;
 }
 
+int FreeFinder::uses(std::int64_t now, double centreHz) const
+{
+    const double half = kSignalWidthHz / 2.0;
+    int n = 0;
+    for (const Slot &s : m_slots)
+        if (s.index > now - kKeepSlots && s.index <= now)
+            for (const Busy &b : s.ranges)
+                if (centreHz + half >= b.lowHz && centreHz - half <= b.highHz)
+                    ++n;
+    return n;
+}
+
 std::vector<FreeFinder::Pick> FreeFinder::suggest(std::int64_t now, int count, double minApart) const
 {
     struct C
     {
         int hz;
         double clear, score;
+        int uses;
     };
     std::vector<C> c;
     for (int hz = int(kCentreHz - kWindowHalfHz + 10); hz <= int(kCentreHz + kWindowHalfHz - 10); ++hz)
     {
         const double cl = clearance(now, hz);
         // Prefer wide gaps (up to 25 Hz counts), then nearer the middle.
-        c.push_back({hz, cl, std::min(cl, 25.0) - 0.02 * std::fabs(hz - kCentreHz)});
+        c.push_back({hz, cl, std::min(cl, 25.0) - 0.02 * std::fabs(hz - kCentreHz), uses(now, hz)});
     }
-    std::stable_sort(c.begin(), c.end(), [](const C &a, const C &b) { return a.score > b.score; });
     std::vector<Pick> out;
-    for (const C &x : c)
-    {
+    auto take = [&](const C &x) {
         if (int(out.size()) >= count)
-            break;
-        if (x.clear <= 0.0)
-            break;
-        bool near = false;
+            return;
         for (const Pick &p : out)
-            near = near || std::abs(p.hz - x.hz) < minApart;
-        if (!near)
-            out.push_back({x.hz, x.clear});
+            if (std::abs(p.hz - x.hz) < minApart)
+                return;
+        out.push_back({x.hz, std::max(0.0, x.clear), x.uses});
+    };
+    std::vector<C> clear = c;
+    std::stable_sort(clear.begin(), clear.end(), [](const C &a, const C &b) { return a.score > b.score; });
+    for (const C &x : clear)
+        if (x.clear > 0.0)
+            take(x);
+    if (int(out.size()) < count)
+    {
+        // Crowded: the offsets used least, then nearest the middle.
+        std::vector<C> least = c;
+        std::stable_sort(least.begin(), least.end(), [](const C &a, const C &b) {
+            if (a.uses != b.uses)
+                return a.uses < b.uses;
+            return std::fabs(a.hz - kCentreHz) < std::fabs(b.hz - kCentreHz);
+        });
+        for (const C &x : least)
+            take(x);
     }
     return out;
 }

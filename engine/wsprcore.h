@@ -156,20 +156,25 @@ public:
         std::string call;
     };
     std::vector<Busy> busy(std::int64_t nowSlot) const;
-    // Up to 'count' clear centres in 1410..1590 Hz, best first, at least
-    // minApartHz apart; each with how far it is from the nearest busy edge.
+    // Up to 'count' centres in 1410..1590 Hz, at least minApartHz apart: clear
+    // ones first (widest gap, then nearest the middle); when the window is too
+    // crowded for that, the least used offsets (fewest signals heard there in
+    // the remembered slots), marked with clearanceHz 0.
     struct Pick
     {
         int hz;
-        double clearanceHz;
+        double clearanceHz; // 0: not clear (a least-used pick)
+        int uses; // signals heard on this offset in the remembered slots
     };
     std::vector<Pick> suggest(std::int64_t nowSlot, int count = 3, double minApartHz = 12.0) const;
     // Distance from a signal at centreHz to the nearest busy range (big if clear).
     double clearance(std::int64_t nowSlot, double centreHz) const;
+    // Signals heard overlapping a signal at centreHz, over the remembered slots.
+    int uses(std::int64_t nowSlot, double centreHz) const;
     int slotsSeen(std::int64_t nowSlot) const;
 
     static constexpr int kKeepSlots = 10; // 20 minutes
-    static constexpr double kGuardHz = 3.0; // extra space each side of a signal
+    static constexpr double kGuardHz = 1.5; // extra space each side of a signal (wsprd separates ~3 Hz)
     static constexpr double kEnergyDb = 1.5; // above the median of the window
 
 private:

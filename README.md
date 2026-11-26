@@ -267,7 +267,9 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
   shows them (orange = decoded, grey = heard but not decoded, green = suggested free offsets,
   red = your TX offset); the three *Free* buttons are the clearest offsets, and a click on
   the strip puts your beacon there. *Move to a free offset if mine is in use* moves the
-  beacon to the best one before a transmission when a station was heard on yours.
+  beacon to the best one before a transmission when a station was heard on yours. On a crowded
+  band (80 m at night) where no offset is clear, the buttons show the least used offsets (marked
+  *), and the beacon only moves if that offset was used less than yours.
 - *Band hopping*: *Coordinated (WSJT-X schedule)* goes to the same band as every other
   station hopping (160, 80, 60, 40, 30, 20, 17, 15, 12, 10 m, one per slot, round every 20
   minutes), skipping bands you did not tick; *My bands in turn* steps through your ticked

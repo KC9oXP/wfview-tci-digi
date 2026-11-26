@@ -170,6 +170,7 @@ public:
     std::vector<wspr::FreeFinder::Busy> busy() const;
     std::vector<wspr::FreeFinder::Pick> suggestions() const;
     double clearance(double centreHz) const;
+    int uses(double centreHz) const;
     int slotsHeard() const;
     const wspr::WindowSpectrum &lastSpectrum() const
     {

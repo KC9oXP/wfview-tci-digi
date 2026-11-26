@@ -652,6 +652,12 @@ double WsprEngine::clearance(double centreHz) const
     return f ? f->clearance(slotStart(QDateTime::currentMSecsSinceEpoch()) / kSlotMs, centreHz) : 1e9;
 }
 
+int WsprEngine::uses(double centreHz) const
+{
+    const wspr::FreeFinder *f = finderFor(m_dial);
+    return f ? f->uses(slotStart(QDateTime::currentMSecsSinceEpoch()) / kSlotMs, centreHz) : 0;
+}
+
 int WsprEngine::slotsHeard() const
 {
     const wspr::FreeFinder *f = finderFor(m_dial);
@@ -697,9 +703,12 @@ void WsprEngine::startBeacon()
     if (m_autoFree && slotsHeard() > 0 && clearance(centre) < 2.0)
     {
         const std::vector<wspr::FreeFinder::Pick> picks = suggestions();
-        if (!picks.empty())
+        // A clear offset, or on a crowded band one used less than ours.
+        if (!picks.empty() && (picks.front().clearanceHz > 0.0 || picks.front().uses < uses(centre)))
         {
-            moved = tr(" (moved from %1 Hz, which is in use)").arg(qRound(centre));
+            moved = picks.front().clearanceHz > 0.0
+                ? tr(" (moved from %1 Hz, which is in use)").arg(qRound(centre))
+                : tr(" (moved from %1 Hz to the least used offset; no offset is clear)").arg(qRound(centre));
             centre = picks.front().hz;
             m_txOffset = centre;
             save("TxOffset", m_txOffset);

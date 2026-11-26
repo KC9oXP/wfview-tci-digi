@@ -733,7 +733,15 @@ void WsprPanel::syncFree()
         QPushButton *b = m_pick[k];
         if (heard > 0 && size_t(k) < m_view->picks.size())
         {
-            b->setText(tr("%1 Hz").arg(m_view->picks[size_t(k)].hz));
+            const wspr::FreeFinder::Pick &pk = m_view->picks[size_t(k)];
+            b->setText(pk.clearanceHz > 0.0 ? tr("%1 Hz").arg(pk.hz) : tr("%1 Hz *").arg(pk.hz));
+            b->setToolTip(pk.clearanceHz > 0.0
+                              ? tr("Clear of every station heard on this band in the last 20 minutes (by %1 Hz).")
+                                    .arg(pk.clearanceHz, 0, 'f', 0)
+                              : tr("No offset is clear: this is one of the least used (%n signal(s) heard here in "
+                                   "the last 20 minutes).",
+                                   "",
+                                   pk.uses));
             b->setProperty("hz", m_view->picks[size_t(k)].hz);
             b->setEnabled(true);
         }
@@ -754,8 +762,12 @@ void WsprPanel::syncFree()
             (b.decoded ? decoded : energy) += 1;
         const double cl = m_w->clearance(m_w->txOffsetHz());
         s = tr("%1 decoded, %2 other signal(s) in the last %3 slot(s).").arg(decoded).arg(energy).arg(heard);
+        if (!m_view->picks.empty() && m_view->picks.front().clearanceHz <= 0.0)
+            s += tr(" Crowded: no clear offset, * = least used.");
         if (cl <= 0.0)
-            s += tr(" <span style='color:#e07070'>Your offset is in use.</span>");
+            s += tr(" <span style='color:#e07070'>Your offset is in use (%n signal(s) heard on it).</span>",
+                    "",
+                    m_w->uses(m_w->txOffsetHz()));
         else if (cl < 1e8)
             s += tr(" Your offset is clear by %1 Hz.").arg(cl, 0, 'f', 0);
     }

@@ -174,6 +174,37 @@ int main()
         CHECK(ff.slotsSeen(100) == 1 && ff.slotsSeen(100 + FreeFinder::kKeepSlots) == 0);
         CHECK(ff.busy(100 + FreeFinder::kKeepSlots).empty()); // forgotten after 20 minutes
     }
+    // Crowded (80 m at night): a station every 9 Hz across the window for several slots, one
+    // gap at 1503 Hz that only one station used once -> still 3 picks, least used first.
+    {
+        FreeFinder ff;
+        WindowSpectrum none;
+        for (int slot = 0; slot < 5; ++slot)
+        {
+            std::vector<Spot> sp;
+            for (int hz = 1405 + slot; hz <= 1595; hz += 9)
+            {
+                if (std::abs(hz - 1503) < 7 && slot != 2)
+                    continue;
+                Spot s;
+                s.audioHz = hz;
+                s.call = "X" + std::to_string(hz);
+                sp.push_back(s);
+            }
+            ff.addSlot(200 + slot, sp, none);
+        }
+        CHECK(ff.clearance(204, 1500.0) == 0.0);
+        std::vector<FreeFinder::Pick> picks = ff.suggest(204, 3);
+        CHECK(picks.size() == 3);
+        for (const FreeFinder::Pick &p : picks)
+            std::printf("  crowded pick %d Hz, clear %.1f, used %d\n", p.hz, p.clearanceHz, p.uses);
+        if (!picks.empty())
+        {
+            CHECK(std::abs(picks[0].hz - 1503) <= 3);
+            CHECK(picks[0].uses <= 1);
+            CHECK(picks[0].uses <= picks.back().uses);
+        }
+    }
     // Energy only (no decode): a tone at 1580 Hz is marked busy, not decoded.
     {
         std::vector<float> a = slotAudio({}, 12000.0, 7);
