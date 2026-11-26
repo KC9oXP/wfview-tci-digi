@@ -16,6 +16,7 @@
 #include <QList>
 #include <QObject>
 #include <QPointer>
+#include <QStringList>
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -71,6 +72,8 @@ public:
 
     // TQSL found automatically (registry / usual places), else the one the user chose.
     QString tqslPath(bool *fromSystem = nullptr) const;
+    // The Station Location names set up in TQSL (its station_data file); empty if it can't be read.
+    QStringList tqslStations() const;
 
     // Options > Logging and uploads...
     void editSettings(QWidget *parent);
@@ -78,6 +81,7 @@ public:
     // For the end-to-end test only.
     static void setQrzUrlForTests(const QUrl &url);
     static void setTqslPathForTests(const QString &path);
+    static void setTqslStationFileForTests(const QString &path);
 
 public slots:
     void qsoLogged(const Qso &q);

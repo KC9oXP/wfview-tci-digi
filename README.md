@@ -534,7 +534,9 @@ logged QSO is always written to the ADIF file. Each one can also go, as soon as 
   answers Pass or Fail.
 - *Straight to LoTW*: TQSL signs and uploads in the background (no TQSL window, no password to type)
   with the certificate password saved once, or none if the certificate has no password. TQSL is found
-  where its installer put it; the station location is the name set up in TQSL.
+  where its installer put it. *Station location* lists the Station Locations set up in TQSL; pick
+  yours (the name must match TQSL exactly, or TQSL stops with "command syntax error"). A name TQSL
+  doesn't have is caught before TQSL runs, and the status says which names TQSL has.
 - A QSO that cannot be sent (no internet) waits and goes with the next one; *Retry now* sends it at
   once. A login problem (wrong key or password) stops that service and turns its button red until it
   is fixed, instead of trying again and again. Status bar: green sent, blue sending, amber waiting,

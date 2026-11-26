@@ -6,6 +6,7 @@
 #include "uploadcore.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -40,6 +41,7 @@ const QString kQrzKey = QStringLiteral("qrz-key");
 const QString kTqslPassword = QStringLiteral("tqsl-password");
 QUrl g_qrzUrlForTests;
 QString g_tqslForTests;
+QString g_stationFileForTests;
 constexpr int kRetryMs = 5 * 60 * 1000; // network trouble: try again after this
 constexpr int kTqslTimeoutMs = 180 * 1000;
 constexpr int kMaxPerTqslRun = 50;
@@ -62,6 +64,11 @@ void LogUploader::setQrzUrlForTests(const QUrl &url)
 void LogUploader::setTqslPathForTests(const QString &path)
 {
     g_tqslForTests = path;
+}
+
+void LogUploader::setTqslStationFileForTests(const QString &path)
+{
+    g_stationFileForTests = path;
 }
 
 LogUploader::LogUploader(QSettings *settings, QObject *parent)
@@ -188,6 +195,34 @@ QString LogUploader::tqslPath(bool *fromSystem) const
         return QDir::toNativeSeparators(user.absoluteFilePath());
     }
     return QString();
+}
+
+QStringList LogUploader::tqslStations() const
+{
+    QString file = g_stationFileForTests;
+    if (file.isEmpty())
+    {
+        // TQSL's own folder: TQSLDIR if set, else the usual place for each system.
+        QString dir = qEnvironmentVariable("TQSLDIR");
+        if (dir.isEmpty())
+        {
+#ifdef Q_OS_WIN
+            dir = qEnvironmentVariable("APPDATA") + QStringLiteral("/TrustedQSL");
+#elif defined(Q_OS_MACOS)
+            dir = QDir::homePath() + QStringLiteral("/Library/Application Support/TrustedQSL");
+#else
+            dir = QDir::homePath() + QStringLiteral("/.tqsl");
+#endif
+        }
+        file = QDir(dir).filePath(QStringLiteral("station_data"));
+    }
+    QFile f(file);
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    QStringList out;
+    for (const std::string &n : upload::tqslStationNames(f.read(4 * 1024 * 1024).toStdString()))
+        out << QString::fromStdString(n);
+    return out;
 }
 
 LogUploader::State LogUploader::qrzState() const
@@ -487,6 +522,18 @@ void LogUploader::sendLotw()
     {
         m_lotwStopped = true;
         m_lotwMsg = tr("Set your TQSL station location (Options > Logging and uploads).");
+        emit statusChanged();
+        return;
+    }
+    // TQSL ends with "command syntax error" (10) for a station location it doesn't have: say so plainly.
+    const QStringList known = tqslStations();
+    if (!known.isEmpty() && !known.contains(m_location))
+    {
+        m_lotwStopped = true;
+        m_lotwMsg = tr("Station location \"%1\" is not in TQSL. Your TQSL station locations: %2. Pick one in "
+                       "Options > Logging and uploads.")
+                        .arg(m_location, known.join(QStringLiteral(", ")));
+        emit message(tr("LoTW upload stopped: %1").arg(m_lotwMsg));
         emit statusChanged();
         return;
     }
@@ -835,9 +882,34 @@ void LogUploader::editSettings(QWidget *parent)
                 showTqsl();
             });
     lf->addRow(tr("TQSL"), tqslRow);
-    auto *loc = new QLineEdit(m_location);
-    loc->setPlaceholderText(tr("the Station Location name as set up in TQSL"));
+    // A list of the Station Locations in TQSL (typing is still allowed, e.g. TQSL set up later).
+    const QStringList stations = tqslStations();
+    auto *loc = new QComboBox();
+    loc->setEditable(true);
+    loc->setInsertPolicy(QComboBox::NoInsert);
+    loc->addItems(stations);
+    loc->setCurrentText(m_location.isEmpty() && stations.size() == 1 ? stations.first() : m_location);
+    loc->lineEdit()->setPlaceholderText(tr("the Station Location name as set up in TQSL"));
+    auto *locNote = new QLabel();
+    locNote->setWordWrap(true);
+    const auto showLocNote = [loc, locNote, stations]()
+    {
+        const QString t = loc->currentText().trimmed();
+        if (stations.isEmpty())
+            locNote->setText(tr("TQSL's list of station locations was not found here: type the name exactly as "
+                                "it is in TQSL (Station Locations tab)."));
+        else if (!t.isEmpty() && !stations.contains(t))
+            locNote->setText(tr("<span style=\"color:#c62828\">\"%1\" is not a station location in TQSL "
+                                "(yours: %2). TQSL won't sign with it.</span>")
+                                 .arg(t.toHtmlEscaped(), stations.join(QStringLiteral(", ")).toHtmlEscaped()));
+        else
+            locNote->clear();
+        locNote->setVisible(!locNote->text().isEmpty());
+    };
+    showLocNote();
+    connect(loc, &QComboBox::currentTextChanged, &dlg, showLocNote);
     lf->addRow(tr("Station location"), loc);
+    lf->addRow(locNote);
     SecretRow pw = makeSecretRow(kTqslPassword, tr("leave empty if your certificate has no password"), &dlg);
     lf->addRow(tr("Certificate password"), pw.widget);
     auto *lotwNote = new QLabel(tr("TQSL signs and uploads each QSO in the background: no TQSL window and no "
@@ -883,7 +955,7 @@ void LogUploader::editSettings(QWidget *parent)
     m_qrzOn = qrzBox->isChecked();
     m_lotwOn = lotwBox->isChecked();
     m_tqslUserPath = userPath;
-    m_location = loc->text().trimmed();
+    m_location = loc->currentText().trimmed();
     saveSettings();
     retryNow(); // new settings: try what is waiting
 }

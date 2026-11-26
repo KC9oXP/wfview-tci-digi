@@ -88,6 +88,29 @@ int main()
     CHECK(tqslOutcome(11) == Outcome::Retry && tqslOutcome(3) == Outcome::Retry);
     CHECK(tqslOutcome(4) == Outcome::Stop && tqslOutcome(2) == Outcome::Stop && tqslOutcome(10) == Outcome::Stop);
     CHECK(tqslStatusText(11).find("reach") != std::string::npos);
+    CHECK(tqslStatusText(10).find("station location") != std::string::npos);
+
+    std::printf("TQSL station locations\n");
+    {
+        const std::string xml = "<StationDataFile>\n"
+                                "<StationData name=\"Home\">\n<CALL>KC9OXP</CALL>\n<GRIDSQUARE>EN71ar</GRIDSQUARE>\n"
+                                "</StationData>\n"
+                                "<StationData  name = 'Field &amp; Day'><CALL>KC9OXP/P</CALL></StationData>\n"
+                                "<StationData name=\"Home\"><CALL>KC9OXP</CALL></StationData>\n"
+                                "<StationData name=\"Caf&#xE9; &quot;QTH&quot;\"></StationData>\n"
+                                "<StationData callname=\"x\" name=\"Second\"></StationData>\n"
+                                "</StationDataFile>\n";
+        const std::vector<std::string> n = tqslStationNames(xml);
+        CHECK(n.size() == 4);
+        CHECK(n.size() > 0 && n[0] == "Home");
+        CHECK(n.size() > 1 && n[1] == "Field & Day");
+        CHECK(n.size() > 2 && n[2] == "Caf\xC3\xA9 \"QTH\"");
+        CHECK(n.size() > 3 && n[3] == "Second");
+        CHECK(tqslStationNames("").empty());
+        CHECK(tqslStationNames("<StationDataFile></StationDataFile>").empty());
+        CHECK(tqslStationNames("<StationData name=\"cut").empty());
+        CHECK(xmlUnescape("a &lt;b&gt; &bogus; &#65;&") == "a <b> &bogus; A&");
+    }
 
     std::printf(g_fail ? "\n%d FAILED\n" : "\nALL PASSED\n", g_fail);
     return g_fail ? 1 : 0;

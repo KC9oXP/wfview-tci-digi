@@ -1676,6 +1676,18 @@ static void runUploads()
     const QString tqslLog = tmp.filePath(QStringLiteral("tqsl.log"));
     qputenv("FAKE_TQSL_LOG", QFile::encodeName(tqslLog));
     qputenv("FAKE_TQSL_STATUS", "0");
+    // TQSL's station_data with the location the settings use (never the real one in %APPDATA%)
+    const QString stationFile = tmp.filePath(QStringLiteral("station_data"));
+    const auto writeStations = [&](const QString &xml)
+    {
+        QFile f(stationFile);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            f.write(xml.toUtf8());
+    };
+    writeStations(QStringLiteral("<StationDataFile>\n<StationData name=\"Home EN71ar\"><CALL>KC9OXP</CALL>"
+                                 "</StationData>\n<StationData name=\"Portable\"><CALL>KC9OXP</CALL>"
+                                 "</StationData>\n</StationDataFile>\n"));
+    LogUploader::setTqslStationFileForTests(stationFile);
 
     QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
     settings.setValue(QStringLiteral("TCI/Port"), server.port());
@@ -1808,6 +1820,22 @@ static void runUploads()
         qputenv("FAKE_TQSL_STATUS", "0");
         up->retryNow();
         CHECK(waitFor([&] { return up->lotwWaiting() == 0 && up->lotwState() == LogUploader::State::Ok; }, 10000));
+
+        // the station location is not one TQSL has: stop before running TQSL, name the ones it has
+        CHECK(up->tqslStations() == QStringList({QStringLiteral("Home EN71ar"), QStringLiteral("Portable")}));
+        writeStations(QStringLiteral("<StationDataFile><StationData name=\"Portable\"></StationData>"
+                                     "</StationDataFile>"));
+        QFile::remove(tqslLog);
+        logQso(QStringLiteral("K1ABC"));
+        CHECK(waitFor([&] { return up->lotwState() == LogUploader::State::Problem; }, 10000));
+        std::printf("  LoTW with an unknown station location: %s\n", qPrintable(up->lotwText()));
+        CHECK(up->lotwText().contains(QStringLiteral("not in TQSL"))
+              && up->lotwText().contains(QStringLiteral("Portable")) && up->lotwWaiting() == 1);
+        CHECK(!QFile::exists(tqslLog)); // TQSL was not run
+        writeStations(QStringLiteral("<StationDataFile><StationData name=\"Home EN71ar\"></StationData>"
+                                     "</StationDataFile>"));
+        up->retryNow();
+        CHECK(waitFor([&] { return up->lotwWaiting() == 0 && up->lotwState() == LogUploader::State::Ok; }, 10000));
     }
 
     // a QSO whose call is not a call sign: ADIF file only
@@ -1825,6 +1853,7 @@ static void runUploads()
     SecretStore::forget(QStringLiteral("qrz-key"));
     SecretStore::forget(QStringLiteral("tqsl-password"));
     CHECK(!SecretStore::has(QStringLiteral("qrz-key")));
+    LogUploader::setTqslStationFileForTests(QString());
 }
 
 int main(int argc, char *argv[])

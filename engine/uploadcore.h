@@ -9,6 +9,7 @@
 //    what TQSL's status code means for the queue.
 #pragma once
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -203,6 +204,135 @@ inline std::vector<std::string> tqslArgs(const std::string &location,
     return a;
 }
 
+// XML text with the five named entities and &#N; / &#xN; decoded (TQSL writes &amp; and &quot;).
+inline std::string xmlUnescape(const std::string &in)
+{
+    std::string out;
+    out.reserve(in.size());
+    for (size_t i = 0; i < in.size(); ++i)
+    {
+        if (in[i] != '&')
+        {
+            out += in[i];
+            continue;
+        }
+        const size_t semi = in.find(';', i);
+        if (semi == std::string::npos || semi - i > 10)
+        {
+            out += in[i];
+            continue;
+        }
+        const std::string ent = in.substr(i + 1, semi - i - 1);
+        unsigned long cp = 0;
+        bool ok = true;
+        if (ent == "amp")
+            cp = '&';
+        else if (ent == "lt")
+            cp = '<';
+        else if (ent == "gt")
+            cp = '>';
+        else if (ent == "quot")
+            cp = '"';
+        else if (ent == "apos")
+            cp = '\'';
+        else if (ent.size() > 1 && ent[0] == '#')
+        {
+            const bool hex = ent[1] == 'x' || ent[1] == 'X';
+            const std::string digits = ent.substr(hex ? 2 : 1);
+            ok = !digits.empty();
+            for (const char c : digits)
+            {
+                const int d = (c >= '0' && c <= '9')                ? c - '0'
+                              : hex && (c >= 'a' && c <= 'f')       ? c - 'a' + 10
+                              : hex && (c >= 'A' && c <= 'F')       ? c - 'A' + 10
+                                                                    : -1;
+                if (d < 0 || cp > 0x10FFFF)
+                {
+                    ok = false;
+                    break;
+                }
+                cp = cp * (hex ? 16 : 10) + unsigned(d);
+            }
+            ok = ok && cp > 0 && cp <= 0x10FFFF;
+        }
+        else
+            ok = false;
+        if (!ok)
+        {
+            out += in[i];
+            continue;
+        }
+        // UTF-8
+        if (cp < 0x80)
+            out += char(cp);
+        else if (cp < 0x800)
+        {
+            out += char(0xC0 | (cp >> 6));
+            out += char(0x80 | (cp & 0x3F));
+        }
+        else if (cp < 0x10000)
+        {
+            out += char(0xE0 | (cp >> 12));
+            out += char(0x80 | ((cp >> 6) & 0x3F));
+            out += char(0x80 | (cp & 0x3F));
+        }
+        else
+        {
+            out += char(0xF0 | (cp >> 18));
+            out += char(0x80 | ((cp >> 12) & 0x3F));
+            out += char(0x80 | ((cp >> 6) & 0x3F));
+            out += char(0x80 | (cp & 0x3F));
+        }
+        i = semi;
+    }
+    return out;
+}
+
+// The Station Location names in TQSL's station_data file: <StationData name="Home"> ... </StationData>
+// inside <StationDataFile>. In file order, without repeats. TQSL looks up -l by this name; a name it
+// does not have ends the run with status 10 (command error), not a location error.
+inline std::vector<std::string> tqslStationNames(const std::string &xml)
+{
+    std::vector<std::string> out;
+    const std::string open = "<StationData";
+    size_t pos = 0;
+    while ((pos = xml.find(open, pos)) != std::string::npos)
+    {
+        const size_t end = xml.find('>', pos);
+        if (end == std::string::npos)
+            break;
+        const std::string tag = xml.substr(pos, end - pos);
+        pos = end;
+        const char after = tag.size() > open.size() ? tag[open.size()] : '\0';
+        if (after != ' ' && after != '\t' && after != '\r' && after != '\n')
+            continue; // <StationDataFile> or another element
+        size_t n = 0;
+        while ((n = tag.find("name", n)) != std::string::npos)
+        {
+            const char before = tag[n - 1];
+            size_t k = n + 4;
+            while (k < tag.size() && (tag[k] == ' ' || tag[k] == '\t'))
+                ++k;
+            if ((before == ' ' || before == '\t' || before == '\r' || before == '\n') && k < tag.size()
+                && tag[k] == '=')
+                break;
+            n += 4;
+        }
+        if (n == std::string::npos)
+            continue;
+        size_t q = tag.find_first_of("\"'", n);
+        if (q == std::string::npos)
+            continue;
+        const size_t e = tag.find(tag[q], q + 1);
+        if (e == std::string::npos)
+            continue;
+        const std::string name = xmlUnescape(tag.substr(q + 1, e - q - 1));
+        if (!name.empty() && std::find(out.begin(), out.end(), name) == out.end())
+            out.push_back(name);
+    }
+    return out;
+}
+
 // The same command line safe for the TCI log: the password replaced.
 inline std::string tqslArgsShown(const std::vector<std::string> &args)
 {
@@ -297,7 +427,7 @@ inline std::string tqslStatusText(int status)
     case 9:
         return "uploaded (some were duplicates)";
     case 10:
-        return "TQSL command error";
+        return "TQSL command error (is the station location named exactly as in TQSL?)";
     case 11:
         return "cannot reach LoTW (no internet?)";
     default:
