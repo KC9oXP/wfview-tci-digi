@@ -294,6 +294,25 @@ int main()
         CHECK(!s.decide(1, 0.0));
     }
 
+    // ---- live waterfall line: a tone at 1530 Hz peaks within a bin of 1530
+    {
+        std::vector<float> a(24000);
+        std::mt19937 rng(5);
+        std::normal_distribution<double> g(0.0, 0.05);
+        for (size_t k = 0; k < a.size(); ++k)
+            a[k] = float(g(rng) + 0.02 * std::sin(2.0 * M_PI * 1530.0 * double(k) / 12000.0));
+        WindowSpectrum l = liveLine(a.data(), a.size());
+        CHECK(!l.db.empty());
+        size_t best = 0;
+        for (size_t k = 0; k < l.db.size(); ++k)
+            if (l.db[k] > l.db[best])
+                best = k;
+        const double hz = l.firstHz + double(best) * l.binHz;
+        std::printf("live line peak %.1f Hz\n", hz);
+        CHECK(std::fabs(hz - 1530.0) < 1.5);
+        CHECK(liveLine(a.data(), 1000).db.empty());
+    }
+
     // ---- measured power
     {
         PowerMeter pm;

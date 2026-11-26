@@ -29,6 +29,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <cstring>
 #include <cmath>
 #include <functional>
 
@@ -42,7 +43,7 @@ public:
     explicit WsprWindowView(QWidget *parent = nullptr)
         : QWidget(parent)
     {
-        setMinimumHeight(fontMetrics().lineSpacing() * 5);
+        setMinimumHeight(fontMetrics().lineSpacing() * 8);
         setCursor(Qt::CrossCursor);
         setMouseTracking(true);
     }
@@ -54,8 +55,61 @@ public:
 
     QSize sizeHint() const override
     {
-        return QSize(600, fontMetrics().lineSpacing() * 6);
+        return QSize(600, fontMetrics().lineSpacing() * 10);
     }
+
+    // A new live line on top of the waterfall (one per second, newest at the top).
+    void addLine(const wspr::WindowSpectrum &l)
+    {
+        if (l.db.empty())
+            return;
+        const int w = int(l.db.size());
+        const int h = 200; // lines kept (about 3 minutes)
+        if (m_wf.width() != w || m_wf.height() != h)
+        {
+            m_wf = QImage(w, h, QImage::Format_RGB32);
+            m_wf.fill(QColor(0x14, 0x18, 0x1e));
+            m_lines = 0;
+        }
+        m_wfFirstHz = l.firstHz;
+        m_wfBinHz = l.binHz;
+        // scroll down one line
+        std::memmove(m_wf.scanLine(1), m_wf.scanLine(0), size_t(m_wf.bytesPerLine()) * size_t(h - 1));
+        // level: noise floor (median) to 25 dB above it
+        std::vector<float> v = l.db;
+        std::nth_element(v.begin(), v.begin() + std::ptrdiff_t(v.size() / 2), v.end());
+        const float floorDb = v[v.size() / 2];
+        auto *row = reinterpret_cast<QRgb *>(m_wf.scanLine(0));
+        for (int x = 0; x < w; ++x)
+            row[x] = colour((l.db[size_t(x)] - floorDb + 3.0f) / 25.0f);
+        ++m_lines;
+        update();
+    }
+    void clearWaterfall()
+    {
+        m_wf = QImage();
+        m_lines = 0;
+        update();
+    }
+
+private:
+    static QRgb colour(float t)
+    {
+        t = std::clamp(t, 0.0f, 1.0f);
+        // dark blue -> blue -> cyan -> yellow -> white
+        static const float stops[5][3] = {{0x10, 0x14, 0x30}, {0x20, 0x40, 0xc0}, {0x20, 0xc0, 0xd0}, {0xf0, 0xe0, 0x30}, {0xff, 0xff, 0xff}};
+        const float p = t * 4.0f;
+        const int i = std::min(3, int(p));
+        const float f = p - float(i);
+        return qRgb(int(stops[i][0] + (stops[i + 1][0] - stops[i][0]) * f),
+                    int(stops[i][1] + (stops[i + 1][1] - stops[i][1]) * f),
+                    int(stops[i][2] + (stops[i + 1][2] - stops[i][2]) * f));
+    }
+    QImage m_wf;
+    int m_lines = 0;
+    double m_wfFirstHz = 0.0, m_wfBinHz = 0.0;
+
+public:
 
 protected:
     static constexpr double kLo = 1390.0, kHi = 1610.0;
@@ -88,11 +142,28 @@ protected:
             const int w = fontMetrics().horizontalAdvance(t);
             p.drawText(QPointF(xFor(hz) - w / 2.0, h - 3), t);
         }
-        // Busy ranges.
+        // Live waterfall (newest line at the top), stretched to the window's frequency scale.
+        if (!m_wf.isNull() && m_wfBinHz > 0.0)
+        {
+            const double loHz = m_wfFirstHz - m_wfBinHz / 2.0;
+            const double hiHz = m_wfFirstHz + (m_wf.width() - 0.5) * m_wfBinHz;
+            const int shown = std::min(m_lines, m_wf.height());
+            const double lineH = std::max(1.0, double(plotH) / 120.0); // about 2 minutes fill the strip
+            const int rows = std::min(shown, int(plotH / lineH) + 1);
+            if (rows > 0)
+                p.drawImage(QRectF(xFor(loHz), 0, xFor(hiHz) - xFor(loHz), rows * lineH),
+                            m_wf,
+                            QRectF(0, 0, m_wf.width(), rows));
+            p.setPen(QColor(0x2c, 0x34, 0x40, 120));
+            for (int hz = 1400; hz <= 1600; hz += 10)
+                p.drawLine(QPointF(xFor(hz), 0), QPointF(xFor(hz), plotH));
+        }
+        // Busy ranges: a band along the top (orange = decoded, grey = heard only).
+        const int band = fontMetrics().height() + 2;
         for (const wspr::FreeFinder::Busy &b : busy)
         {
-            const QRectF r(xFor(b.lowHz), 0, std::max(2.0, xFor(b.highHz) - xFor(b.lowHz)), plotH);
-            p.fillRect(r, b.decoded ? QColor(0xc0, 0x70, 0x20, 110) : QColor(0x90, 0x90, 0x90, 80));
+            const QRectF r(xFor(b.lowHz), 0, std::max(2.0, xFor(b.highHz) - xFor(b.lowHz)), m_wf.isNull() ? plotH : band * 4);
+            p.fillRect(r, b.decoded ? QColor(0xc0, 0x70, 0x20, 140) : QColor(0x90, 0x90, 0x90, 110));
             if (b.decoded && !b.call.empty())
             {
                 p.save();
@@ -103,8 +174,8 @@ protected:
                 p.restore();
             }
         }
-        // Spectrum (last decoded slot), scaled to its own range.
-        if (!spectrum.db.empty())
+        // Spectrum of the last decoded slot (only until the live waterfall has lines).
+        if (!spectrum.db.empty() && m_wf.isNull())
         {
             float lo = spectrum.db[0], hi = spectrum.db[0];
             for (float v : spectrum.db)
@@ -131,7 +202,11 @@ protected:
         for (const wspr::FreeFinder::Pick &k : picks)
             p.drawLine(QPointF(xFor(k.hz), 0), QPointF(xFor(k.hz), plotH));
         const double half = wspr::kSignalWidthHz / 2.0;
-        p.fillRect(QRectF(xFor(txHz - half), 0, xFor(txHz + half) - xFor(txHz - half), plotH), QColor(0xe0, 0x30, 0x30, 120));
+        // TX offset: an outline over the waterfall (a filled band would hide the traces).
+        p.setPen(QPen(QColor(0xff, 0x50, 0x50), 1.0));
+        p.setBrush(m_wf.isNull() ? QColor(0xe0, 0x30, 0x30, 120) : QColor(0xe0, 0x30, 0x30, 40));
+        p.drawRect(QRectF(xFor(txHz - half), 0, xFor(txHz + half) - xFor(txHz - half), plotH));
+        p.setBrush(Qt::NoBrush);
         p.setPen(QPen(QColor(0xff, 0x50, 0x50), 2.0));
         p.drawLine(QPointF(xFor(txHz), 0), QPointF(xFor(txHz), plotH));
     }
@@ -213,6 +288,7 @@ WsprPanel::WsprPanel(WsprEngine *engine, WsprNet *net, QSettings *settings, QWid
     connect(m_w, &WsprEngine::slotChanged, this, &WsprPanel::syncSlot);
     connect(m_w, &WsprEngine::freeChanged, this, &WsprPanel::syncFree);
     connect(m_w, &WsprEngine::slotDecoded, this, &WsprPanel::addSlot);
+    connect(m_w, &WsprEngine::liveLine, this, [this](const wspr::WindowSpectrum &l) { m_view->addLine(l); });
     connect(m_w, &ModemEngine::transmittingChanged, this, &WsprPanel::syncSlot);
     connect(m_net, &WsprNet::statusChanged, this, &WsprPanel::syncUpload);
     auto *clock = new QTimer(this);
@@ -372,9 +448,10 @@ QWidget *WsprPanel::buildTop()
     v->addLayout(r3);
     m_view = new WsprWindowView();
     m_view->onClick = [this](double hz) { m_w->setTxOffsetHz(hz); };
-    m_view->setToolTip(tr("The WSPR window, 1400-1600 Hz: blue = spectrum of the last slot, orange = decoded "
-                          "stations, grey = signals heard but not decoded, green = free offsets, red = your TX "
-                          "offset. Busy offsets are kept for 20 minutes per band."));
+    m_view->setToolTip(tr("The WSPR window, 1400-1600 Hz: live waterfall (one line a second while Decode is on; a "
+                          "WSPR station is a thin line about 6 Hz wide), orange = decoded stations, grey = "
+                          "signals heard but not decoded, green = free offsets, red = your TX offset. Busy offsets "
+                          "are kept for 20 minutes per band."));
     v->addWidget(m_view);
 
     // ---- bands, hopping, uploads

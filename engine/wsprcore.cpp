@@ -300,18 +300,27 @@ void decimate(const std::vector<std::complex<double>> &in, const std::vector<dou
 }
 } // namespace
 
-void toBaseband(const std::vector<float> &audio, std::vector<float> &i, std::vector<float> &q)
+namespace
 {
-    // Mix 1500 Hz to 0, then 12000 -> 1500 (/8) -> 375 (/4).
-    std::vector<std::complex<double>> x(audio.size());
+// Mix 1500 Hz to 0, then 12000 -> 1500 (/8) -> 375 (/4).
+void basebandOf(const float *audio, size_t len, std::vector<std::complex<double>> &b)
+{
+    std::vector<std::complex<double>> x(len);
     const double w = 2.0 * M_PI * kCentreHz / kAudioRate;
-    for (size_t n = 0; n < audio.size(); ++n)
+    for (size_t n = 0; n < len; ++n)
         x[n] = double(audio[n]) * std::polar(1.0, -w * double(n));
     static const std::vector<double> h1 = lowpass(127, 600.0, 12000.0);
     static const std::vector<double> h2 = lowpass(97, 170.0, 1500.0);
-    std::vector<std::complex<double>> a, b;
+    std::vector<std::complex<double>> a;
     decimate(x, h1, 8, a);
     decimate(a, h2, 4, b);
+}
+} // namespace
+
+void toBaseband(const std::vector<float> &audio, std::vector<float> &i, std::vector<float> &q)
+{
+    std::vector<std::complex<double>> b;
+    basebandOf(audio.data(), audio.size(), b);
     const size_t want = size_t(120.0 * kBasebandRate); // the decoder's buffer (zeros after the recording)
     i.assign(want, 0.0f);
     q.assign(want, 0.0f);
@@ -473,6 +482,34 @@ WindowSpectrum windowSpectrum(const std::vector<float> &i, const std::vector<flo
     out.db.resize(acc.size());
     for (size_t k = 0; k < acc.size(); ++k)
         out.db[k] = float(10.0 * std::log10(blocks ? acc[k] / blocks + 1e-20 : 1e-20));
+    return out;
+}
+
+WindowSpectrum liveLine(const float *audio, size_t n)
+{
+    WindowSpectrum out;
+    constexpr int N = FFT_SIZE;
+    if (n < 16000)
+        return out;
+    std::vector<std::complex<double>> b;
+    basebandOf(audio + (n - 16000), 16000, b); // 500 baseband samples... plus filter edges
+    // 16000 / 32 = 500 < 512: zero-pad the few missing; skip the filter's start-up (first 8).
+    std::complex<float> buf[N];
+    const size_t skip = 8;
+    const size_t have = b.size() > skip ? b.size() - skip : 0;
+    for (int k = 0; k < N; ++k)
+    {
+        const float w = float(0.5 - 0.5 * std::cos(2.0 * M_PI * k / N));
+        const std::complex<double> v = size_t(k) < have ? b[skip + size_t(k)] : std::complex<double>(0.0, 0.0);
+        buf[k] = std::complex<float>(float(v.real()) * w, float(v.imag()) * w);
+    }
+    wsprd::fft512(buf);
+    out.binHz = kBasebandRate / N;
+    const int span = int(std::ceil((kWindowHalfHz + 10.0) / out.binHz));
+    out.firstHz = kCentreHz - span * out.binHz;
+    out.db.resize(size_t(2 * span + 1));
+    for (int bIdx = -span; bIdx <= span; ++bIdx)
+        out.db[size_t(bIdx + span)] = float(10.0 * std::log10(double(std::norm(buf[(bIdx + N) % N])) + 1e-20));
     return out;
 }
 

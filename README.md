@@ -260,6 +260,8 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
   (`K1ABC FN42 37` and `<K1ABC> FN42AB 37`; `PJ4/K1ABC 37` and `<PJ4/K1ABC> FK52UD 37`).
   The hashed `<call>` of other stations shows once their plain message has been heard
   (kept in `wspr-hashes.txt`).
+- The strip over the 200 Hz window is a live waterfall while Decode is on (one line a second,
+  about 0.7 Hz per pixel column, so a WSPR station shows as a thin trace about 6 Hz wide).
 - **Free offsets:** every decoded slot is remembered for 20 minutes per band: the stations
   decoded and any other energy in the window (signals too weak to decode). The window strip
   shows them (orange = decoded, grey = heard but not decoded, green = suggested free offsets,

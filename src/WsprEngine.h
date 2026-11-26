@@ -44,6 +44,7 @@ struct WsprSlot
     bool valid = false;
 };
 Q_DECLARE_METATYPE(WsprSlot)
+Q_DECLARE_METATYPE(wspr::WindowSpectrum)
 
 class WsprWorker : public QObject
 {
@@ -58,12 +59,14 @@ public slots:
 signals:
     void slotDone(WsprSlot s);
     void hashesChanged(QString text);
+    void liveLine(wspr::WindowSpectrum line); // about once a second, for the waterfall
 
 private:
     AudioResampler m_rs;
     double m_fs = 0.0;
     std::vector<float> m_ring; // 12 kHz, the last kHistorySec
     qint64 m_count = 0; // 12 kHz samples received in all
+    qint64 m_lastLine = 0; // m_count at the last live line
     std::deque<std::pair<double, double>> m_t0; // (arrival ms, estimate of the epoch ms of sample 0)
     double m_lastArrival = 0.0;
     wspr::Decoder m_dec;
@@ -205,6 +208,7 @@ signals:
     void slotChanged(); // a new slot began, or its state changed
     void freeChanged(); // busy ranges / suggestions changed
     void tuneRequested(qint64 dialHz, QString why); // band hop
+    void liveLine(wspr::WindowSpectrum line); // live waterfall line (while Decode is on)
     void logLine(QString text);
 
 protected:

@@ -135,6 +135,9 @@ struct WindowSpectrum
     std::vector<float> db; // average power, dB (relative)
 };
 WindowSpectrum windowSpectrum(const std::vector<float> &i, const std::vector<float> &q);
+// One live waterfall line of the window (same bins) from the last ~1.5 s of
+// 12 kHz audio (at least 16000 samples; empty result if fewer).
+WindowSpectrum liveLine(const float *audio12k, size_t n);
 
 // ---- free offsets ----------------------------------------------------------
 

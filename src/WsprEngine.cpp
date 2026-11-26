@@ -46,6 +46,7 @@ void WsprWorker::reset()
 {
     m_ring.clear();
     m_count = 0;
+    m_lastLine = 0;
     m_t0.clear();
     m_lastArrival = 0.0;
     m_fs = 0.0;
@@ -76,6 +77,17 @@ void WsprWorker::pushAudio(QVector<float> mono, float sampleRate, double arrival
     m_t0.emplace_back(arrivalMs, est);
     while (!m_t0.empty() && arrivalMs - m_t0.front().first > 30000.0)
         m_t0.pop_front();
+    // Live waterfall: a line about every second from the last 16000 samples.
+    if (m_count >= 16000 && m_count - m_lastLine >= qint64(wspr::kAudioRate))
+    {
+        m_lastLine = m_count;
+        std::vector<float> last(16000);
+        for (qint64 k = 0; k < 16000; ++k)
+            last[size_t(k)] = m_ring[size_t((m_count - 16000 + k) % qint64(ringSize))];
+        wspr::WindowSpectrum l = wspr::liveLine(last.data(), last.size());
+        if (!l.db.empty())
+            emit liveLine(l);
+    }
 }
 
 void WsprWorker::loadHashes(QString text)
@@ -144,6 +156,7 @@ WsprEngine::WsprEngine(QObject *parent)
 {
     qRegisterMetaType<QVector<float>>("QVector<float>");
     qRegisterMetaType<WsprSlot>("WsprSlot");
+    qRegisterMetaType<wspr::WindowSpectrum>("wspr::WindowSpectrum");
     m_carrierHz = wspr::kCentreHz;
     m_hop.rx.assign(wspr::bands().size(), false);
     m_hop.tx.assign(wspr::bands().size(), false);
@@ -154,6 +167,7 @@ WsprEngine::WsprEngine(QObject *parent)
     m_worker->moveToThread(m_thread);
     connect(m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
     connect(m_worker, &WsprWorker::slotDone, this, &WsprEngine::onSlotDone);
+    connect(m_worker, &WsprWorker::liveLine, this, &WsprEngine::liveLine);
     connect(m_worker,
             &WsprWorker::hashesChanged,
             this,
