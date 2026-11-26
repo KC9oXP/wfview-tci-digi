@@ -299,8 +299,8 @@ QWidget *WsprPanel::buildTop()
     for (int d = 0; d <= 60; ++d)
         if (wspr::validDbm(d))
             m_dbm->addItem(tr("%1 dBm (%2)").arg(d).arg(wattsText(d)), d);
-    m_dbm->setToolTip(tr("The power you report in the message (what reaches the antenna). It does not set "
-                         "the radio's power."));
+    m_dbm->setToolTip(tr("The power you report in the message: what reaches the antenna. It does not set or "
+                         "measure the radio's power, so set the radio to match (less any feed-line loss)."));
     r2->addWidget(m_dbm);
     r2->addSpacing(12);
     r2->addWidget(new QLabel(tr("TX level")));
@@ -472,9 +472,15 @@ void WsprPanel::editHopBands()
     for (size_t k = 0; k < wspr::bands().size(); ++k)
     {
         const int row = int(k) + 1;
-        g->addWidget(new QLabel(tr("%1 (%2 MHz)")
+        QString note;
+        if (wspr::bands()[k].dialHz == 5287200)
+            note = tr(" - not a US amateur frequency (receive only in the US)");
+        else if (wspr::bands()[k].dialHz == 5364700)
+            note = tr(" - US: 9.15 W ERP max (Power 37 dBm or less)");
+        g->addWidget(new QLabel(tr("%1 (%2 MHz)%3")
                                     .arg(QLatin1String(wspr::bands()[k].name))
-                                    .arg(double(wspr::bands()[k].dialHz) / 1e6, 0, 'f', 4)),
+                                    .arg(double(wspr::bands()[k].dialHz) / 1e6, 0, 'f', 4)
+                                    .arg(note)),
                      row,
                      0);
         auto *a = new QCheckBox();
@@ -580,6 +586,17 @@ void WsprPanel::syncSlot()
     QString hint;
     if ((m_w->txEnabled() || m_w->hopPlan().mode != wspr::HopPlan::Off) && !m_w->active())
         hint = tr("Transmit and band hopping are paused while another tab is shown.");
+    // US 60 m segment 5351.5-5366.5 kHz: 9.15 W ERP; 40 dBm (10 W) and up is over it.
+    const qint64 dial = m_w->radioDial();
+    if (dial + 1600 > 5351500 && dial + 1400 < 5366500 && m_w->dbm() >= 40)
+        hint = (hint.isEmpty() ? QString() : hint + QLatin1Char(' '))
+            + tr("60 m: US stations may run at most 9.15 W ERP in 5351.5-5366.5 kHz; Power is %1 dBm (%2). "
+                 "Use 37 dBm (5 W) or less, and set the radio's power to match.")
+                  .arg(m_w->dbm())
+                  .arg(wattsText(m_w->dbm()));
+    else if (dial > 5280000 && dial < 5300000 && m_w->txEnabled())
+        hint = (hint.isEmpty() ? QString() : hint + QLatin1Char(' '))
+            + tr("5.2872 MHz is not a US amateur frequency: receive only in the US.");
     double dt = 0.0;
     int n = 0;
     if (m_w->clockHint(dt, n) && std::fabs(dt) > 1.0)

@@ -79,8 +79,8 @@ SSTV 15 m,SSTV,,21.340,USB,15 m,"General, Advanced, Extra",ARRL band plan: 21.34
 SSTV 10 m,SSTV,,28.680,USB,10 m,"General, Advanced, Extra",ARRL band plan: 28.680 SSTV. Above 28.500: not Technician/Novice
 WSPR 160 m,WSPR,,1.8366,USB,160 m,"General, Advanced, Extra",WSPR (2-minute slots on even minutes); signals 1.8380-1.8382 MHz
 WSPR 80 m,WSPR,,3.5686,USB,80 m,"General, Advanced, Extra",WSPR; signals 3.5700-3.5702 MHz
-WSPR 60 m 5.3647,WSPR,,5.3647,USB,60 m,"General, Advanced, Extra","WSPR; signals 5.3661-5.3663 MHz, inside the 5.3515-5.3665 MHz 60 m segment; check the 60 m power limit"
-WSPR 60 m 5.2872,WSPR,,5.2872,USB,60 m,Check the rules (outside US sub-bands),"WSPR; the original 60 m dial, used where 5.288 MHz is allowed (outside the US 60 m allocation: receive only in the US)"
+WSPR 60 m 5.3647,WSPR,,5.3647,USB,60 m,"General, Advanced, Extra","WSPR; signals 5.3661-5.3663 MHz, in the 5.3515-5.3665 MHz 60 m segment (US since 2026-02-13, General and up): 9.15 W ERP max, so set Power to 37 dBm (5 W) or less"
+WSPR 60 m 5.2872,WSPR,,5.2872,USB,60 m,Check the rules (outside US sub-bands),"WSPR; the original 60 m dial, used where 5.288 MHz is allowed. Not a US amateur frequency: receive only in the US"
 WSPR 40 m,WSPR,,7.0386,USB,40 m,"General, Advanced, Extra",WSPR; signals 7.0400-7.0402 MHz
 WSPR 30 m,WSPR,,10.1387,USB,30 m,"General, Advanced, Extra",WSPR; signals 10.1401-10.1403 MHz
 WSPR 20 m,WSPR,,14.0956,USB,20 m,"General, Advanced, Extra",WSPR; signals 14.0970-14.0972 MHz
