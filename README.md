@@ -5,7 +5,8 @@
 > Expect bugs, rough edges and changes between versions. So far it has been used on one
 > station: an IC-7610 and an FT-991A, each with wfview v3. When you transmit, start into a
 > dummy load or at low power and keep an eye on the radio. Bug reports and test results
-> are welcome in the Issues tab.
+> are welcome in the Issues tab. The WSPR tab (new in 0.9.17) has hardly been tested on the
+> air yet.
 
 **wfview TCI Digi** is a stand-alone digital-modes program for **wfview**. wfview runs
 the radio; this program connects to wfview's **TCI** server (Transceiver Control
@@ -17,6 +18,12 @@ wfview reaches the radio over LAN or over USB.
 
 > **Unofficial companion.** This is not (yet) part of the wfview project. It is offered
 > to the wfview team for possible adoption; see [Future](#future).
+
+**Contents:** [At a glance](#at-a-glance) | [Quick start](#quick-start) |
+[Screenshots](#screenshots) | [The modes in detail](#the-modes-in-detail) |
+[In every tab](#in-every-tab) | [Setting up wfview](#setting-up-wfview-v3) |
+[Radio data mode](#radio-data-mode-and-modulation-input) | [Building](#building) |
+[Notes on wfview's TCI server](#notes-on-wfviews-tci-server-v3-november-2026) | [License](#license)
 
 ## At a glance
 
@@ -45,11 +52,21 @@ Around the modes:
 - **Screenshots** of the window or a waterfall with one key, stamped with call, time,
   frequency and mode.
 - **Transmit safety:** TX time limit, ALC warning, power/ALC/SWR in the top bar,
-  watchdogs that drop PTT if anything stalls.
+  watchdogs that drop PTT if anything stalls. *Auto TX level* sets the level from the ALC.
+- **RSID:** hears the ID burst fldigi sends ahead of a transmission and switches to that
+  mode, tab and frequency (and back again when it ends).
+- **Memories and presets:** a list of digital-mode calling frequencies with US license
+  classes, kept in an editable `memories.csv`; click one to tune the radio over TCI.
+- **Spotting:** PSK Reporter, WSPRnet and live data for GridTracker2 (each off until you
+  turn it on).
+- **Updates and languages:** tells you when a new release is out; Japanese translation
+  (partial), more welcome.
 
 ## Quick start
 
-*This app requires wfview v3 or newer, available here: https://github.com/wf-group/wfview/tree/v3-initial*
+*This app requires wfview v3: **v3.0-beta4 or newer**. The v3 builds are on wfview's
+[Releases page](https://github.com/wf-group/wfview/releases), marked **Pre-release** and listed
+above v2.25 (GitHub's "Latest" label still points at the v2 line, so look past it).*
 
 1. **wfview v3**: *Settings > External Control > TCI Server Port* = `50001`. For transmit,
    also tick *Settings > User Interface > Enable PTT Controls*.
@@ -72,28 +89,42 @@ most current distributions work). **macOS:** build from source (see [Building](#
 
 ## Screenshots
 
-Taken with the demo recordings played in through *File > Play a WAV file*, so every tab
-shows a clean signal. On the air the same tabs work on the radio's receive audio.
+**Current version (0.9.17).** Rendered by the end-to-end test against a mock of wfview's
+TCI server, which plays an RTTY, a BPSK31 and a Feld Hell station. MT63 and WSPR show the
+layout only (no signal in the mock; the red note on WSPR is there because the test leaves
+*Grid* empty).
 
-| CW (multi-signal list) | RTTY |
+| RTTY | PSK (BPSK31) |
 |---|---|
-| ![CW tab](docs/screenshots/cw.png) | ![RTTY tab](docs/screenshots/rtty.png) |
+| ![RTTY tab](docs/screenshots/rtty.png) | ![PSK tab](docs/screenshots/psk.png) |
 
-| PSK (BPSK31) | Feld Hell |
+| Feld Hell | MT63 |
 |---|---|
-| ![PSK tab](docs/screenshots/psk.png) | ![Feld Hell tab](docs/screenshots/hell.png) |
+| ![Feld Hell tab](docs/screenshots/hell.png) | ![MT63 tab](docs/screenshots/mt63.png) |
 
-| Olivia 8/500 | AMTOR FEC |
+| WSPR | |
 |---|---|
-| ![Olivia tab](docs/screenshots/olivia.png) | ![AMTOR tab](docs/screenshots/amtor.png) |
+| ![WSPR tab](docs/screenshots/wspr.png) | |
+
+**Earlier version (0.5).** Taken with the demo recordings played in through *File > Play a
+WAV file*, so every tab shows a clean signal. The controls have moved on since (input meter,
+presets, Memories, Auto TX level), but the decoders work the same way.
+
+| CW (multi-signal list) | Olivia 8/500 |
+|---|---|
+| ![CW tab](docs/screenshots/cw.png) | ![Olivia tab](docs/screenshots/olivia.png) |
+
+| SSTV | AMTOR FEC |
+|---|---|
+| ![SSTV tab](docs/screenshots/sstv.png) | ![AMTOR tab](docs/screenshots/amtor.png) |
 
 | NAVTEX | WEFAX |
 |---|---|
 | ![NAVTEX tab](docs/screenshots/navtex.png) | ![WEFAX tab](docs/screenshots/wefax.png) |
 
-| WWV Time | SSTV |
+| WWV Time | |
 |---|---|
-| ![WWV Time tab](docs/screenshots/wwv-time.png) | ![SSTV tab](docs/screenshots/sstv.png) |
+| ![WWV Time tab](docs/screenshots/wwv-time.png) | |
 
 ---
 
@@ -587,7 +618,12 @@ logged QSO is always written to the ADIF file. Each one can also go, as soon as 
 
 ## Setting up wfview (v3)
 
-wfview **v3** is required. wfview 2.24 answers TCI (the radio, frequency and mode show
+wfview **v3** is required: v3.0-beta4 or newer, from the *Pre-release* entries on
+[wfview's Releases page](https://github.com/wf-group/wfview/releases) (the v3 source is the
+[v3-initial branch](https://github.com/wf-group/wfview/tree/v3-initial)). On the IC-7610 over
+LAN, v3.0-beta3 put no RF out on the author's station with the TX codec set to LPCM 1ch 16bit;
+the next beta fixed it.
+wfview 2.24 answers TCI (the radio, frequency and mode show
 up) but never sends TCI audio, so the status bar stays at "RX audio: none".
 
 1. **Settings > External Control > TCI Server Port**: set a port to enable the TCI server
