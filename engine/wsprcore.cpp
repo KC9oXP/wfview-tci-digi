@@ -680,6 +680,46 @@ int HopPlan::bandFor(int minuteOfDay) const
     return -1;
 }
 
+// ---- measured power --------------------------------------------------------
+
+void PowerMeter::add(double watts, double secondsIntoTx)
+{
+    if (secondsIntoTx < 3.0 || !std::isfinite(watts) || watts < 0.0)
+        return;
+    m_w.push_back(watts);
+}
+
+bool PowerMeter::result(double &watts, std::string *why) const
+{
+    auto fail = [&](const char *t) {
+        if (why)
+            *why = t;
+        return false;
+    };
+    if (m_w.size() < 5)
+        return fail("too few power readings from the radio");
+    std::vector<double> v = m_w;
+    std::sort(v.begin(), v.end());
+    const double med = v[v.size() / 2];
+    if (med < 0.001)
+        return fail("the radio reported no output");
+    const double q1 = v[v.size() / 4], q3 = v[(3 * v.size()) / 4];
+    if ((q3 - q1) > 0.3 * med)
+        return fail("the power readings were not steady");
+    watts = med;
+    if (why)
+        why->clear();
+    return true;
+}
+
+int dbmForWatts(double watts, double lossDb)
+{
+    if (!(watts > 0.0))
+        return 0;
+    const double dbm = 10.0 * std::log10(watts * 1000.0) - std::max(0.0, lossDb);
+    return nearestDbm(int(std::lround(dbm)));
+}
+
 // ---- transmit schedule -----------------------------------------------------
 
 bool TxScheduler::decide(std::int64_t slot, double r)

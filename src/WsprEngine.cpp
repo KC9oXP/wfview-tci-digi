@@ -172,6 +172,7 @@ WsprEngine::WsprEngine(QObject *parent)
                 m_worker, "loadHashes", Qt::QueuedConnection, Q_ARG(QString, QString::fromUtf8(f.readAll())));
     }
 
+    connect(this, &ModemEngine::transmittingChanged, this, &WsprEngine::onTransmitting);
     m_tick.setInterval(200);
     connect(&m_tick, &QTimer::timeout, this, &WsprEngine::tick);
     m_tick.start();
@@ -195,6 +196,8 @@ void WsprEngine::loadSettings(QSettings *s)
         m_txOffset = std::clamp(s->value(QStringLiteral("TxOffset"), 1500.0).toDouble(), 1410.0, 1590.0);
         m_autoFree = s->value(QStringLiteral("AutoFree"), true).toBool();
         m_passes = std::clamp(s->value(QStringLiteral("Passes"), 2).toInt(), 1, 3);
+        m_autoPower = s->value(QStringLiteral("AutoPower"), false).toBool();
+        m_feedLossDb = std::clamp(s->value(QStringLiteral("FeedLossDb"), 0.0).toDouble(), 0.0, 10.0);
         m_hop.mode = wspr::HopPlan::Mode(std::clamp(s->value(QStringLiteral("HopMode"), 0).toInt(), 0, 2));
         const QStringList rx = s->value(QStringLiteral("HopRx")).toStringList();
         const QStringList tx = s->value(QStringLiteral("HopTx")).toStringList();
@@ -320,6 +323,64 @@ void WsprEngine::setPasses(int passes)
         return;
     m_passes = passes;
     save("Passes", passes);
+    emit settingsChanged();
+}
+
+void WsprEngine::setAutoPower(bool on)
+{
+    if (on == m_autoPower)
+        return;
+    m_autoPower = on;
+    save("AutoPower", on);
+    m_powerNote = on ? tr("Power will follow the radio's reading after the next transmission.") : QString();
+    emit settingsChanged();
+}
+
+void WsprEngine::setFeedLossDb(double db)
+{
+    db = std::clamp(std::round(db * 2.0) / 2.0, 0.0, 10.0);
+    if (std::fabs(db - m_feedLossDb) < 0.01)
+        return;
+    m_feedLossDb = db;
+    save("FeedLossDb", db);
+    emit settingsChanged();
+}
+
+void WsprEngine::addTxPower(double watts)
+{
+    if (transmitting() && m_txClock.isValid())
+        m_meter.add(watts, m_txClock.elapsed() / 1000.0);
+}
+
+void WsprEngine::onTransmitting(bool on)
+{
+    if (on)
+    {
+        m_meter.reset();
+        m_txClock.start();
+        return;
+    }
+    m_txClock.invalidate();
+    if (!m_autoPower)
+        return;
+    double w = 0.0;
+    std::string why;
+    if (!m_meter.result(w, &why))
+    {
+        m_powerNote = tr("Power not changed: %1.").arg(QString::fromStdString(why));
+        emit settingsChanged();
+        return;
+    }
+    const int dbm = wspr::dbmForWatts(w, m_feedLossDb);
+    m_powerNote = m_feedLossDb > 0.0
+        ? tr("Measured %1 W at the radio, less %2 dB feed line: %3 dBm.").arg(w, 0, 'g', 3).arg(m_feedLossDb).arg(dbm)
+        : tr("Measured %1 W at the radio: %2 dBm.").arg(w, 0, 'g', 3).arg(dbm);
+    emit logLine(tr("[WSPR] %1\n").arg(m_powerNote));
+    if (dbm != m_dbm)
+    {
+        m_dbm = dbm;
+        save("Dbm", m_dbm);
+    }
     emit settingsChanged();
 }
 

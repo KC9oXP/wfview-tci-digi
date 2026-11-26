@@ -543,6 +543,14 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_client, &TciClient::diagnostics, m_diag, &QLabel::setText);
     connect(m_client, &TciClient::txSensors, m_powerWatch, &TxPowerWatch::onSensors);
     connect(m_client, &TciClient::txSensors, m_tools, &TxTools::onTxSensors);
+    connect(m_client,
+            &TciClient::txSensors,
+            this,
+            [this](double, double power, double)
+            {
+                if (m_client->radioTransmitting())
+                    m_wspr->addTxPower(power);
+            });
     connect(m_client, &TciClient::radioTransmitChanged, m_tools, &TxTools::setRadioTransmitting);
     connect(m_client, &TciClient::radioTransmitChanged, m_powerWatch, &TxPowerWatch::setRadioTransmitting);
     connect(m_powerWatch, &TxPowerWatch::readout, m_txMeter, &QLabel::setText);

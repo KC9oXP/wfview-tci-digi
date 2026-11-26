@@ -278,7 +278,9 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
 - A slot is only decoded if the radio stayed on one dial, nothing transmitted and Decode was
   on for all of it (the status line says why a slot was skipped).
 - *Power* is only what the message reports (the power at the antenna); it does not set or
-  measure the radio's output, so set the radio to match. 60 m in the US: the 5.3647 MHz dial
+  measure the radio's output, so set the radio to match. *From radio* (for radios whose wfview
+  reports output in watts) sets Power after each transmission from the radio's own reading,
+  less the feed-line *loss*, for the next message; the radio's power is never changed. 60 m in the US: the 5.3647 MHz dial
   is in the 5351.5-5366.5 kHz segment (General and up since 2026-02-13, 9.15 W ERP max, so 37
   dBm or less; the tab warns at 40 dBm and up); 5.2872 MHz is not a US amateur frequency.
 

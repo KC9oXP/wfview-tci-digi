@@ -294,6 +294,29 @@ int main()
         CHECK(!s.decide(1, 0.0));
     }
 
+    // ---- measured power
+    {
+        PowerMeter pm;
+        double w = 0;
+        std::string why;
+        CHECK(!pm.result(w, &why) && !why.empty());
+        for (int k = 0; k < 40; ++k)
+            pm.add(k < 6 ? 0.0 : 5.0 + 0.1 * (k % 3), k * 0.5); // nothing for the first 3 s, then ~5 W
+        CHECK(pm.result(w, &why) && std::fabs(w - 5.1) < 0.15);
+        CHECK(dbmForWatts(w, 0.0) == 37); // 37.1 dBm
+        CHECK(dbmForWatts(10.0, 0.0) == 40 && dbmForWatts(10.0, 1.0) == 40 && dbmForWatts(10.0, 2.0) == 37);
+        CHECK(dbmForWatts(100.0, 0.0) == 50 && dbmForWatts(0.001, 0.0) == 0 && dbmForWatts(5000.0, 0.0) == 60);
+        CHECK(dbmForWatts(0.2, 0.0) == 23);
+        PowerMeter jumpy;
+        for (int k = 0; k < 40; ++k)
+            jumpy.add(k % 2 ? 2.0 : 8.0, 4.0 + k);
+        CHECK(!jumpy.result(w, &why));
+        PowerMeter none;
+        for (int k = 0; k < 40; ++k)
+            none.add(0.0, 4.0 + k);
+        CHECK(!none.result(w, &why));
+    }
+
     // ---- WSPRnet
     {
         Spot s;

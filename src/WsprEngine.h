@@ -117,6 +117,20 @@ public:
     {
         return m_passes;
     }
+    // Power from the radio's own reading (servers that report watts): after each
+    // transmission Power is set from what the radio put out, less the feed line.
+    bool autoPower() const
+    {
+        return m_autoPower;
+    }
+    double feedLossDb() const
+    {
+        return m_feedLossDb;
+    }
+    QString powerNote() const
+    {
+        return m_powerNote;
+    }
     wspr::HopPlan hopPlan() const
     {
         return m_hop;
@@ -176,6 +190,10 @@ public slots:
     void setTxOffsetHz(double hz);
     void setAutoFree(bool on);
     void setPasses(int passes);
+    void setAutoPower(bool on);
+    void setFeedLossDb(double db);
+    // TCI tx_sensors output power (W), while the radio transmits.
+    void addTxPower(double watts);
     void setHopPlan(const wspr::HopPlan &plan);
     void txNextSlot(); // the next slot transmits (once), whatever the percentage
     void setActive(bool shown);
@@ -205,6 +223,7 @@ protected:
 private slots:
     void tick();
     void onSlotDone(WsprSlot s);
+    void onTransmitting(bool on);
 
 private:
     void beginSlot(qint64 slot);
@@ -225,6 +244,11 @@ private:
     double m_txOffset = 1500.0;
     bool m_autoFree = true;
     int m_passes = 2;
+    bool m_autoPower = false;
+    double m_feedLossDb = 0.0;
+    QString m_powerNote;
+    wspr::PowerMeter m_meter;
+    QElapsedTimer m_txClock;
     wspr::HopPlan m_hop;
     wspr::TxScheduler m_sched;
     bool m_active = false;

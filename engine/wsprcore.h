@@ -211,6 +211,33 @@ struct HopPlan
     int bandFor(int minuteOfDay) const;
 };
 
+// ---- measured power --------------------------------------------------------
+
+// The radio's output during one transmission (TCI tx_sensors, in watts), for
+// the next message's power: the median after the first 3 s, if steady.
+class PowerMeter
+{
+public:
+    void reset()
+    {
+        m_w.clear();
+    }
+    void add(double watts, double secondsIntoTx);
+    // False (why set) with fewer than 5 readings, no output, or readings that
+    // are not steady (middle half more than 30 % of the median apart).
+    bool result(double &watts, std::string *why = nullptr) const;
+    size_t readings() const
+    {
+        return m_w.size();
+    }
+
+private:
+    std::vector<double> m_w;
+};
+// Reported power for 'watts' at the radio less 'lossDb' of feed line, as the
+// nearest valid WSPR step (0, 3, 7 ... 60 dBm).
+int dbmForWatts(double watts, double lossDb);
+
 // ---- transmit schedule -----------------------------------------------------
 
 // Picks transmit slots so that about 'percent' of slots are sent, never two in

@@ -10,6 +10,7 @@
 #include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDoubleSpinBox>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -302,6 +303,23 @@ QWidget *WsprPanel::buildTop()
     m_dbm->setToolTip(tr("The power you report in the message: what reaches the antenna. It does not set or "
                          "measure the radio's power, so set the radio to match (less any feed-line loss)."));
     r2->addWidget(m_dbm);
+    m_autoPower = new QCheckBox(tr("From radio"));
+    m_autoPower->setToolTip(tr("For radios whose wfview reports output power in watts: after each transmission, "
+                               "Power is set from what the radio reported putting out (less the feed-line loss), "
+                               "for the next message. The first message uses the Power shown. The app never "
+                               "changes the radio's power setting.\nLeave this off if the TX meter in the top bar "
+                               "shows percent rather than watts."));
+    r2->addWidget(m_autoPower);
+    m_loss = new QDoubleSpinBox();
+    m_loss->setRange(0.0, 10.0);
+    m_loss->setSingleStep(0.5);
+    m_loss->setDecimals(1);
+    m_loss->setPrefix(tr("loss "));
+    m_loss->setSuffix(tr(" dB"));
+    m_loss->setKeyboardTracking(false);
+    m_loss->setToolTip(tr("Feed-line (and tuner) loss between the radio and the antenna, taken off the measured "
+                          "power. 100 ft of RG-8X on 20 m is about 1.5 dB."));
+    r2->addWidget(m_loss);
     r2->addSpacing(12);
     r2->addWidget(new QLabel(tr("TX level")));
     m_level = new TxLevelSlider();
@@ -309,9 +327,13 @@ QWidget *WsprPanel::buildTop()
                                  "steady tone, so any ALC action only adds distortion."));
     r2->addWidget(m_level, 1);
     v->addLayout(r2);
+    auto *rm = new QHBoxLayout();
     m_msgs = new QLabel();
     m_msgs->setTextFormat(Qt::RichText);
-    v->addWidget(m_msgs);
+    rm->addWidget(m_msgs);
+    m_powerNote = new QLabel();
+    rm->addWidget(m_powerNote, 1);
+    v->addLayout(rm);
 
     // ---- offset and free suggestions
     auto *r3 = new QHBoxLayout();
@@ -426,6 +448,8 @@ QWidget *WsprPanel::buildTop()
             });
     connect(m_dbm, &QComboBox::currentIndexChanged, this, [this](int) { m_w->setDbm(m_dbm->currentData().toInt()); });
     connect(m_level, &TxLevelSlider::levelChanged, m_w, &ModemEngine::setTxLevel);
+    connect(m_autoPower, &QCheckBox::toggled, m_w, &WsprEngine::setAutoPower);
+    connect(m_loss, &QDoubleSpinBox::valueChanged, m_w, &WsprEngine::setFeedLossDb);
     connect(m_offset, &QSpinBox::valueChanged, this, [this](int hz) { m_w->setTxOffsetHz(hz); });
     connect(m_autoFree, &QCheckBox::toggled, m_w, &WsprEngine::setAutoFree);
     connect(m_go,
@@ -529,7 +553,11 @@ void WsprPanel::setRadioState(bool ready, bool canTransmit, const QString &mode)
 void WsprPanel::syncSettings()
 {
     const QSignalBlocker b1(m_decode), b2(m_depth), b3(m_txEnable), b4(m_pct), b5(m_dbm), b6(m_offset),
-        b7(m_autoFree), b8(m_hop);
+        b7(m_autoFree), b8(m_hop), b9(m_autoPower), b10(m_loss);
+    m_autoPower->setChecked(m_w->autoPower());
+    m_loss->setValue(m_w->feedLossDb());
+    m_loss->setEnabled(m_w->autoPower());
+    m_powerNote->setText(m_w->powerNote());
     m_decode->setChecked(m_w->decoding());
     m_depth->setCurrentIndex(std::max(0, m_depth->findData(m_w->passes())));
     m_txEnable->setChecked(m_w->txEnabled());

@@ -63,6 +63,9 @@ private:
     QLineEdit *m_call = nullptr;
     QLineEdit *m_grid = nullptr;
     QComboBox *m_dbm = nullptr;
+    QCheckBox *m_autoPower = nullptr;
+    class QDoubleSpinBox *m_loss = nullptr;
+    QLabel *m_powerNote = nullptr;
     TxLevelSlider *m_level = nullptr;
     QLabel *m_msgs = nullptr;
 
