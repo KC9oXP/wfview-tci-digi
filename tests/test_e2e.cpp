@@ -7,6 +7,7 @@
 //   test_e2e --screens DIR  also render the main window at several sizes to PNGs in DIR
 
 #include "AmtorEngine.h"
+#include "AppPaths.h"
 #include "AudioHub.h"
 #include "CwDecoder.h"
 #include "CwTxEngine.h"
@@ -881,6 +882,16 @@ static void runRcvdFromText()
     QTemporaryDir tmp;
     QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
     settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    // No MainWindow here: point the data folder at this test's settings (the last window's
+    // settings are gone), and let go of them at the end.
+    AppPaths::init(&settings);
+    struct Release
+    {
+        ~Release()
+        {
+            AppPaths::init(nullptr);
+        }
+    } release;
     QsoLogDock dock(&settings);
     auto *rcvd = dock.findChild<QLineEdit *>(QStringLiteral("rstRcvd"));
     CHECK(rcvd != nullptr);
@@ -1819,6 +1830,8 @@ static void runUploads()
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    // Unbuffered, so the log shows how far a test got if one crashes.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     const QStringList args = app.arguments();
     const int serve = args.indexOf(QStringLiteral("--serve"));
     if (serve >= 0)
