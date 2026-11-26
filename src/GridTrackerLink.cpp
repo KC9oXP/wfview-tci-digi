@@ -202,6 +202,28 @@ void GridTrackerLink::feedText(
     emit statusChanged();
 }
 
+void GridTrackerLink::wsprSpot(qint64 slotUtcMs, int snr, double dt, qint64 rfHz, int drift, const QString &call,
+                               const QString &grid, int dbm)
+{
+    if (!m_enabled || rfHz <= 0 || call.isEmpty() || call.startsWith(QLatin1Char('<')))
+        return;
+    wsjtx::WsprInfo d;
+    d.msSinceMidnightUtc = std::uint32_t(((slotUtcMs % 86400000LL) + 86400000LL) % 86400000LL);
+    d.snr = snr;
+    d.dt = dt;
+    d.rfHz = std::uint64_t(rfHz);
+    d.drift = drift;
+    d.call = call.toUpper().toStdString();
+    d.grid = wsjtx::normalGrid(grid.toStdString());
+    d.dbm = dbm;
+    send(wsjtx::wsprDecode(kId, d));
+    ++m_decodes;
+    m_sentLines << QStringLiteral("WSPR %1 %2 %3").arg(call, grid).arg(dbm);
+    if (m_sentLines.size() > 200)
+        m_sentLines.removeFirst();
+    emit statusChanged();
+}
+
 void GridTrackerLink::sendStatusSoon()
 {
     if (m_enabled && !m_soon.isActive())

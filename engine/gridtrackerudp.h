@@ -4,7 +4,8 @@
 // type, id. Strings are "utf8": quint32 byte count then the bytes (0xffffffff = null).
 // QTime is quint32 milliseconds since midnight; "float" fields are 8-byte doubles.
 //
-// Sent by wfview TCI Digi: Heartbeat (0), Status (1), Decode (2). Nothing is read back.
+// Sent by wfview TCI Digi: Heartbeat (0), Status (1), Decode (2), WSPRDecode (10).
+// Nothing is read back.
 #pragma once
 
 #include <cstdint>
@@ -22,6 +23,7 @@ enum Type : std::uint32_t
     Heartbeat = 0,
     Status = 1,
     Decode = 2,
+    WsprDecode = 10,
 };
 
 class Writer
@@ -144,6 +146,36 @@ inline std::vector<std::uint8_t> decode(const std::string &id, const DecodeInfo 
     w.utf8(d.mode);
     w.utf8(d.message);
     w.boolean(false); // low confidence
+    w.boolean(false); // off air
+    return w.bytes;
+}
+
+// A WSPR spot (WSJT-X's WSPRDecode): the station, its grid and power as decoded.
+struct WsprInfo
+{
+    std::uint32_t msSinceMidnightUtc = 0; // start of the slot
+    std::int32_t snr = 0;
+    double dt = 0.0;
+    std::uint64_t rfHz = 0; // of the signal
+    std::int32_t drift = 0; // Hz per minute
+    std::string call;
+    std::string grid;
+    std::int32_t dbm = 0;
+};
+
+inline std::vector<std::uint8_t> wsprDecode(const std::string &id, const WsprInfo &d)
+{
+    Writer w;
+    w.header(WsprDecode, id);
+    w.boolean(true); // new
+    w.u32(d.msSinceMidnightUtc);
+    w.i32(d.snr);
+    w.f64(d.dt);
+    w.u64(d.rfHz);
+    w.i32(d.drift);
+    w.utf8(d.call);
+    w.utf8(d.grid);
+    w.i32(d.dbm);
     w.boolean(false); // off air
     return w.bytes;
 }

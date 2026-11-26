@@ -3,6 +3,7 @@
 // "how it was heard" labels used for the decode lines.
 #include "callspot.h"
 #include "gridtrackerudp.h"
+#include <cmath>
 
 #include <cstdio>
 #include <cstring>
@@ -208,6 +209,36 @@ int main()
         const std::string raw(b.begin(), b.end());
         CHECK(raw.find("EN71ar") != std::string::npos);
         CHECK(raw.find("en71ar") == std::string::npos);
+    }
+
+    // WSPRDecode (10), as WSJT-X sends it for a WSPR spot.
+    {
+        wsjtx::WsprInfo w;
+        w.msSinceMidnightUtc = 4 * 3600000 + 12 * 60000;
+        w.snr = -21;
+        w.dt = 0.3;
+        w.rfHz = 14097063;
+        w.drift = -1;
+        w.call = "K1ABC";
+        w.grid = "FN42";
+        w.dbm = 37;
+        const auto b = wsjtx::wsprDecode("wfview-tci-digi", w);
+        Reader r {b};
+        CHECK(r.u32() == wsjtx::kMagic);
+        CHECK(r.u32() == wsjtx::kSchema);
+        CHECK(r.u32() == 10);
+        CHECK(r.utf8() == "wfview-tci-digi");
+        CHECK(r.boolean()); // new
+        CHECK(r.u32() == w.msSinceMidnightUtc);
+        CHECK(std::int32_t(r.u32()) == -21);
+        CHECK(std::fabs(r.f64() - 0.3) < 1e-12);
+        CHECK(r.un(8) == 14097063u);
+        CHECK(std::int32_t(r.u32()) == -1);
+        CHECK(r.utf8() == "K1ABC");
+        CHECK(r.utf8() == "FN42");
+        CHECK(std::int32_t(r.u32()) == 37);
+        CHECK(!r.boolean()); // off air
+        CHECK(r.done());
     }
 
     std::printf(g_fail ? "\n%d FAILED\n" : "\nALL PASSED\n", g_fail);

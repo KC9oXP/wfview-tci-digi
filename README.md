@@ -30,6 +30,7 @@ wfview reaches the radio over LAN or over USB.
 | **MT63** | yes | yes | 500 / 1000 / 2000 Hz, short or long interleave (MT63-1KL for net traffic); fldigi's code |
 | **SSTV** | yes | yes | Martin, Scottie, Robot, PD modes; auto start, auto slant, auto offset; send a picture with CQ / answer / report / 73 text and a timestamp |
 | **AMTOR FEC** | yes | yes | Mode B (SITOR-B style), 100 baud |
+| **WSPR** | yes | yes (beacon) | WSJT-X's decoder; 2-minute slots, TX %, band hopping, finds free offsets, uploads to WSPRnet / PSK Reporter / GridTracker |
 | **NAVTEX** | yes | - | 518 / 490 kHz and SITOR-B on HF |
 | **WEFAX** | yes | - | HF weather fax, 60-240 LPM, straightens and saves the chart |
 | **WWV Time** | yes | - | Decodes the WWV / WWVH time code; checks the PC clock, the sound-card clock and the radio's dial accuracy |
@@ -98,7 +99,7 @@ shows a clean signal. On the air the same tabs work on the radio's receive audio
 
 ## The modes in detail
 
-The tabs that can transmit (CW, RTTY, PSK, Hell, Olivia, MT63, SSTV, AMTOR) come first; a
+The tabs that can transmit (CW, RTTY, PSK, Hell, Olivia, MT63, SSTV, AMTOR, WSPR) come first; a
 *Read only* divider separates the receive-only tabs (NAVTEX, WEFAX, WWV Time). Drag tabs
 to put them in your own order (kept across restarts); transmit tabs stay left of *Read only*
 and receive-only tabs right of it. *View > Reset tab order* puts them back. Every
@@ -242,6 +243,40 @@ on. Only one tab transmits at a time; *My call* is shared by all tabs.
   phasing signals first and the end-of-emission signal last. Typing as you go is fine.
 - Receives with the same decoder as NAVTEX; *Reverse* for LSB or inverted stations. On the
   amateur bands AMTOR belongs in the RTTY/data segments.
+
+### WSPR (receive and beacon transmit)
+
+- Weak Signal Propagation Reporter: 2-minute slots starting on even UTC minutes, USB dial
+  (the usual dials are in *Band*, the presets and Memories), signals in the 200 Hz window
+  1400-1600 Hz audio. The decoder is WSJT-X's `wsprd` (K1JT, K9AN; Fano decoder by KA9Q), so
+  it copies what WSJT-X copies, down to about -28 dB in 2500 Hz. *Depth*: Fast (one pass),
+  Normal (a second pass after taking out the strong signals) or Deep.
+- **The PC clock must be right to about a second.** The tab warns when the stations heard
+  are on average more than a second early or late; the WWV Time tab can check the clock.
+- *Enable TX* sends your beacon (*My call*, *Grid*, *Power*) in about *TX %* of the slots
+  (20 % = one in five), never two slots in a row up to 50 %; *TX next slot* sends in the next
+  one once. Enable TX is always off when the program starts. A 6-character grid, or a call
+  with a / prefix or suffix, is sent as WSJT-X does: two messages taking turns
+  (`K1ABC FN42 37` and `<K1ABC> FN42AB 37`; `PJ4/K1ABC 37` and `<PJ4/K1ABC> FK52UD 37`).
+  The hashed `<call>` of other stations shows once their plain message has been heard
+  (kept in `wspr-hashes.txt`).
+- **Free offsets:** every decoded slot is remembered for 20 minutes per band: the stations
+  decoded and any other energy in the window (signals too weak to decode). The window strip
+  shows them (orange = decoded, grey = heard but not decoded, green = suggested free offsets,
+  red = your TX offset); the three *Free* buttons are the clearest offsets, and a click on
+  the strip puts your beacon there. *Move to a free offset if mine is in use* moves the
+  beacon to the best one before a transmission when a station was heard on yours.
+- *Band hopping*: *Coordinated (WSJT-X schedule)* goes to the same band as every other
+  station hopping (160, 80, 60, 40, 30, 20, 17, 15, 12, 10 m, one per slot, round every 20
+  minutes), skipping bands you did not tick; *My bands in turn* steps through your ticked
+  bands. *Bands...* picks the bands and on which of them the beacon may transmit. Transmit
+  and band hopping only run while the WSPR tab is shown (so another tab is never interrupted).
+- Spots: the table (newest first, with the distance from your grid), the session log, and
+  `wspr-spots.txt` in the logs folder. *Upload spots to WSPRnet* (off by default) sends each
+  spot to wsprnet.org, and a "listening" report when nothing was heard; PSK Reporter and
+  GridTracker (WSJT-X's WSPR decode message) get the spots too when they are turned on.
+- A slot is only decoded if the radio stayed on one dial, nothing transmitted and Decode was
+  on for all of it (the status line says why a slot was skipped).
 
 ### NAVTEX / SITOR-B (receive)
 
@@ -624,6 +659,9 @@ g++ -std=c++17 -O2 -Iengine tests/test_upload.cpp -o test_upload
 g++ -std=c++17 -O2 -Iengine tests/test_mt63.cpp engine/mt63core.cpp engine/mt63/dsp.cxx engine/mt63/mt63base.cxx engine/oliviacore.cpp engine/pskcore.cpp -o test_mt63
 # RSID: fldigi's code words, bursts at several rates/frequencies/sidebands, no false IDs
 g++ -std=c++17 -O2 -Iengine tests/test_rsid.cpp engine/rsidcore.cpp engine/spectrum.cpp engine/pskcore.cpp -o test_rsid
+# WSPR: messages, encode -> modulate -> noise -> resample -> decode (SNR, DT, frequency),
+# Type 2/3 messages and hashes, free offsets, hopping schedule, TX %, WSPRnet queries
+g++ -std=c++17 -O2 -Iengine tests/test_wspr.cpp engine/wsprcore.cpp engine/wsprd/*.cpp -o test_wspr
 
 # End to end against a mock of wfview's TCI server (~3 min); --new runs only the
 # newer parts (WAV playback into the newer decoders, logs, Olivia / SSTV / AMTOR
@@ -710,4 +748,8 @@ library as distributed with fldigi (GPL); the NAVTEX decoder follows fldigi's (G
 (GPLv3 or later) - see `engine/mt63/README-WFVIEW.txt`. `engine/rsidcore` is adapted from fldigi's RSID code
 (`src/rsid/rsid.cxx` and `rsid_defs.cxx`, Copyright (C) 2008-2012 Dave Freese W1HKJ, Stelios
 Bounanos M0GLD and John Douyere VK2ETA, GPLv3 or later): the ID table, the GF(16) table, the
-encoder and the receive method are theirs.
+encoder and the receive method are theirs. `engine/wsprd` is the WSPR decoder `wsprd` from
+WSJT-X (Copyright (C) 2001-2018 Joe Taylor K1JT, 2014-2018 Steven Franke K9AN, GPLv3), with
+the sequential Fano decoder by Phil Karn KA9Q, in the library form of rtlsdr-wsprd
+(Guenael Jouchet VA2GKA, GPLv3); FFTW was replaced by a small built-in FFT and the hash table
+moved into memory - see `engine/wsprd/README-WFVIEW.txt`.

@@ -77,6 +77,19 @@ SSTV 20 m,SSTV,,14.230,USB,20 m,"General, Advanced, Extra",ARRL band plan: 14.23
 SSTV 20 m alt,SSTV,,14.233,USB,20 m,"General, Advanced, Extra",Common second 20 m SSTV spot (not in the ARRL plan)
 SSTV 15 m,SSTV,,21.340,USB,15 m,"General, Advanced, Extra",ARRL band plan: 21.340 SSTV
 SSTV 10 m,SSTV,,28.680,USB,10 m,"General, Advanced, Extra",ARRL band plan: 28.680 SSTV. Above 28.500: not Technician/Novice
+WSPR 160 m,WSPR,,1.8366,USB,160 m,"General, Advanced, Extra",WSPR (2-minute slots on even minutes); signals 1.8380-1.8382 MHz
+WSPR 80 m,WSPR,,3.5686,USB,80 m,"General, Advanced, Extra",WSPR; signals 3.5700-3.5702 MHz
+WSPR 60 m 5.3647,WSPR,,5.3647,USB,60 m,"General, Advanced, Extra","WSPR; signals 5.3661-5.3663 MHz, inside the 5.3515-5.3665 MHz 60 m segment; check the 60 m power limit"
+WSPR 60 m 5.2872,WSPR,,5.2872,USB,60 m,Check the rules (outside US sub-bands),"WSPR; the original 60 m dial, used where 5.288 MHz is allowed (outside the US 60 m allocation: receive only in the US)"
+WSPR 40 m,WSPR,,7.0386,USB,40 m,"General, Advanced, Extra",WSPR; signals 7.0400-7.0402 MHz
+WSPR 30 m,WSPR,,10.1387,USB,30 m,"General, Advanced, Extra",WSPR; signals 10.1401-10.1403 MHz
+WSPR 20 m,WSPR,,14.0956,USB,20 m,"General, Advanced, Extra",WSPR; signals 14.0970-14.0972 MHz
+WSPR 17 m,WSPR,,18.1046,USB,17 m,"General, Advanced, Extra",WSPR; signals 18.1060-18.1062 MHz
+WSPR 15 m,WSPR,,21.0946,USB,15 m,"General, Advanced, Extra",WSPR; signals 21.0960-21.0962 MHz
+WSPR 12 m,WSPR,,24.9246,USB,12 m,"General, Advanced, Extra",WSPR; signals 24.9260-24.9262 MHz
+WSPR 10 m,WSPR,,28.1246,USB,10 m,"Novice, Technician, General, Advanced, Extra","WSPR; signals 28.1260-28.1262 MHz, in the 28.0-28.3 MHz data segment open to Novice/Technician"
+WSPR 6 m,WSPR,,50.293,USB,6 m,"Technician, General, Advanced, Extra",WSPR; signals 50.2944-50.2946 MHz
+WSPR 2 m,WSPR,,144.489,USB,2 m,"Technician, General, Advanced, Extra",WSPR; signals 144.4904-144.4906 MHz
 NAVTEX 518 kHz,NAVTEX,,0.517,USB,,Receive only,Receive only. 518 kHz NAVTEX (dial 517.0 for a 1 kHz tone)
 NAVTEX 490 kHz,NAVTEX,,0.489,USB,,Receive only,Receive only. 490 kHz NAVTEX (dial 489.0)
 NAVTEX 4209.5 kHz,NAVTEX,,4.2085,USB,,Receive only,Receive only. 4209.5 kHz NAVTEX (dial 4208.5)

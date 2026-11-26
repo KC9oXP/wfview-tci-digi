@@ -71,6 +71,11 @@ HEADERS += \
     ../src/GridTrackerLink.h \
     ../src/InputLevelMeter.h \
     ../src/CallLookup.h \
+    ../src/WsprEngine.h \
+    ../src/WsprPanel.h \
+    ../src/WsprNet.h \
+    ../engine/wsprcore.h \
+    ../engine/wsprtxsource.h \
     ../engine/lookupcore.h \
     ../engine/signalreport.h \
     ../engine/uploadcore.h \
@@ -138,6 +143,16 @@ SOURCES += \
     ../src/GridTrackerLink.cpp \
     ../src/InputLevelMeter.cpp \
     ../src/CallLookup.cpp \
+    ../src/WsprEngine.cpp \
+    ../src/WsprPanel.cpp \
+    ../src/WsprNet.cpp \
+    ../engine/wsprcore.cpp \
+    ../engine/wsprd/fano.cpp \
+    ../engine/wsprd/nhash.cpp \
+    ../engine/wsprd/tab.cpp \
+    ../engine/wsprd/wsprd.cpp \
+    ../engine/wsprd/wsprd_utils.cpp \
+    ../engine/wsprd/wsprsim_utils.cpp \
     ../src/MainWindow.cpp \
     ../engine/sstvcore.cpp \
     ../engine/wefaxcore.cpp \

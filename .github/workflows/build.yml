@@ -58,7 +58,7 @@ jobs:
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_freqdigits.cpp -o test_freqdigits
           ./test_freqdigits
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_memories.cpp -o test_memories
-          ./test_memories resources/memories-builtin.csv
+          ./test_memories resources/memories-builtin.csv resources/memories-builtin-old.csv
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_pskreporter.cpp -o test_pskreporter
           ./test_pskreporter
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_gridtracker.cpp -o test_gridtracker
@@ -75,6 +75,8 @@ jobs:
           ./test_mt63
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_rsid.cpp engine/rsidcore.cpp engine/spectrum.cpp engine/pskcore.cpp -o test_rsid
           ./test_rsid
+          g++ -std=c++17 -O2 -Iengine tests/test_wspr.cpp engine/wsprcore.cpp engine/wsprd/fano.cpp engine/wsprd/nhash.cpp engine/wsprd/tab.cpp engine/wsprd/wsprd.cpp engine/wsprd/wsprd_utils.cpp engine/wsprd/wsprsim_utils.cpp -o test_wspr
+          ./test_wspr
       - name: Build app
         run: |
           mkdir build && cd build

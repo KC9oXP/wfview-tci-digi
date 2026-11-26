@@ -35,6 +35,9 @@
 #include "SpectrumEngine.h"
 #include "SstvEngine.h"
 #include "SstvPanel.h"
+#include "WsprEngine.h"
+#include "WsprNet.h"
+#include "WsprPanel.h"
 #include "TxPowerWatch.h"
 #include "TxTools.h"
 #include "UiStyle.h"
@@ -59,6 +62,7 @@
 #include <QCoreApplication>
 #include <QComboBox>
 #include <QDateTime>
+#include <QTimeZone>
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -198,7 +202,10 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_session = new SessionLog(m_settings, this);
     m_amtor = new AmtorEngine(this);
     m_amtor->loadSettings(m_settings);
-    m_modems = {m_psk, m_hell, m_cwTx, m_olivia, m_mt63, m_sstv, m_amtor};
+    m_wspr = new WsprEngine(this);
+    m_wspr->loadSettings(m_settings);
+    m_wsprNet = new WsprNet(m_settings, this);
+    m_modems = {m_psk, m_hell, m_cwTx, m_olivia, m_mt63, m_sstv, m_amtor, m_wspr};
     // Tune tone and CW ID: created before the tabs, which put their buttons in.
     m_tools = new TxTools(m_settings, this);
     m_txEngines = m_modems;
@@ -241,6 +248,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_mt63Panel = new Mt63Panel(m_mt63, m_settings);
     m_sstvPanel = new SstvPanel(m_sstv, m_settings);
     m_amtorPanel = new AmtorPanel(m_amtor, m_settings);
+    m_wsprPanel = new WsprPanel(m_wspr, m_wsprNet, m_settings);
     m_navtexPanel = new NavtexPanel(m_navtex);
     m_wefaxPanel = new WefaxPanel(m_wefax);
     m_tabs->addTab(m_cwPanel, tr("CW"));
@@ -251,6 +259,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     m_tabs->addTab(m_mt63Panel, tr("MT63"));
     m_tabs->addTab(m_sstvPanel, tr("SSTV"));
     m_tabs->addTab(m_amtorPanel, tr("AMTOR"));
+    m_tabs->addTab(m_wsprPanel, tr("WSPR"));
     {
         auto *divider = new QLabel(tr("NAVTEX, WEFAX and WWV Time (to the right) only receive."));
         divider->setAlignment(Qt::AlignCenter);
@@ -281,6 +290,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
                     {m_mt63Panel, "MT63", true},
                     {m_sstvPanel, "SSTV", true},
                     {m_amtorPanel, "AMTOR", true},
+                    {m_wsprPanel, "WSPR", true},
                     {m_tabDivider, "ReadOnly", false},
                     {m_navtexPanel, "NAVTEX", false},
                     {m_wefaxPanel, "WEFAX", false},
@@ -398,6 +408,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
     connect(m_audio, &AudioHub::audio, m_olivia, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_mt63, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_sstv, &ModemEngine::pushAudio);
+    connect(m_audio, &AudioHub::audio, m_wspr, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_amtor, &ModemEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_navtex, &NavtexEngine::pushAudio);
     connect(m_audio, &AudioHub::audio, m_wefax, &WefaxEngine::pushAudio);
@@ -667,6 +678,7 @@ MainWindow::MainWindow(QSettings *settings, QWidget *parent)
             this,
             [this](int i)
             {
+                m_wspr->setActive(m_tabs->currentWidget() == m_wsprPanel);
                 updateQsoMode();
                 fillPresetBox();
                 if (m_memories)
@@ -1160,6 +1172,8 @@ void MainWindow::buildMenus()
                                "SSTV: Martin, Scottie, Robot, PD modes, VIS, auto slant; send pictures.<br>"
                                "WEFAX: HF weather fax receive with APT start/stop and phasing.<br>"
                                "AMTOR: FEC (mode B) send and receive (receiver as NAVTEX).<br>"
+                               "WSPR: WSJT-X's wsprd decoder (K1JT, K9AN; Fano decoder KA9Q) via rtlsdr-wsprd "
+                               "(VA2GKA); beacon, band hopping, WSPRnet.<br>"
                                "WWV Time: time code, clock comparison, audio clock and carrier calibration.<br><br>"
                                "Japanese translation: JG3HLX.<br><br>"
                                "License: GPLv3.<br><br>"
@@ -1317,6 +1331,9 @@ void MainWindow::onRadioInfo()
 void MainWindow::updateWwvRadio()
 {
     m_wwv->setRadio(m_client->isReady(), m_client->frequencyHz(), m_client->modulation(), m_client->device());
+    m_wspr->setRadio(m_client->isReady() ? m_client->frequencyHz() : 0,
+                     m_client->modulation(),
+                     m_client->radioTransmitting());
 }
 
 void MainWindow::onFrequency(qint64 hz)
@@ -1346,6 +1363,7 @@ void MainWindow::onRadioTransmit(bool on)
     for (ModemEngine *e : m_txEngines)
         e->setRadioTransmitting(on);
     m_cw->setPaused(on); // do not decode our own sidetone / monitor
+    updateWwvRadio(); // WSPR: a slot with any transmission in it is not decoded
     m_rsid->setTransmitting(on || anyTransmitting());
     m_txLamp->setText(on ? tr(" TX ") : tr(" RX "));
     m_txLamp->setStyleSheet(on ? QStringLiteral("background-color: #c02020; color: white; font-weight: bold;")
@@ -1646,6 +1664,7 @@ void MainWindow::updateRadioState()
     m_mt63Panel->setRadioState(ready, canTx, m_client->modulation());
     m_sstvPanel->setRadioState(ready, canTx, m_client->modulation());
     m_amtorPanel->setRadioState(ready, canTx, m_client->modulation());
+    m_wsprPanel->setRadioState(ready, canTx, m_client->modulation());
     updateWwvRadio();
     m_freq->setEnabled(ready);
     m_mode->setEnabled(ready);
@@ -1666,6 +1685,7 @@ void MainWindow::saveAll()
     m_mt63Panel->saveState();
     m_sstvPanel->saveState();
     m_amtorPanel->saveState();
+    m_wsprPanel->saveState();
     m_settings->beginGroup(QStringLiteral("Window"));
     m_settings->setValue(QStringLiteral("Geometry"), saveGeometry());
     m_settings->setValue(QStringLiteral("State"), saveState());
@@ -1941,6 +1961,10 @@ void MainWindow::wireLogs()
             &SstvEngine::logLine,
             this,
             [this](const QString &t) { m_session->add(QStringLiteral("SSTV"), tr("SSTV"), t); });
+    connect(m_wspr,
+            &WsprEngine::logLine,
+            this,
+            [this](const QString &t) { m_session->add(QStringLiteral("WSPR"), tr("WSPR"), t); });
     connect(m_wefax,
             &WefaxEngine::logLine,
             this,
@@ -2034,6 +2058,8 @@ void MainWindow::updateQsoMode()
         mode = QStringLiteral("MT63");
     else if (w == m_sstvPanel)
         mode = QStringLiteral("SSTV");
+    else if (w == m_wsprPanel)
+        mode = QStringLiteral("WSPR");
     else if (w == m_amtorPanel)
     {
         mode = QStringLiteral("TOR");
@@ -2091,6 +2117,14 @@ QList<MainWindow::Preset> MainWindow::presets(const QString &tabKey) const
               QStringLiteral("20 m 14.233|14233000|USB"),
               QStringLiteral("15 m 21.340|21340000|USB"),
               QStringLiteral("10 m 28.680|28680000|USB")}},
+            {QStringLiteral("WSPR"),
+             {QStringLiteral("80 m 3.5686|3568600|USB"),
+              QStringLiteral("40 m 7.0386|7038600|USB"),
+              QStringLiteral("30 m 10.1387|10138700|USB"),
+              QStringLiteral("20 m 14.0956|14095600|USB"),
+              QStringLiteral("17 m 18.1046|18104600|USB"),
+              QStringLiteral("15 m 21.0946|21094600|USB"),
+              QStringLiteral("10 m 28.1246|28124600|USB")}},
             {QStringLiteral("NAVTEX"),
              {QStringLiteral("518 kHz (dial 517.0)|517000|USB"),
               QStringLiteral("490 kHz (dial 489.0)|489000|USB"),
@@ -2192,6 +2226,7 @@ void MainWindow::arrangeTabs(const QStringList &order)
                   m_mt63Panel,
                   m_sstvPanel,
                   m_amtorPanel,
+                  m_wsprPanel,
                   m_tabDivider,
                   m_navtexPanel,
                   m_wefaxPanel,
@@ -2541,6 +2576,44 @@ void MainWindow::applyMemory(const memories::Memory &m)
 }
 
 // ---------------------------------------------------------------------------
+// WSPR spots
+// ---------------------------------------------------------------------------
+
+void MainWindow::wsprSlotDecoded(const WsprSlot &s)
+{
+    if (!s.valid)
+        return;
+    m_wsprNet->submit(s.slotMs,
+                      s.dialHz,
+                      s.spots,
+                      m_wspr->myCall(),
+                      m_wspr->grid(),
+                      m_wspr->txEnabled() ? m_wspr->txPercent() : 0,
+                      m_wspr->dbm());
+    if (s.spots.empty())
+        return;
+    QString text;
+    const QString utc = QDateTime::fromMSecsSinceEpoch(s.slotMs, QTimeZone::utc()).toString(QStringLiteral("HH:mm"));
+    for (const wspr::Spot &p : s.spots)
+    {
+        text += QStringLiteral("%1 %2 dB %3 s %4 MHz  %5\n")
+                    .arg(utc)
+                    .arg(qRound(p.snr), 3)
+                    .arg(p.dt, 4, 'f', 1)
+                    .arg(double(p.rfHz) / 1e6, 0, 'f', 6)
+                    .arg(QString::fromStdString(p.message));
+        const QString call = QString::fromStdString(p.call);
+        if (call.isEmpty() || call.startsWith(QLatin1Char('<')))
+            continue; // a Type 3 hash not known yet
+        m_pskr->addSpot(call, p.rfHz, QStringLiteral("WSPR"));
+        m_gridTracker->wsprSpot(
+            s.slotMs, qRound(p.snr), p.dt, p.rfHz, int(std::lround(p.drift)), call, QString::fromStdString(p.grid), p.dbm);
+    }
+    m_session->add(QStringLiteral("WSPR"), tr("WSPR"), text);
+    markActivity(m_wsprPanel);
+}
+
+// ---------------------------------------------------------------------------
 // PSK Reporter
 // ---------------------------------------------------------------------------
 
@@ -2655,6 +2728,40 @@ void MainWindow::wirePskReporter()
     for (ModemEngine *e : m_modems)
         connect(e, &ModemEngine::settingsChanged, this, [this, e]() { m_pskr->setMyCall(e->myCall()); });
     connect(m_qso, &QsoLogDock::myGridChanged, m_pskr, &PskReporter::setMyGrid);
+    // WSPR's grid is the same station grid (Station/MyGrid).
+    connect(m_qso, &QsoLogDock::myGridChanged, m_wspr, &WsprEngine::setGrid);
+    connect(m_pskr, &PskReporter::statusChanged, this, [this]() { m_wspr->setGrid(m_pskr->myGrid()); });
+    connect(m_wspr,
+            &ModemEngine::settingsChanged,
+            this,
+            [this]()
+            {
+                const QString g = m_wspr->grid();
+                if (g.isEmpty() || !PskReporter::validGrid(g))
+                    return;
+                m_pskr->setMyGrid(g);
+                m_qso->setMyGrid(g);
+            });
+    if (m_wspr->grid().isEmpty())
+        m_wspr->setGrid(m_pskr->myGrid());
+
+    // WSPR: band hops and the tab's Go button tune the radio (USB, or the USB data mode if in one);
+    // every decoded slot goes to WSPRnet, PSK Reporter and GridTracker (each only if turned on).
+    const auto wsprTune = [this](qint64 hz, const QString &why)
+    {
+        if (anyTransmitting())
+            return;
+        Preset p;
+        p.name = why;
+        p.hz = hz;
+        p.sideband = QStringLiteral("USB");
+        applyPreset(p, why);
+    };
+    connect(m_wspr, &WsprEngine::tuneRequested, this, wsprTune);
+    connect(m_wsprPanel, &WsprPanel::bandRequested, this, wsprTune);
+    connect(m_wspr, &WsprEngine::slotDecoded, this, &MainWindow::wsprSlotDecoded);
+    connect(m_wsprNet, &WsprNet::message, this, &MainWindow::log);
+    m_wspr->setActive(m_tabs->currentWidget() == m_wsprPanel);
 
     // GridTracker gets the same call and grid.
     m_gridTracker->setMyCall(m_pskr->myCall());
@@ -2878,6 +2985,11 @@ double MainWindow::currentAudioHz(double *halfWidthHz) const
     {
         audio = 1900.0 + m_sstv->offsetHz(); // middle of the 1500..2300 Hz picture tones
         half = 420;
+    }
+    else if (w == m_wsprPanel)
+    {
+        audio = wspr::kCentreHz; // the whole 200 Hz window
+        half = wspr::kWindowHalfHz;
     }
     if (halfWidthHz)
         *halfWidthHz = half;

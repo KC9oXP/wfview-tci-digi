@@ -25,6 +25,10 @@ class QsoLogDock;
 class SessionLog;
 class SstvEngine;
 class SstvPanel;
+class WsprEngine;
+class WsprNet;
+class WsprPanel;
+struct WsprSlot;
 class WaterfallWidget;
 class WefaxEngine;
 class WefaxPanel;
@@ -182,11 +186,15 @@ private:
     NavtexPanel *m_navtexPanel = nullptr;
     SstvEngine *m_sstv = nullptr;
     SstvPanel *m_sstvPanel = nullptr;
+    WsprEngine *m_wspr = nullptr;
+    WsprPanel *m_wsprPanel = nullptr;
+    WsprNet *m_wsprNet = nullptr; // WSPRnet spot upload
     WefaxEngine *m_wefax = nullptr;
     WefaxPanel *m_wefaxPanel = nullptr;
     WwvEngine *m_wwv = nullptr;
     WwvPanel *m_wwvPanel = nullptr;
     void updateWwvRadio();
+    void wsprSlotDecoded(const WsprSlot &s);
     AmtorEngine *m_amtor = nullptr;
     AmtorPanel *m_amtorPanel = nullptr;
     TxTools *m_tools = nullptr;

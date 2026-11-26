@@ -290,7 +290,7 @@ inline bool bandLess(const std::string &a, std::int64_t dialA, const std::string
 enum class Emission
 {
     Cw,
-    Data, // RTTY and data: RTTY, PSK, Olivia, MT63, Hell, AMTOR ...
+    Data, // RTTY and data: RTTY, PSK, Olivia, MT63, Hell, AMTOR, WSPR ...
     Image // SSTV (phone/image sub-bands)
 };
 
@@ -302,7 +302,8 @@ inline bool emissionForTab(const std::string &tab, Emission &e)
         e = Emission::Cw;
     else if (t == "sstv")
         e = Emission::Image;
-    else if (t == "rtty" || t == "psk" || t == "hell" || t == "olivia" || t == "mt63" || t == "amtor")
+    else if (t == "rtty" || t == "psk" || t == "hell" || t == "olivia" || t == "mt63" || t == "amtor"
+             || t == "wspr")
         e = Emission::Data;
     else
         return false;
@@ -562,6 +563,12 @@ inline std::string classesText(const Memory &m)
         return "Receive only";
     std::int64_t lo, hi;
     signalSpan(m.dialHz, m.sideband, lo, hi);
+    if (lower(trim(m.tab)) == "wspr" && lower(trim(m.sideband)) != "lsb")
+    {
+        // WSPR only ever uses the 200 Hz window 1400-1600 Hz above the dial.
+        lo = m.dialHz + 1400;
+        hi = m.dialHz + 1600;
+    }
     const unsigned c = classesFor(e, lo, hi);
     return c ? classNames(c) : std::string("Check the rules (outside US sub-bands)");
 }

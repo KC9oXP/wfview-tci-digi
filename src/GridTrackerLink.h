@@ -60,6 +60,9 @@ public:
     // Received decoded text from a tab; audioHz is where the signal is in the passband,
     // rfHz the RF frequency, snr the measured SNR in dB (NaN if not known).
     void feedText(const QString &tab, const QString &mode, const QString &text, double audioHz, qint64 rfHz, double snr);
+    // A WSPR spot (sent as WSJT-X's WSPRDecode). slotUtcMs: start of the 2-minute slot.
+    void wsprSpot(qint64 slotUtcMs, int snr, double dt, qint64 rfHz, int drift, const QString &call,
+                  const QString &grid, int dbm);
 
     void editSettings(QWidget *parent);
 
