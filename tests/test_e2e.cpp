@@ -1032,6 +1032,11 @@ static void runSstvBoxes()
     settings.setValue(QStringLiteral("SSTV/Box2/Kind"), QStringLiteral("picture"));
     settings.setValue(QStringLiteral("SSTV/Box2/Image"), logo);
     settings.setValue(QStringLiteral("SSTV/Box2/Background"), false);
+    // A saved place for box 2 (box 1 starts from its default and is saved when turned on).
+    settings.setValue(QStringLiteral("SSTV/Box2/X"), 0.54);
+    settings.setValue(QStringLiteral("SSTV/Box2/Y"), 0.10);
+    settings.setValue(QStringLiteral("SSTV/Box2/W"), 0.42);
+    settings.setValue(QStringLiteral("SSTV/Box2/H"), 0.22);
 
     const auto isRed = [](QRgb c) { return qRed(c) > 200 && qGreen(c) < 60 && qBlue(c) < 60; };
     const auto isWhite = [](QRgb c) { return qRed(c) > 220 && qGreen(c) > 220 && qBlue(c) > 220; };
