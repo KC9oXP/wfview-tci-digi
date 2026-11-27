@@ -27,6 +27,8 @@
 #include "RttyEngine.h"
 #include "RxText.h"
 #include "SecretStore.h"
+#include "SquelchControl.h"
+#include "SquelchMeter.h"
 #include "ImageView.h"
 #include "SstvEngine.h"
 #include "SstvPanel.h"
@@ -64,6 +66,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
+#include <QSlider>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTcpServer>
@@ -928,6 +931,114 @@ static void runRcvdFromText()
 }
 
 // 0.9.18: settings saved with 8 macros load unchanged; F9 and F10 start empty.
+// 0.9.20: squelch on every decoding tab: a slider (CW too), 0 = off, a dB box per tab
+// (each scale keeps its own setting), the meter in two looks, the old CW on/off setting carried over.
+static void runSquelch()
+{
+    std::printf("\n=== 0.9.20: squelch controls ===\n");
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    settings.setValue(QStringLiteral("CW/Squelch"), false); // 0.9.19: the checkbox was off
+    settings.setValue(QStringLiteral("RTTY/Squelch"), 0.6);
+    {
+        MainWindow w(&settings);
+        w.show();
+        pump(300);
+        const QList<SquelchControl *> ctls = w.findChildren<SquelchControl *>();
+        std::printf("  %d squelch controls\n", int(ctls.size()));
+        CHECK(ctls.size() == 5);
+        auto *cw = w.findChild<CwDecoder *>();
+        auto *psk = w.findChild<PskEngine *>();
+        auto *rtty = w.findChild<RttyEngine *>();
+        auto *mt = w.findChild<Mt63Engine *>();
+        CHECK(cw && cw->squelch() == 0.0); // old "off" -> 0 (off)
+        CHECK(rtty && std::fabs(rtty->squelch() - 0.6) < 1e-9 && !rtty->squelchInDb()); // old value kept
+        CHECK(psk && std::fabs(psk->squelch() - 0.30) < 1e-9 && !psk->squelchInDb());
+        SquelchControl *pskCtl = nullptr, *cwCtl = nullptr, *mtCtl = nullptr;
+        for (SquelchControl *c : ctls)
+        {
+            const QString tip = c->findChild<QSlider *>(QStringLiteral("squelchSlider"))->toolTip();
+            if (tip.startsWith(QStringLiteral("Phase-quality")))
+                pskCtl = c;
+            else if (tip.startsWith(QStringLiteral("Hold off decoding noise")))
+                cwCtl = c;
+            else if (tip.startsWith(QStringLiteral("Minimum S/N (dB")))
+                mtCtl = c;
+        }
+        CHECK(pskCtl && cwCtl && mtCtl);
+        if (!pskCtl || !cwCtl || !mtCtl || !cw || !psk || !mt)
+            return;
+        auto *value = pskCtl->findChild<QLabel *>(QStringLiteral("squelchValue"));
+        auto *slider = pskCtl->findChild<QSlider *>(QStringLiteral("squelchSlider"));
+        auto *db = pskCtl->findChild<QCheckBox *>(QStringLiteral("squelchDb"));
+        std::printf("  PSK: %s\n", qPrintable(value->text()));
+        CHECK(value->text() == QStringLiteral("0.30"));
+        db->setChecked(true);
+        pump(50);
+        std::printf("  PSK dB: %s\n", qPrintable(value->text()));
+        CHECK(psk->squelchInDb() && std::fabs(psk->squelch() - 3.0) < 1e-9);
+        CHECK(value->text() == QStringLiteral("3.0 dB"));
+        slider->setValue(10); // 5 dB
+        CHECK(std::fabs(psk->squelch() - 5.0) < 1e-9);
+        db->setChecked(false);
+        pump(50);
+        CHECK(!psk->squelchInDb() && std::fabs(psk->squelch() - 0.30) < 1e-9);
+        CHECK(value->text() == QStringLiteral("0.30"));
+        slider->setValue(0);
+        CHECK(psk->squelch() == 0.0 && value->text() == QStringLiteral("off"));
+        db->setChecked(true);
+        pump(50);
+        CHECK(std::fabs(psk->squelch() - 5.0) < 1e-9); // the dB setting was kept
+
+        // CW and MT63: dB only (box ticked, not changeable); CW slider in 0.5 dB steps
+        CHECK(!cwCtl->findChild<QCheckBox *>(QStringLiteral("squelchDb"))->isEnabled());
+        CHECK(mtCtl->findChild<QCheckBox *>(QStringLiteral("squelchDb"))->isChecked());
+        cwCtl->findChild<QSlider *>(QStringLiteral("squelchSlider"))->setValue(17);
+        CHECK(std::fabs(cw->squelch() - 8.5) < 1e-9);
+        CHECK(cwCtl->findChild<QLabel *>(QStringLiteral("squelchValue"))->text() == QStringLiteral("8.5 dB"));
+        mtCtl->findChild<QSlider *>(QStringLiteral("squelchSlider"))->setValue(0);
+        CHECK(mt->squelch() == 0.0);
+
+        // Options > Squelch meter > Magic eye
+        QAction *eye = nullptr;
+        for (QAction *a : w.findChildren<QAction *>())
+            if (a->text() == QStringLiteral("Magic eye"))
+                eye = a;
+        CHECK(eye != nullptr);
+        if (eye)
+            eye->trigger();
+        pump(50);
+        CHECK(SquelchMeter::style() == SquelchMeter::Style::Eye);
+        CHECK(settings.value(QStringLiteral("UI/SquelchMeter")).toString() == QStringLiteral("eye"));
+        SquelchMeter *m = pskCtl->meter();
+        CHECK(m->sizeHint().width() == m->sizeHint().height());
+        pskCtl->setReading(4.0, false, true);
+        CHECK(m->toolTip().contains(QStringLiteral("closed")));
+        pskCtl->setReading(6.0, true, true);
+        CHECK(m->toolTip().contains(QStringLiteral("open")));
+        QImage img(m->size(), QImage::Format_ARGB32);
+        m->render(&img); // paints without trouble
+        CHECK(!img.isNull());
+        w.close();
+        pump(100);
+    }
+    // kept for the next start; the CW setting is now saved in dB
+    {
+        MainWindow w(&settings);
+        pump(100);
+        auto *psk = w.findChild<PskEngine *>();
+        auto *cw = w.findChild<CwDecoder *>();
+        CHECK(psk->squelchInDb() && std::fabs(psk->squelch() - 5.0) < 1e-9);
+        std::printf("  CW after restart: %.1f dB (saved %s)\n",
+                    cw->squelch(),
+                    qPrintable(settings.value(QStringLiteral("CW/SquelchDb")).toString()));
+        CHECK(std::fabs(cw->squelch() - 8.5) < 1e-9);
+        CHECK(SquelchMeter::style() == SquelchMeter::Style::Eye);
+    }
+    SquelchMeter::setStyleAll(SquelchMeter::Style::Bar);
+}
+
 static void runMacroMigration()
 {
     std::printf("\n=== 0.9.18: 8 saved macros -> 10 (F9, F10 empty) ===\n");
@@ -2090,6 +2201,7 @@ int main(int argc, char *argv[])
     runDecodeOnSend();
     runRcvdFromText();
     runMacroMigration();
+    runSquelch();
     runSstvBoxes();
     runWwv();
     runMemories();

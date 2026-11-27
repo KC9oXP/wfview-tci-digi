@@ -9,6 +9,7 @@
 // itself, so there is no AFC; the frequency is the centre of the signal.
 
 #include "ModemEngine.h"
+#include "SquelchSetting.h"
 #include "oliviacore.h"
 
 #include <QElapsedTimer>
@@ -24,12 +25,12 @@ public:
 
 public slots:
     void pushAudio(QVector<float> mono, float sampleRate);
-    void setParams(bool contestia, int tones, int bandwidth, double centreHz, double squelch);
+    void setParams(bool contestia, int tones, int bandwidth, double centreHz, double squelch, bool squelchDb);
     void resetDecoder();
 
 signals:
     void textDecoded(QString text);
-    void statsUpdated(double snr, double offsetHz);
+    void statsUpdated(double snr, double offsetHz, double squelchLevel, bool squelchOpen);
 
 private:
     OliviaDemodulator m_demod;
@@ -67,9 +68,23 @@ public:
     {
         return m_bandwidth;
     }
+    // Squelch on the scale in use: the decoder's block S/N 0..20, or 0..30 dB
+    // with squelchInDb(). 0 = off.
     double squelch() const
     {
-        return m_squelch;
+        return m_sq.value();
+    }
+    bool squelchInDb() const
+    {
+        return m_sq.inDb;
+    }
+    double squelchLevel() const
+    {
+        return m_squelchLevel;
+    }
+    bool squelchOpen() const
+    {
+        return m_squelchOpen;
     }
     double snr() const
     {
@@ -85,6 +100,7 @@ public slots:
     void pushAudio(const QVector<float> &mono, float sampleRate) override;
     void setMode(bool contestia, int tones, int bandwidth);
     void setSquelch(double snr);
+    void setSquelchInDb(bool on);
 
 protected:
     void applyConfig() override;
@@ -109,7 +125,7 @@ protected:
     }
 
 private slots:
-    void onStats(double snr, double offsetHz);
+    void onStats(double snr, double offsetHz, double squelchLevel, bool squelchOpen);
 
 private:
     QThread *m_thread = nullptr;
@@ -117,7 +133,9 @@ private:
     bool m_contestia = false;
     int m_tones = 8;
     int m_bandwidth = 500;
-    double m_squelch = 5.0;
+    SquelchSetting m_sq {5.0, 14.0, false, 20.0, 30.0};
+    double m_squelchLevel = 0.0;
+    bool m_squelchOpen = false;
     double m_snr = 0.0;
     double m_offset = 0.0;
 };

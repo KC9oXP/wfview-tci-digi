@@ -48,20 +48,21 @@ void PskDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
     {
         m_statsTimer.restart();
         const PskDemodulator::Stats s = m_demod.stats();
-        emit statsUpdated(s.quality, s.levelDb, s.carrierHz, s.squelchOpen, m_generation);
+        emit statsUpdated(s.quality, s.levelDb, s.carrierHz, s.squelchLevel, s.squelchOpen, m_generation);
         if (++m_rsqTick % 5 == 0)
             emit rsqUpdated(m_demod.rsq(), m_generation);
     }
 }
 
-void PskDecoderWorker::setParams(double baud, double carrierHz, bool afc, double squelch, int generation)
+void PskDecoderWorker::setParams(
+    double baud, double carrierHz, bool afc, double squelch, bool squelchDb, int generation)
 {
     m_baud = baud;
     m_generation = generation;
     m_demod.setBaud(baud);
     m_demod.setCarrier(carrierHz);
     m_demod.setAfc(afc);
-    m_demod.setSquelch(squelch);
+    m_demod.setSquelch(squelch, squelchDb);
 }
 
 void PskDecoderWorker::resetDecoder()
@@ -138,7 +139,7 @@ void PskEngine::loadSettings(QSettings *s)
         s->beginGroup(group());
         m_speed = std::clamp(s->value(QStringLiteral("Speed"), m_speed).toInt(), 0, 2);
         m_afc = s->value(QStringLiteral("AFC"), m_afc).toBool();
-        m_squelch = std::clamp(s->value(QStringLiteral("Squelch"), m_squelch).toDouble(), 0.0, 0.95);
+        m_sq.load(s);
         m_autoSpeed = s->value(QStringLiteral("AutoSpeed"), m_autoSpeed).toBool();
         s->endGroup();
     }
@@ -154,7 +155,8 @@ void PskEngine::applyConfig()
                               Q_ARG(double, baud()),
                               Q_ARG(double, m_carrierHz),
                               Q_ARG(bool, m_afc),
-                              Q_ARG(double, m_squelch),
+                              Q_ARG(double, m_sq.value()),
+                              Q_ARG(bool, m_sq.inDb),
                               Q_ARG(int, m_generation));
     auto tx = std::static_pointer_cast<PskTxSource>(txSource());
     tx->setBaud(baud());
@@ -200,11 +202,19 @@ void PskEngine::setAfc(bool on)
 
 void PskEngine::setSquelch(double q)
 {
-    q = std::clamp(q, 0.0, 0.95);
-    if (std::fabs(q - m_squelch) < 1e-6)
+    if (!m_sq.setValue(q))
         return;
-    m_squelch = q;
-    save("Squelch", m_squelch);
+    save(m_sq.inDb ? "SquelchDb" : "Squelch", m_sq.value());
+    applyConfig();
+    emit settingsChanged();
+}
+
+void PskEngine::setSquelchInDb(bool on)
+{
+    if (on == m_sq.inDb)
+        return;
+    m_sq.inDb = on;
+    save("SquelchInDb", on);
     applyConfig();
     emit settingsChanged();
 }
@@ -274,13 +284,15 @@ void PskEngine::onCenter(double hz, double approxHz)
     setStatus(tr("Tuned to %1 Hz").arg(hz, 0, 'f', 1));
 }
 
-void PskEngine::onStats(double quality, double levelDb, double carrierHz, bool squelchOpen, int generation)
+void PskEngine::onStats(
+    double quality, double levelDb, double carrierHz, double squelchLevel, bool squelchOpen, int generation)
 {
     if (!decoding() || generation != m_generation)
         return;
     m_quality = quality;
     m_levelDb = levelDb;
     m_squelchOpen = squelchOpen;
+    m_squelchLevel = squelchLevel;
     if (m_afc && !transmitting())
         trackCarrier(carrierHz);
     emit statsChanged();

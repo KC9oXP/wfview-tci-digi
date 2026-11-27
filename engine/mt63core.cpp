@@ -142,7 +142,7 @@ std::string Mt63Demodulator::process(const float *x, size_t n)
             m_printing = true;
         else if (!above && (m_hangSec <= 0.0 || m_zeroRun >= 3))
             m_printing = false;
-        const bool open = m_squelch <= -99.0 || m_printing;
+        const bool open = !(m_squelch > 0.0) || m_printing;
         for (int i = 0; i < m_rx->Output.Len; ++i)
         {
             int c = static_cast<unsigned char>(m_rx->Output.Data[i]);

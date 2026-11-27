@@ -5,6 +5,8 @@
 
 #include <QMetaType>
 #include <QThread>
+#include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace
@@ -70,7 +72,7 @@ void CwDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
     {
         m_statsTimer.restart();
         const CwDecoderCore::Stats s = m_core->stats();
-        emit statsUpdated(s.pitchHz, s.speedWpm, s.snrDb, s.locked, s.open, m_core->sampleRate());
+        emit statsUpdated(s.pitchHz, s.speedWpm, s.snrDb, s.locked, s.open, s.levelDb, m_core->sampleRate());
     }
 }
 
@@ -87,9 +89,9 @@ void CwDecoderWorker::setSpeedWpm(float wpm)
     m_core->setSpeedWpm(wpm);
 }
 
-void CwDecoderWorker::setSquelch(bool on)
+void CwDecoderWorker::setSquelch(double db)
 {
-    m_core->setSquelch(on);
+    m_core->setSquelchDb(float(db));
 }
 
 void CwDecoderWorker::setEngine(int engine)
@@ -179,7 +181,7 @@ void CwDecoder::setEnabled(bool on)
         QMetaObject::invokeMethod(m_worker, "resetDecoder", Qt::QueuedConnection);
         m_appliedEngine = -1;
         apply();
-        QMetaObject::invokeMethod(m_worker, "setSquelch", Qt::QueuedConnection, Q_ARG(bool, m_squelch));
+        QMetaObject::invokeMethod(m_worker, "setSquelch", Qt::QueuedConnection, Q_ARG(double, m_squelch));
         QMetaObject::invokeMethod(m_worker, "setMulti", Qt::QueuedConnection, Q_ARG(bool, m_multi));
         emit statusChanged(tr("Listening..."));
     }
@@ -196,12 +198,13 @@ void CwDecoder::setPaused(bool on)
     m_paused = on;
 }
 
-void CwDecoder::setSquelch(bool on)
+void CwDecoder::setSquelch(double db)
 {
-    if (m_squelch == on)
+    db = std::clamp(db, 0.0, 30.0);
+    if (std::fabs(db - m_squelch) < 1e-6)
         return;
-    m_squelch = on;
-    QMetaObject::invokeMethod(m_worker, "setSquelch", Qt::QueuedConnection, Q_ARG(bool, on));
+    m_squelch = db;
+    QMetaObject::invokeMethod(m_worker, "setSquelch", Qt::QueuedConnection, Q_ARG(double, db));
     emit settingsChanged();
 }
 
@@ -317,10 +320,12 @@ void CwDecoder::onText(const QString &text)
         emit textAppended(text);
 }
 
-void CwDecoder::onStats(float pitchHz, float speedWpm, float snrDb, bool locked, bool squelchOpen, float sampleRate)
+void CwDecoder::onStats(
+    float pitchHz, float speedWpm, float snrDb, bool locked, bool squelchOpen, float squelchLevel, float sampleRate)
 {
     if (!m_enabled)
         return;
+    emit squelchReading(squelchLevel, squelchOpen);
     if (pitchHz > 0.0f)
         m_lastPitchHz = qRound(pitchHz);
     const QString source = m_fixedPitch ? tr("fixed") : (locked ? tr("locked") : tr("searching"));

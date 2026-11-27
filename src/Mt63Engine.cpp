@@ -25,7 +25,11 @@ void Mt63DecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
     if (m_statsTimer.elapsed() >= 250)
     {
         m_statsTimer.restart();
-        emit statsUpdated(m_demod.snrDb(), m_demod.locked(), m_demod.freqOffsetHz());
+        emit statsUpdated(m_demod.snrDb(),
+                          m_demod.locked(),
+                          m_demod.freqOffsetHz(),
+                          m_demod.squelchLevel(),
+                          m_demod.squelchOpen());
     }
 }
 
@@ -157,11 +161,13 @@ void Mt63Engine::setSquelch(double db)
     emit settingsChanged();
 }
 
-void Mt63Engine::onStats(double snrDb, bool locked, double offsetHz)
+void Mt63Engine::onStats(double snrDb, bool locked, double offsetHz, double squelchLevel, bool squelchOpen)
 {
     if (!decoding())
         return;
     m_snrDb = snrDb;
+    m_squelchLevel = squelchLevel;
+    m_squelchOpen = squelchOpen;
     m_locked = locked;
     m_offset = offsetHz;
     emit statsChanged();

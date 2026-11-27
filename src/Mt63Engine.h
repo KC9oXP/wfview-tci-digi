@@ -29,7 +29,7 @@ public slots:
 
 signals:
     void textDecoded(QString text);
-    void statsUpdated(double snrDb, bool locked, double offsetHz);
+    void statsUpdated(double snrDb, bool locked, double offsetHz, double squelchLevel, bool squelchOpen);
 
 private:
     Mt63Demodulator m_demod;
@@ -54,9 +54,18 @@ public:
     {
         return m_long;
     }
+    // Squelch, dB (0 = off).
     double squelch() const
     {
         return m_squelch;
+    }
+    double squelchLevel() const
+    {
+        return m_squelchLevel;
+    }
+    bool squelchOpen() const
+    {
+        return m_squelchOpen;
     }
     double snrDb() const
     {
@@ -96,7 +105,7 @@ protected:
     }
 
 private slots:
-    void onStats(double snrDb, bool locked, double offsetHz);
+    void onStats(double snrDb, bool locked, double offsetHz, double squelchLevel, bool squelchOpen);
 
 private:
     QThread *m_thread = nullptr;
@@ -104,6 +113,8 @@ private:
     int m_bandwidth = 1000;
     bool m_long = true;
     double m_squelch = 5.5;
+    double m_squelchLevel = 0.0;
+    bool m_squelchOpen = false;
     double m_snrDb = -99.0;
     bool m_locked = false;
     double m_offset = 0.0;

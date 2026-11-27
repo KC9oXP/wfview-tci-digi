@@ -20,6 +20,7 @@ class QSpinBox;
 class QSplitter;
 class RttyEngine;
 class ScopeWidget;
+class SquelchControl;
 class TxToolButtons;
 
 class RttyPanel : public QWidget
@@ -61,8 +62,7 @@ private:
 
     QSplitter *m_split = nullptr;
     QPushButton *m_decode = nullptr;
-    QSlider *m_squelch = nullptr;
-    QLabel *m_squelchValue = nullptr;
+    SquelchControl *m_squelch = nullptr;
     QPushButton *m_reverse = nullptr;
     QComboBox *m_baud = nullptr;
     QComboBox *m_shift = nullptr;

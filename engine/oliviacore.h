@@ -56,13 +56,21 @@ public:
 
     void setSampleRate(double fs);
     void setConfig(const olivia::Config &c);
-    // Minimum S/N (as the library reports it) for printing; 0 = print
-    // everything (noise prints as random characters). Default 5. Above it,
-    // printing also stops when the S/N falls well below its best (the end of
-    // a transmission).
-    void setSquelch(double snr)
+    // Squelch: a decoded FEC block is printed when its own S/N (the library's
+    // S/N for that block alone, not the average over several blocks that
+    // snr() shows, so it falls the moment the text ends) is at least this.
+    // inDb: the same S/N in dB (20 log10). 0 = print everything (noise prints
+    // as random characters). Default 5 (14 dB); noise reads up to about 3.
+    // It opens on the second good block in a row (the first is printed then,
+    // unless it had less than half that block's S/N: the block that catches
+    // the start of a transmission is only partly signal). Up to four weak
+    // blocks in a row are held back and printed when a good block follows (a
+    // fade: the text through it is printed as decoded, as with the squelch
+    // off); a fifth, or a transmission that ends, drops them and closes it.
+    void setSquelch(double threshold, bool inDb = false)
     {
-        m_squelch = snr;
+        m_squelch = threshold;
+        m_squelchDb = inDb;
     }
     void reset();
 
@@ -72,6 +80,21 @@ public:
     {
         return m_snr;
     }
+    double blockSnr() const
+    {
+        return m_blockSnr;
+    }
+    // What the squelch compares (blockSnr, or it in dB with the dB box) and
+    // whether it is printing.
+    double squelchLevel() const
+    {
+        return m_squelchDb ? squelchDbOf(m_blockSnr) : m_blockSnr;
+    }
+    bool squelchOpen() const
+    {
+        return !(m_squelch > 0.0) || m_open;
+    }
+    static double squelchDbOf(double snr);
     double freqOffsetHz() const
     {
         return m_offset;
@@ -85,11 +108,17 @@ private:
     olivia::Config m_cfg;
     double m_fs = 0.0;
     double m_squelch = 5.0;
+    bool m_squelchDb = false;
+    static constexpr int kBridgeBlocks = 4; // weak blocks in a row bridged (a fade)
+    bool m_open = false; // last block printed
+    bool m_opening = false; // one good block seen while closed (in m_held)
+    double m_heldSnr = 0.0;
+    int m_belowRun = 0; // blocks in a row below the squelch
+    std::string m_held; // one weak block waiting for the next
     double m_snr = 0.0;
+    double m_blockSnr = 0.0;
     double m_offset = 0.0;
     bool m_escape = false;
-    double m_peakSnr = 0.0; // best S/N since the signal appeared
-    double m_openSec = 0.0; // how long the S/N has been above the squelch
     AudioResampler m_rs;
     std::vector<float> m_buf8;
     std::vector<double> m_dbl;

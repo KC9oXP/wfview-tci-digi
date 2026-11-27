@@ -277,6 +277,7 @@ void RttyDemodulator::rebuild()
     m_dec = std::max(1, static_cast<int>(std::lround(m_cfg.sampleRate / kTargetRate)));
     m_fsd = m_cfg.sampleRate / m_dec;
     m_bitLen = m_fsd / m_cfg.baud;
+    applySquelchTiming();
 
     int len = static_cast<int>(std::lround(kLpfLenBits * m_bitLen)) | 1;
     len = std::max(len, 9);
@@ -303,6 +304,28 @@ void RttyDemodulator::rebuild()
     reset();
 }
 
+void RttyDemodulator::setSquelch(double threshold, bool inDb)
+{
+    m_squelch = threshold;
+    if (inDb != m_squelchDb)
+        m_gate.reset();
+    m_squelchDb = inDb;
+    m_gate.setThreshold(threshold);
+    applySquelchTiming();
+}
+
+void RttyDemodulator::applySquelchTiming()
+{
+    // Opens after 2 bits above (a noise spike does not), rides through dips
+    // of up to 1.5 characters (11 bits: 0.24 s at 45.45 baud).
+    const double bit = 1.0 / std::max(1.0, m_cfg.baud);
+    squelch::Timing t;
+    t.openSec = 2.0 * bit;
+    t.hangSec = 11.0 * bit;
+    t.hysteresis = m_squelchDb ? 1.5 : 0.05;
+    m_gate.setTiming(t);
+}
+
 void RttyDemodulator::reset()
 {
     m_decCount = 0;
@@ -315,6 +338,8 @@ void RttyDemodulator::reset()
     m_markEnv = m_spaceEnv = m_markNoise = m_spaceNoise = 0.0;
     m_lastV = 0.0;
     m_quality = 0.0;
+    m_pHi = m_pLo = 0.0;
+    m_gate.reset();
     m_state = Uart::Hunt;
     m_prevMark = true;
     m_markRun = 0;
@@ -377,12 +402,14 @@ void RttyDemodulator::step(double m, double s, std::string &out)
     const double contrast = (m + s) > 1e-15 ? std::fabs(m - s) / (m + s) : 0.0;
     m_quality = decayAvg(m_quality, contrast, bl * 4.0);
     m_stats.quality = m_quality;
-    if (m_squelch <= 0.0)
-        m_stats.squelchOpen = true;
-    else if (m_stats.squelchOpen)
-        m_stats.squelchOpen = m_quality > m_squelch - 0.05;
-    else
-        m_stats.squelchOpen = m_quality > m_squelch;
+    // S/N: at any moment one filter has the tone and the other only noise
+    // (noise alone: about 3 dB, from the larger of two noise readings).
+    const double hi = std::max(m, s), lo = std::min(m, s);
+    m_pHi = decayAvg(m_pHi, hi * hi, bl * 4.0);
+    m_pLo = decayAvg(m_pLo, lo * lo, bl * 4.0);
+    m_stats.snrDb = m_pLo > 1e-30 ? std::max(0.0, squelch::powDb((m_pHi - m_pLo) / m_pLo)) : 0.0;
+    m_stats.squelchLevel = m_squelchDb ? m_stats.snrDb : m_quality;
+    m_stats.squelchOpen = m_gate.update(m_stats.squelchLevel, 1.0 / m_fsd);
 
     uart(v, out);
 }

@@ -2,6 +2,7 @@
 
 #include "Mt63Engine.h"
 #include "RxText.h"
+#include "SquelchControl.h"
 #include "UiStyle.h"
 #include "WaterfallWidget.h"
 
@@ -76,16 +77,18 @@ QWidget *Mt63Panel::buildTop()
     m_freq->setToolTip(tr("Centre of the signal (receive and transmit). Click the waterfall to tune.\n"
                           "The receiver follows a few tens of Hz of offset by itself."));
     r1->addWidget(m_freq);
-    r1->addWidget(new QLabel(tr("Squelch")));
-    m_squelch = new QSlider(Qt::Horizontal);
-    m_squelch->setRange(0, 200);
-    m_squelch->setMinimumWidth(70);
-    m_squelch->setToolTip(tr("Minimum S/N (dB, as the decoder sees it) to print. Noise alone reads up to about 5; "
-                             "0 prints everything, noise included (random characters)."));
-    r1->addWidget(m_squelch, 1);
-    m_squelchValue = new QLabel();
-    m_squelchValue->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("20.0")) + 4);
-    r1->addWidget(m_squelchValue);
+    {
+        SquelchControl::Scale db;
+        db.max = 20.0;
+        db.step = 0.1;
+        db.decimals = 1;
+        db.unit = tr(" dB");
+        db.tip = tr("Minimum S/N (dB, as the decoder sees it) to print. Noise alone reads up to about 5. "
+                    "Default 5.5 dB.\nIt opens after 3/4 interleave above, and keeps printing up to one "
+                    "interleave after it falls (the text still coming out of the de-interleaver).");
+        m_squelch = new SquelchControl(db, db, true);
+        r1->addWidget(m_squelch, 1);
+    }
     auto *standard = new QPushButton(tr("Standard"));
     standard->setToolTip(tr("Back to the usual setting: MT63-1000L, squelch 5.5 (the frequency is not changed)."));
     r1->addWidget(standard);
@@ -116,7 +119,7 @@ QWidget *Mt63Panel::buildTop()
                 m_mt->setMode(v & ~1, (v & 1) != 0);
             });
     connect(m_freq, &QDoubleSpinBox::valueChanged, m_mt, &ModemEngine::setCarrierHz);
-    connect(m_squelch, &QSlider::valueChanged, this, [this](int val) { m_mt->setSquelch(val / 10.0); });
+    connect(m_squelch, &SquelchControl::valueChanged, m_mt, &Mt63Engine::setSquelch);
     connect(clear, &QPushButton::clicked, this, [this]() { m_rx->clear(); });
     return top;
 }
@@ -129,13 +132,12 @@ double Mt63Panel::markerBandwidth() const
 void Mt63Panel::syncSettings()
 {
     ModemPanel::syncSettings();
-    const QSignalBlocker b1(m_decode), b2(m_mode), b3(m_freq), b4(m_squelch);
+    const QSignalBlocker b1(m_decode), b2(m_mode), b3(m_freq);
     m_decode->setChecked(m_mt->decoding());
     m_mode->setCurrentIndex(m_mode->findData(packMode(m_mt->bandwidth(), m_mt->longInterleave())));
     if (!m_freq->hasFocus())
         m_freq->setValue(m_mt->carrierHz());
-    m_squelch->setValue(qRound(m_mt->squelch() * 10));
-    m_squelchValue->setText(QString::number(m_mt->squelch(), 'f', 1));
+    m_squelch->setSetting(m_mt->squelch(), true);
     syncStats();
 }
 
@@ -152,6 +154,7 @@ void Mt63Panel::syncStats()
                  .arg(m_mt->locked() ? tr("locked") : tr("searching"))
                  .arg(m_mt->offsetHz(), 0, 'f', 1);
     m_stats->setText(s);
+    m_squelch->setReading(m_mt->squelchLevel(), m_mt->squelchOpen(), m_mt->decoding());
 }
 
 bool Mt63Panel::eventFilter(QObject *obj, QEvent *event)

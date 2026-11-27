@@ -139,12 +139,41 @@ on. Sending (*Send*, a macro, *TX*, an SSTV picture) turns that tab's Decode on,
 reply is copied; *Tune* and *CW ID* leave it as it is. Only one tab transmits at a time;
 *My call* is shared by all tabs.
 
+### Squelch (CW, RTTY, PSK, Olivia / Contestia, MT63)
+
+Every decoding tab with a squelch has the same control: a slider, its value, a **dB** box
+and a **squelch meter**.
+
+- **0 is always off**: everything prints, noise included.
+- Each mode measures its own level: CW the tone at the decoding pitch over the noise (dB),
+  RTTY the mark/space tone contrast (0-0.95), PSK the phase quality (0-0.95), Olivia /
+  Contestia the decoder's S/N for each block (0-20), MT63 the decoder's S/N (dB).
+- **dB box**: on RTTY, PSK and Olivia the squelch can be set as a signal-to-noise in dB
+  instead (RTTY the tone over the noise in the mark/space filters, PSK the S/N in the symbol
+  bandwidth worked out from the phase quality, Olivia the same block S/N as 20 log10). Each
+  scale keeps its own setting, so ticking and unticking the box does not lose either one.
+  CW and MT63 are in dB already (the box is shown ticked).
+- Defaults: CW 7 dB, RTTY 0.50 (8 dB), PSK 0.30 (3 dB), Olivia 5.0 (14 dB), MT63 5.5 dB.
+  Noise alone reads up to about: CW 5 dB, RTTY 0.44 / 7 dB, PSK 0.35 / 3 dB, Olivia 3 /
+  10 dB, MT63 5 dB.
+- The **meter** shows the level the decoder measures now and a white marker at the setting
+  it must reach. *Options > Squelch meter* picks the look for every tab: a light green **Bar**
+  (bright green while the squelch is open), or a **Magic eye** whose dark wedge closes as the
+  level rises, with ticks on the rim where its edges must reach. Hover for the numbers.
+- Open and close: a short time above the setting opens it (CW half a second, RTTY 2 bits,
+  PSK 4 symbols; a noise spike does not), and it rides through short dips (CW 1 s, RTTY
+  1.5 characters, PSK 20 symbols), but never for longer than it has been open, so a spike
+  that just opens it does not print junk for the whole hang. Olivia decides block by block:
+  it opens on two good blocks in a row and holds up to four weak blocks in a fade, printed
+  when a good block follows; at the end of a transmission it stops at once (no junk after
+  the text). MT63 opens after 3/4 interleave and carries on to the end of the text.
+
 ### CW (receive and transmit)
 
 - Two decoders: *Machine* (ggmorse, for keyers and computer-sent CW) and *Hand key*
   (learns each sender's timing).
 - Pitch: Auto (strongest steady tone, 200-1200 Hz) or Fixed (200-3000 Hz; Hand key is
-  used above 1900 Hz). Auto or fixed speed, squelch, re-sync.
+  used above 1900 Hz). Auto or fixed speed, squelch (in dB, see *Squelch* above), re-sync.
 - The squelch opens only after the tone has been there for half a second and closes a
   second after it stops, so noise before a signal and AGC recovery after one do not print.
 - *Multi-signal*: every CW signal from 200 to 2000 Hz with its pitch, speed, SNR and
@@ -215,8 +244,9 @@ reply is copied; *Tune* and *CW ID* leave it as it is. Only one tab transmits at
 
 - Olivia 4/125 to 64/2000 and Contestia 4/125 to 64/1000, using Pawel Jalocha's MFSK
   library exactly as fldigi does, so the two interoperate.
-- The receiver finds signals a few tone spacings off the set frequency by itself. An S/N
-  squelch keeps noise (and the library's junk after a signal ends) off the screen.
+- The receiver finds signals a few tone spacings off the set frequency by itself. A squelch
+  on each block's own S/N keeps noise (and the library's junk after a signal ends) off the
+  screen, and keeps printing through fades (see *Squelch* above).
 - Transmit starts with two FEC blocks of idle (1-4 s) so the far end has locked on before
   the first letter.
 
@@ -724,6 +754,8 @@ g++ -std=c++17 -O2 -Iengine tests/test_memories.cpp -o test_memories && ./test_m
 g++ -std=c++17 -O2 -Iengine tests/test_pskreporter.cpp -o test_pskreporter
 # Log uploads: QRZ form encoding and replies, TQSL command line and status codes
 g++ -std=c++17 -O2 -Iengine tests/test_upload.cpp -o test_upload
+# Squelch: open delay / hang / 0 = off, RTTY and PSK on noise and weak signals, the dB scales
+g++ -std=c++17 -O2 -Iengine tests/test_squelch.cpp engine/pskcore.cpp engine/rttycore.cpp engine/rttytxsource.cpp -o test_squelch
 # MT63: loopback in every mode, sample rates, weak signal, squelch (no junk on noise or other modes)
 g++ -std=c++17 -O2 -Iengine tests/test_mt63.cpp engine/mt63core.cpp engine/mt63/dsp.cxx engine/mt63/mt63base.cxx engine/oliviacore.cpp engine/pskcore.cpp -o test_mt63
 # RSID: fldigi's code words, bursts at several rates/frequencies/sidebands, no false IDs

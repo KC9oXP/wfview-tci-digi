@@ -2,6 +2,7 @@
 
 #include "OliviaEngine.h"
 #include "RxText.h"
+#include "SquelchControl.h"
 #include "UiStyle.h"
 #include "WaterfallWidget.h"
 
@@ -73,15 +74,24 @@ QWidget *OliviaPanel::buildTop()
     m_freq->setToolTip(tr("Centre of the signal (receive and transmit). Click the waterfall to tune.\n"
                           "The receiver also finds signals a few tone spacings off."));
     r1->addWidget(m_freq);
-    r1->addWidget(new QLabel(tr("Squelch")));
-    m_squelch = new QSlider(Qt::Horizontal);
-    m_squelch->setRange(0, 200);
-    m_squelch->setMinimumWidth(70);
-    m_squelch->setToolTip(tr("Minimum S/N to print. 0 prints everything, noise included (random characters)."));
-    r1->addWidget(m_squelch, 1);
-    m_squelchValue = new QLabel();
-    m_squelchValue->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("20.0")) + 4);
-    r1->addWidget(m_squelchValue);
+    {
+        SquelchControl::Scale n, db;
+        n.max = 20.0;
+        n.step = 0.1;
+        n.decimals = 1;
+        n.tip = tr("Minimum S/N of each decoded block (the decoder's own S/N for that block, so printing stops "
+                   "as soon as the text ends). Noise reads up to about 3, a good signal 8-12. Default 5.0.\n"
+                   "It opens on two good blocks in a row; up to four weak blocks in a fade are held and printed "
+                   "when a good one follows.");
+        db.max = 30.0;
+        db.step = 0.5;
+        db.decimals = 1;
+        db.unit = tr(" dB");
+        db.tip = tr("The same block S/N in dB (20 log10): noise reads up to about 10 dB, a good signal 18-22 dB. "
+                    "Default 14 dB (= 5.0).");
+        m_squelch = new SquelchControl(n, db, false);
+        r1->addWidget(m_squelch, 1);
+    }
     auto *standard = new QPushButton(tr("Standard"));
     standard->setToolTip(tr("Back to the most used setting: Olivia 8 tones / 500 Hz, squelch 5.0 (the frequency "
                             "is not changed)."));
@@ -92,6 +102,7 @@ QWidget *OliviaPanel::buildTop()
             [this]()
             {
                 m_ol->setMode(false, 8, 500);
+                m_ol->setSquelchInDb(false);
                 m_ol->setSquelch(5.0);
             });
     auto *clear = new QPushButton(tr("Clear"));
@@ -114,7 +125,8 @@ QWidget *OliviaPanel::buildTop()
                 m_ol->setMode((v >> 24) != 0, (v >> 12) & 0xfff, v & 0xfff);
             });
     connect(m_freq, &QDoubleSpinBox::valueChanged, m_ol, &ModemEngine::setCarrierHz);
-    connect(m_squelch, &QSlider::valueChanged, this, [this](int val) { m_ol->setSquelch(val / 10.0); });
+    connect(m_squelch, &SquelchControl::valueChanged, m_ol, &OliviaEngine::setSquelch);
+    connect(m_squelch, &SquelchControl::inDbToggled, m_ol, &OliviaEngine::setSquelchInDb);
     connect(clear, &QPushButton::clicked, this, [this]() { m_rx->clear(); });
     return top;
 }
@@ -127,7 +139,7 @@ double OliviaPanel::markerBandwidth() const
 void OliviaPanel::syncSettings()
 {
     ModemPanel::syncSettings();
-    const QSignalBlocker b1(m_decode), b2(m_mode), b3(m_freq), b4(m_squelch);
+    const QSignalBlocker b1(m_decode), b2(m_mode), b3(m_freq);
     m_decode->setChecked(m_ol->decoding());
     // A mode outside the list (set by RSID, e.g. Olivia 8/1000) gets an item of its own.
     if (m_mode->findText(m_ol->modeName()) < 0)
@@ -135,8 +147,7 @@ void OliviaPanel::syncSettings()
     m_mode->setCurrentText(m_ol->modeName());
     if (!m_freq->hasFocus())
         m_freq->setValue(m_ol->carrierHz());
-    m_squelch->setValue(qRound(m_ol->squelch() * 10));
-    m_squelchValue->setText(QString::number(m_ol->squelch(), 'f', 1));
+    m_squelch->setSetting(m_ol->squelch(), m_ol->squelchInDb());
     syncStats();
 }
 
@@ -147,6 +158,7 @@ void OliviaPanel::syncStats()
     if (m_ol->decoding())
         s += tr("    S/N %1   offset %2 Hz").arg(m_ol->snr(), 0, 'f', 1).arg(qRound(m_ol->offsetHz()));
     m_stats->setText(s);
+    m_squelch->setReading(m_ol->squelchLevel(), m_ol->squelchOpen(), m_ol->decoding());
 }
 
 bool OliviaPanel::eventFilter(QObject *obj, QEvent *event)

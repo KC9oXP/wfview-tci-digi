@@ -14,6 +14,8 @@
 //   (peaks at symbol centres) -> differential phase decision -> Varicode.
 //   Quality = mean of cos(2 * phase change): 1 for a clean signal, ~0 for noise.
 
+#include "squelch.h"
+
 #include <complex>
 #include <cstddef>
 #include <cstdint>
@@ -138,6 +140,8 @@ public:
         double quality = 0.0; // 0..1
         double levelDb = -120.0; // matched-filter output level, dBFS-ish
         double carrierHz = 0.0; // current (after AFC)
+        double snrDb = 0.0; // S/N in the symbol bandwidth from the phase quality, dB
+        double squelchLevel = 0.0; // what the squelch compares: quality, or snrDb with the dB box
         bool squelchOpen = false;
     };
 
@@ -149,10 +153,9 @@ public:
     {
         m_afc = on;
     }
-    void setSquelch(double q)
-    {
-        m_squelch = q;
-    }
+    // Squelch threshold: phase quality 0..1, or (inDb) symbol S/N in dB.
+    // 0 turns it off. See squelch.h for the open / hang behaviour.
+    void setSquelch(double threshold, bool inDb = false);
     void reset();
 
     // Returns decoded text ('\n' for LF; CR and other control characters dropped).
@@ -181,6 +184,7 @@ public:
 
 private:
     void rebuild();
+    void applySquelchTiming();
     void onSample(std::complex<double> z);
     void onSymbol(std::complex<double> z);
 
@@ -190,6 +194,9 @@ private:
     double m_hz = 1000.0;
     bool m_afc = true;
     double m_squelch = 0.3;
+    bool m_squelchDb = false;
+    squelch::Gate m_gate;
+    double m_snrDb = 0.0;
 
     double m_ncoPhase = 0.0;
     std::vector<std::complex<double>> m_buf;
@@ -229,6 +236,19 @@ private:
 
 namespace psk
 {
+// S/N in the symbol bandwidth (Es/N0), dB, from the phase quality q = mean
+// cos(2 x phase change): with phase noise of variance 1/(2 S/N) on each
+// symbol, q = exp(-2 / (S/N)). Noise alone (q up to ~0.35) reads below 3 dB;
+// 0 for q <= 0, capped at 40 dB.
+inline double snrDbFromQuality(double q)
+{
+    if (!(q > 0.0))
+        return 0.0;
+    if (q >= 0.99995)
+        return 40.0;
+    return std::clamp(squelch::powDb(-2.0 / std::log(q)), 0.0, 40.0);
+}
+
 // RSQ digits (Readability, Strength, Quality: the PSK signal report).
 // R 1..5 from the expected share of characters copied (95 % -> 5, 80 % -> 4, 40 % -> 3,
 //   20 % -> 2), which comes from the phase quality (copyFromQuality, measured on this decoder).

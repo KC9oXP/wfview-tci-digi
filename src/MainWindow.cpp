@@ -33,6 +33,7 @@
 #include "SecretStore.h"
 #include "SessionLog.h"
 #include "SpectrumEngine.h"
+#include "SquelchMeter.h"
 #include "SstvEngine.h"
 #include "SstvPanel.h"
 #include "WsprEngine.h"
@@ -1149,6 +1150,40 @@ void MainWindow::buildMenus()
     rsidSwitch->setEnabled(m_rsid->enabled());
     rsidBack->setEnabled(m_rsid->enabled());
     rsidFix->setEnabled(m_rsid->enabled());
+    // Squelch meter look on the CW, RTTY, PSK, Olivia and MT63 tabs.
+    {
+        QMenu *meterMenu = opts->addMenu(tr("Squelch meter"));
+        meterMenu->setToolTipsVisible(true);
+        auto *group = new QActionGroup(meterMenu);
+        group->setExclusive(true);
+        SquelchMeter::setStyleAll(SquelchMeter::styleFromString(
+            m_settings->value(QStringLiteral("UI/SquelchMeter"), QStringLiteral("bar")).toString()));
+        const auto add = [&](SquelchMeter::Style s, const QString &label, const QString &tip)
+        {
+            QAction *a = meterMenu->addAction(label);
+            a->setCheckable(true);
+            a->setChecked(SquelchMeter::style() == s);
+            a->setToolTip(tip);
+            a->setData(SquelchMeter::styleToString(s));
+            group->addAction(a);
+        };
+        add(SquelchMeter::Style::Bar,
+            tr("Bar"),
+            tr("A light green bar for the level the decoder measures (bright green while the squelch is open), "
+               "with a white tick at the squelch setting."));
+        add(SquelchMeter::Style::Eye,
+            tr("Magic eye"),
+            tr("A tuning eye: the dark wedge closes as the level rises; the white ticks on the rim show where "
+               "its edges must reach to open the squelch. It glows brighter while open."));
+        connect(group,
+                &QActionGroup::triggered,
+                this,
+                [this](QAction *a)
+                {
+                    m_settings->setValue(QStringLiteral("UI/SquelchMeter"), a->data().toString());
+                    SquelchMeter::setStyleAll(SquelchMeter::styleFromString(a->data().toString()));
+                });
+    }
     QAction *egg = opts->addAction(tr("STANAG 4481 Easteregg"));
     egg->setCheckable(true);
     egg->setChecked(m_rtty->easterEgg());

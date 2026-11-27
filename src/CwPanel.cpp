@@ -3,6 +3,7 @@
 #include "CwTxEngine.h"
 #include "ModemTxBox.h"
 #include "RxText.h"
+#include "SquelchControl.h"
 #include "UiStyle.h"
 #include "callspot.h"
 
@@ -102,9 +103,18 @@ CwPanel::CwPanel(CwDecoder *decoder, CwTxEngine *tx, QSettings *settings, QWidge
     m_speed->setRange(5, 60);
     m_speed->setSuffix(tr(" WPM"));
     row2->addWidget(m_speed);
-    m_squelch = new QCheckBox(tr("Squelch"));
-    m_squelch->setToolTip(tr("Hold off decoding noise when no signal is present."));
-    row2->addWidget(m_squelch);
+    {
+        SquelchControl::Scale db;
+        db.max = 30.0;
+        db.step = 0.5;
+        db.decimals = 1;
+        db.unit = tr(" dB");
+        db.tip = tr("Hold off decoding noise when no signal is present: each quarter second, the tone at the "
+                    "decoding pitch over the noise (noise alone reads up to about 5 dB). Default 7 dB.\n"
+                    "It opens after half a second above and closes a second after the level falls below.");
+        m_squelch = new SquelchControl(db, db, true);
+        row2->addWidget(m_squelch, 1);
+    }
     m_multi = new QCheckBox(tr("Multi-signal"));
     m_multi->setToolTip(tr("List every CW signal in the passband (200-2000 Hz).\nClick a row to decode that station above: what "
                            "the list copied from it so far is put there first. Double-click a call sign in the Text "
@@ -232,7 +242,11 @@ CwPanel::CwPanel(CwDecoder *decoder, CwTxEngine *tx, QSettings *settings, QWidge
     connect(m_pitch, &QSpinBox::valueChanged, m_dec, &CwDecoder::setPitchHz);
     connect(m_fixedSpeed, &QCheckBox::toggled, m_dec, &CwDecoder::setFixedSpeed);
     connect(m_speed, &QSpinBox::valueChanged, m_dec, &CwDecoder::setSpeedWpm);
-    connect(m_squelch, &QCheckBox::toggled, m_dec, &CwDecoder::setSquelch);
+    connect(m_squelch, &SquelchControl::valueChanged, m_dec, &CwDecoder::setSquelch);
+    connect(m_dec,
+            &CwDecoder::squelchReading,
+            this,
+            [this](double level, bool open) { m_squelch->setReading(level, open, m_dec->enabled()); });
     connect(m_multi, &QCheckBox::toggled, m_dec, &CwDecoder::setMultiSignal);
     connect(m_multi, &QCheckBox::toggled, m_table, &QWidget::setVisible);
     connect(resync, &QPushButton::clicked, m_dec, &CwDecoder::resync);
@@ -353,7 +367,11 @@ void CwPanel::loadState()
     m_dec->setPitchHz(m_settings->value(QStringLiteral("Pitch"), m_dec->pitchHz()).toInt());
     m_dec->setFixedSpeed(m_settings->value(QStringLiteral("FixedSpeed"), m_dec->fixedSpeed()).toBool());
     m_dec->setSpeedWpm(m_settings->value(QStringLiteral("Speed"), m_dec->speedWpm()).toInt());
-    m_dec->setSquelch(m_settings->value(QStringLiteral("Squelch"), m_dec->squelch()).toBool());
+    // Before 0.9.20 the squelch was on/off ("Squelch", bool): on = 7 dB, off = 0.
+    if (m_settings->contains(QStringLiteral("SquelchDb")))
+        m_dec->setSquelch(m_settings->value(QStringLiteral("SquelchDb"), m_dec->squelch()).toDouble());
+    else if (m_settings->contains(QStringLiteral("Squelch")))
+        m_dec->setSquelch(m_settings->value(QStringLiteral("Squelch")).toBool() ? 7.0 : 0.0);
     m_dec->setMultiSignal(m_settings->value(QStringLiteral("Multi"), m_dec->multiSignal()).toBool());
     m_split->restoreState(m_settings->value(QStringLiteral("Split")).toByteArray());
     const QByteArray outer = m_settings->value(QStringLiteral("TxSplit")).toByteArray();
@@ -375,7 +393,7 @@ void CwPanel::saveState()
     m_settings->setValue(QStringLiteral("Pitch"), m_dec->pitchHz());
     m_settings->setValue(QStringLiteral("FixedSpeed"), m_dec->fixedSpeed());
     m_settings->setValue(QStringLiteral("Speed"), m_dec->speedWpm());
-    m_settings->setValue(QStringLiteral("Squelch"), m_dec->squelch());
+    m_settings->setValue(QStringLiteral("SquelchDb"), m_dec->squelch());
     m_settings->setValue(QStringLiteral("Multi"), m_dec->multiSignal());
     m_settings->setValue(QStringLiteral("Split"), m_split->saveState());
     m_settings->setValue(QStringLiteral("TxSplit"), m_outer->saveState());
@@ -385,7 +403,7 @@ void CwPanel::saveState()
 void CwPanel::syncFromDecoder()
 {
     const QSignalBlocker b1(m_decode), b2(m_engine), b3(m_pitchMode), b4(m_pitch), b5(m_fixedSpeed), b6(m_speed),
-        b7(m_squelch), b8(m_multi);
+        b8(m_multi);
     m_decode->setChecked(m_dec->enabled());
     m_engine->setCurrentIndex(m_engine->findData(m_dec->engine()));
     m_pitchMode->setCurrentIndex(m_dec->fixedPitch() ? 1 : 0);
@@ -394,7 +412,9 @@ void CwPanel::syncFromDecoder()
     m_fixedSpeed->setChecked(m_dec->fixedSpeed());
     m_speed->setValue(m_dec->speedWpm());
     m_speed->setEnabled(m_dec->fixedSpeed());
-    m_squelch->setChecked(m_dec->squelch());
+    m_squelch->setSetting(m_dec->squelch(), true);
+    if (!m_dec->enabled())
+        m_squelch->setReading(0.0, false, false);
     m_multi->setChecked(m_dec->multiSignal());
     m_table->setVisible(m_dec->multiSignal());
 }

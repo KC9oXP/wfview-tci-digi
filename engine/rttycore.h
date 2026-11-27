@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "squelch.h"
+
 #include <complex>
 #include <cstddef>
 #include <cstdint>
@@ -154,6 +156,8 @@ public:
         double noiseLevel = 0.0;
         size_t chars = 0;
         size_t framingErrors = 0;
+        double snrDb = 0.0; // stronger filter over the weaker one, signal part (S/N in the tone filter), dB
+        double squelchLevel = 0.0; // what the squelch compares: quality, or snrDb with the dB box
         bool squelchOpen = false;
     };
 
@@ -163,12 +167,10 @@ public:
     {
         return m_cfg;
     }
-    // Squelch: characters are only printed while quality is above this
-    // (0..1). 0 disables the squelch. Noise alone sits near kNoiseQuality.
-    void setSquelch(double q)
-    {
-        m_squelch = q;
-    }
+    // Squelch: characters are only printed while the quality (0..1; noise
+    // alone reads up to about 0.44) or, with inDb, snrDb (noise reads up to
+    // about 4 dB) is above this. 0 turns it off. Open / hang: squelch.h.
+    void setSquelch(double threshold, bool inDb = false);
     void reset();
 
     // Feed mono audio; returns any text decoded from it.
@@ -200,13 +202,17 @@ private:
     };
 
     void rebuild();
+    void applySquelchTiming();
     void step(double m, double s, std::string &out);
     void uart(double v, std::string &out);
     void emitCode(uint8_t code, std::string &out);
 
     RttyConfig m_cfg;
     double m_squelch = 0.0;
+    bool m_squelchDb = false;
+    squelch::Gate m_gate;
     double m_quality = 0.0;
+    double m_pHi = 0.0, m_pLo = 0.0; // averaged power of the stronger / weaker filter
 
     // mixers
     double m_phM = 0.0, m_phS = 0.0, m_dphM = 0.0, m_dphS = 0.0;

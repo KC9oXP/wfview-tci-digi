@@ -325,6 +325,30 @@ void PskDemodulator::setBaud(double baud)
         return;
     m_baud = baud;
     rebuild();
+    applySquelchTiming();
+}
+
+void PskDemodulator::setSquelch(double threshold, bool inDb)
+{
+    m_squelch = threshold;
+    if (inDb != m_squelchDb)
+        m_gate.reset();
+    m_squelchDb = inDb;
+    m_gate.setThreshold(threshold);
+    applySquelchTiming();
+}
+
+void PskDemodulator::applySquelchTiming()
+{
+    // Opens after 4 symbols above (the quality is already averaged over ~20
+    // symbols; a longer delay would cost the first letter at a high setting);
+    // rides through dips for 20 symbols (0.64 s at BPSK31, at least 0.25 s).
+    // The end of a transmission is cut by the level drop test in onSymbol.
+    squelch::Timing t;
+    t.openSec = 4.0 / m_baud;
+    t.hangSec = std::max(0.25, 20.0 / m_baud);
+    t.hysteresis = m_squelchDb ? 0.5 : 0.02;
+    m_gate.setTiming(t);
 }
 
 void PskDemodulator::setCarrier(double hz)
@@ -373,6 +397,8 @@ void PskDemodulator::reset()
     m_coh = {0.0, 0.0};
     m_quality = 0.0;
     m_sigLevel = 0.0;
+    m_snrDb = 0.0;
+    m_gate.reset();
     m_vari.reset();
     m_symRing.clear();
     m_symPos = 0;
@@ -460,6 +486,8 @@ void PskDemodulator::onSymbol(std::complex<double> z)
     m_quality = std::max(0.0, m_coh.real());
 
     const double mag = std::abs(z);
+    m_snrDb = psk::snrDbFromQuality(m_quality);
+    const bool sqOpen = m_gate.update(m_squelchDb ? m_snrDb : m_quality, 1.0 / m_baud);
     if (coherence > 0.5)
         m_sigLevel = m_sigLevel <= 0.0 ? mag : 0.98 * m_sigLevel + 0.02 * mag;
     else
@@ -531,7 +559,7 @@ void PskDemodulator::onSymbol(std::complex<double> z)
         m_vari.reset();
         return;
     }
-    if (c < 0 || m_quality < m_squelch)
+    if (c < 0 || !sqOpen)
         return;
     if (c == '\n')
         m_out.push_back('\n');
@@ -635,7 +663,9 @@ PskDemodulator::Stats PskDemodulator::stats() const
     s.quality = std::max(0.0, m_quality);
     s.levelDb = 20.0 * std::log10(std::max(m_level, 1e-6));
     s.carrierHz = m_hz;
-    s.squelchOpen = m_quality >= m_squelch;
+    s.snrDb = m_snrDb;
+    s.squelchLevel = m_squelchDb ? m_snrDb : s.quality;
+    s.squelchOpen = m_gate.open();
     return s;
 }
 

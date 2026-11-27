@@ -6,6 +6,7 @@
 #include "ModemPanel.h"
 
 class Mt63Engine;
+class SquelchControl;
 class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
@@ -37,8 +38,7 @@ private:
     QPushButton *m_decode = nullptr;
     QComboBox *m_mode = nullptr;
     QDoubleSpinBox *m_freq = nullptr;
-    QSlider *m_squelch = nullptr;
-    QLabel *m_squelchValue = nullptr;
+    SquelchControl *m_squelch = nullptr;
     QLabel *m_stats = nullptr;
     QPlainTextEdit *m_rx = nullptr;
 };

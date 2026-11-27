@@ -11,6 +11,7 @@
 
 #include "audioresampler.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -61,8 +62,8 @@ public:
 
     void setSampleRate(double fs);
     void setConfig(const mt63::Config &c);
-    // Minimum S/N in dB (as the decoder's FEC sees it) for printing; at or
-    // below -99 everything prints (noise prints as random characters).
+    // Minimum S/N in dB (as the decoder's FEC sees it) for printing; 0 (or
+    // below) = off, everything prints (noise prints as random characters).
     // Default 5.5 dB (noise alone reads up to about 5).
     void setSquelch(double db)
     {
@@ -79,6 +80,15 @@ public:
     bool locked() const
     {
         return m_locked;
+    }
+    // Squelch level (snrDb, 0 while not locked) and whether it is printing.
+    double squelchLevel() const
+    {
+        return m_locked ? std::max(0.0, m_snrDb) : 0.0;
+    }
+    bool squelchOpen() const
+    {
+        return !(m_squelch > 0.0) || m_printing;
     }
     double freqOffsetHz() const
     {

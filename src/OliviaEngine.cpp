@@ -25,18 +25,19 @@ void OliviaDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
     if (m_statsTimer.elapsed() >= 250)
     {
         m_statsTimer.restart();
-        emit statsUpdated(m_demod.snr(), m_demod.freqOffsetHz());
+        emit statsUpdated(m_demod.snr(), m_demod.freqOffsetHz(), m_demod.squelchLevel(), m_demod.squelchOpen());
     }
 }
 
-void OliviaDecoderWorker::setParams(bool contestia, int tones, int bandwidth, double centreHz, double squelch)
+void OliviaDecoderWorker::setParams(
+    bool contestia, int tones, int bandwidth, double centreHz, double squelch, bool squelchDb)
 {
     olivia::Config c;
     c.contestia = contestia;
     c.tones = tones;
     c.bandwidth = bandwidth;
     c.centreHz = centreHz;
-    m_demod.setSquelch(squelch);
+    m_demod.setSquelch(squelch, squelchDb);
     m_demod.setConfig(c);
 }
 
@@ -108,7 +109,7 @@ void OliviaEngine::loadSettings(QSettings *s)
         m_contestia = s->value(QStringLiteral("Contestia"), m_contestia).toBool();
         m_tones = s->value(QStringLiteral("Tones"), m_tones).toInt();
         m_bandwidth = s->value(QStringLiteral("Bandwidth"), m_bandwidth).toInt();
-        m_squelch = std::clamp(s->value(QStringLiteral("Squelch"), m_squelch).toDouble(), 0.0, 20.0);
+        m_sq.load(s);
         if (!s->contains(QStringLiteral("Carrier")))
             m_carrierHz = 1500.0;
         s->endGroup();
@@ -146,7 +147,8 @@ void OliviaEngine::applyConfig()
                               Q_ARG(int, m_tones),
                               Q_ARG(int, m_bandwidth),
                               Q_ARG(double, m_carrierHz),
-                              Q_ARG(double, m_squelch));
+                              Q_ARG(double, m_sq.value()),
+                              Q_ARG(bool, m_sq.inDb));
     auto tx = std::static_pointer_cast<OliviaTxSource>(txSource());
     tx->setConfig(config());
     tx->setLevel(float(txLevel()));
@@ -184,20 +186,30 @@ void OliviaEngine::setMode(bool contestia, int tones, int bandwidth)
 
 void OliviaEngine::setSquelch(double snr)
 {
-    snr = std::clamp(snr, 0.0, 20.0);
-    if (std::fabs(snr - m_squelch) < 1e-6)
+    if (!m_sq.setValue(snr))
         return;
-    m_squelch = snr;
-    save("Squelch", m_squelch);
+    save(m_sq.inDb ? "SquelchDb" : "Squelch", m_sq.value());
     applyConfig();
     emit settingsChanged();
 }
 
-void OliviaEngine::onStats(double snr, double offsetHz)
+void OliviaEngine::setSquelchInDb(bool on)
+{
+    if (on == m_sq.inDb)
+        return;
+    m_sq.inDb = on;
+    save("SquelchInDb", on);
+    applyConfig();
+    emit settingsChanged();
+}
+
+void OliviaEngine::onStats(double snr, double offsetHz, double squelchLevel, bool squelchOpen)
 {
     if (!decoding())
         return;
     m_snr = snr;
+    m_squelchLevel = squelchLevel;
+    m_squelchOpen = squelchOpen;
     m_offset = offsetHz;
     emit statsChanged();
 }

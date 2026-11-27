@@ -41,7 +41,7 @@ public slots:
     void pushAudio(QVector<float> mono, float sampleRate);
     void setPitch(bool fixed, float fixedHz); // fixed=false: track 200-1200 Hz
     void setSpeedWpm(float wpm); // <= 0 = auto
-    void setSquelch(bool on);
+    void setSquelch(double db);
     void setEngine(int engine);
     void setMulti(bool on);
     void resetDecoder();
@@ -49,7 +49,13 @@ public slots:
 signals:
     void textDecoded(QString text);
     void multiUpdated(QVector<CwChannelInfo> channels);
-    void statsUpdated(float pitchHz, float speedWpm, float snrDb, bool locked, bool squelchOpen, float sampleRate);
+    void statsUpdated(float pitchHz,
+                      float speedWpm,
+                      float snrDb,
+                      bool locked,
+                      bool squelchOpen,
+                      float squelchLevel,
+                      float sampleRate);
 
 private:
     std::unique_ptr<CwDecoderCore> m_core;
@@ -80,7 +86,8 @@ public:
     {
         return m_enabled;
     }
-    bool squelch() const
+    // Squelch threshold, dB (0 = off; default 7).
+    double squelch() const
     {
         return m_squelch;
     }
@@ -117,7 +124,7 @@ public:
 public slots:
     void pushAudio(const QVector<float> &mono, float sampleRate);
     void setEnabled(bool on);
-    void setSquelch(bool on);
+    void setSquelch(double db);
     void setEngine(int engine);
     void setMultiSignal(bool on);
     void setFixedPitch(bool on);
@@ -138,9 +145,17 @@ signals:
     // New text on one multi-signal channel (for call sign spotting).
     void channelText(int id, double pitchHz, QString text);
     void settingsChanged();
+    // The squelch's level now (dB) and whether it is printing, about 4 times a second.
+    void squelchReading(double levelDb, bool open);
 
 private slots:
-    void onStats(float pitchHz, float speedWpm, float snrDb, bool locked, bool squelchOpen, float sampleRate);
+    void onStats(float pitchHz,
+                 float speedWpm,
+                 float snrDb,
+                 bool locked,
+                 bool squelchOpen,
+                 float squelchLevel,
+                 float sampleRate);
     void onMulti(const QVector<CwChannelInfo> &channels);
     void onText(const QString &text);
 
@@ -152,7 +167,7 @@ private:
     CwDecoderWorker *m_worker = nullptr;
     bool m_enabled = false;
     bool m_paused = false;
-    bool m_squelch = true;
+    double m_squelch = 7.0; // dB, as CwDecoderCore::kLockSnrDb
     int m_engine = EngineMachine;
     int m_appliedEngine = -1;
     bool m_multi = false;

@@ -71,6 +71,9 @@ HEADERS += \
     ../src/LogUploader.h \
     ../src/GridTrackerLink.h \
     ../src/InputLevelMeter.h \
+    ../src/SquelchControl.h \
+    ../src/SquelchMeter.h \
+    ../src/SquelchSetting.h \
     ../src/CallLookup.h \
     ../src/WsprEngine.h \
     ../src/WsprPanel.h \
@@ -144,6 +147,8 @@ SOURCES += \
     ../src/LogUploader.cpp \
     ../src/GridTrackerLink.cpp \
     ../src/InputLevelMeter.cpp \
+    ../src/SquelchControl.cpp \
+    ../src/SquelchMeter.cpp \
     ../src/CallLookup.cpp \
     ../src/WsprEngine.cpp \
     ../src/WsprPanel.cpp \

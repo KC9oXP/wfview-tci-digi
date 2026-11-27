@@ -45,6 +45,8 @@ jobs:
           ./test_sstvboxes
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_rstparse.cpp -o test_rstparse
           ./test_rstparse
+          g++ -std=c++17 -O2 -Wall -Iengine tests/test_squelch.cpp engine/pskcore.cpp engine/rttycore.cpp engine/rttytxsource.cpp -o test_squelch
+          ./test_squelch
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_wefax.cpp engine/wefaxcore.cpp -o test_wefax
           ./test_wefax
           g++ -std=c++17 -O2 -Wall -Iengine tests/test_navtex.cpp engine/navtexcore.cpp -o test_navtex

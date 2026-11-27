@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.9.19
+VERSION = 0.9.20
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -80,6 +80,9 @@ HEADERS += \
     src/LogUploader.h \
     src/GridTrackerLink.h \
     src/InputLevelMeter.h \
+    src/SquelchControl.h \
+    src/SquelchMeter.h \
+    src/SquelchSetting.h \
     src/CallLookup.h \
     src/WsprEngine.h \
     src/WsprPanel.h \
@@ -123,6 +126,7 @@ HEADERS += \
     engine/cwmultidecoder.h \
     engine/cwwordjoiner.h \
     engine/rttycore.h \
+    engine/squelch.h \
     engine/rttytxsource.h \
     engine/pskcore.h \
     engine/rsidcore.h \
@@ -187,6 +191,8 @@ SOURCES += \
     src/LogUploader.cpp \
     src/GridTrackerLink.cpp \
     src/InputLevelMeter.cpp \
+    src/SquelchControl.cpp \
+    src/SquelchMeter.cpp \
     src/CallLookup.cpp \
     src/WsprEngine.cpp \
     src/WsprPanel.cpp \

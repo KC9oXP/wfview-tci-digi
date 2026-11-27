@@ -1981,8 +1981,17 @@ private:
 	size_t SyncBestFreqOffset;
 // S/N corresponding to the SyncBestSignal
 	Type SyncSNR;
+// wfview TCI Digi: S/N of the block last considered for output, from that
+// block's own signal rather than the integrators
+	Type SyncBlockSNR;
+// wfview TCI Digi: blocks considered for output so far
+	size_t SyncBlockCount;
 // pipeline for decoded FEC blocks
 	CircularBuffer<uint64_t> *DecodePipe;
+// wfview TCI Digi: each decoder's signal for the blocks in DecodePipe, before
+// the integrators, kept in step with it (for a squelch that closes as soon as
+// the text ends)
+	CircularBuffer<Type> *RawSignalPipe;
 // buffer for decoded characters
 	FIFO<uint8_t> Output;
 
@@ -1998,6 +2007,7 @@ public:
 	void Init(void) {
 			Decoder = 0;
 			DecodePipe = 0;
+			RawSignalPipe = 0;
 	}
 	void Free(void) {
 			if (Decoder) {
@@ -2012,6 +2022,13 @@ public:
 					DecodePipe[Idx].Free();
 				delete [] DecodePipe; 
 				DecodePipe = 0;
+			}
+			if (RawSignalPipe) {
+				size_t Idx;
+				for (Idx = 0; Idx < BlockPhases; Idx++)
+					RawSignalPipe[Idx].Free();
+				delete [] RawSignalPipe;
+				RawSignalPipe = 0;
 			}
 			Converter.Free();
 			InputBuffer.Free();
@@ -2085,6 +2102,11 @@ public:
 				DecodePipe[Idx].Free();
 			}
 
+			if (RawSignalPipe) {
+				for (Idx = 0; Idx < BlockPhases; Idx++)
+				RawSignalPipe[Idx].Free();
+			}
+
 			FreqOffsets = 2 * SyncMargin + 1;
 			BlockPhases = SlicesPerSymbol * SymbolsPerBlock;
 
@@ -2109,6 +2131,16 @@ public:
 				DecodePipe[Idx].Clear();
 			}
 
+			if (ReallocArray(&RawSignalPipe,BlockPhases) < 0) goto Error;
+			for (Idx = 0; Idx < BlockPhases; Idx++)
+				RawSignalPipe[Idx].Init();
+			for (Idx = 0; Idx < BlockPhases; Idx++) {
+				RawSignalPipe[Idx].Width = FreqOffsets;
+				RawSignalPipe[Idx].Len = SyncIntegLen;
+				if (RawSignalPipe[Idx].Preset() < 0) goto Error;
+				RawSignalPipe[Idx].Clear();
+			}
+
 			SyncSignal.Width = FreqOffsets;
 			SyncSignal.Len = BlockPhases;
 			if (SyncSignal.Preset() < 0) goto Error;
@@ -2127,6 +2159,8 @@ public:
 			SyncBestBlockPhase = 0;
 			SyncBestFreqOffset = 0;
 			SyncSNR = 0;
+			SyncBlockSNR = 0;
+			SyncBlockCount = 0;
 
 			if (InputBuffer.EnsureSpace(InputProcessor.WindowLen + 2048) < 0)
 				goto Error;
@@ -2151,6 +2185,8 @@ public:
 
 			for (Idx = 0; Idx < BlockPhases; Idx++)
 				DecodePipe[Idx].Clear();
+			for (Idx = 0; Idx < BlockPhases; Idx++)
+				RawSignalPipe[Idx].Clear();
 
 			SyncSignal.Clear();
 			SyncNoiseEnergy.Clear();
@@ -2161,6 +2197,8 @@ public:
 			SyncBestBlockPhase = 0;
 			SyncBestFreqOffset = 0;
 			SyncSNR = 0;
+			SyncBlockSNR = 0;
+			SyncBlockCount = 0;
  
 			Output.Reset();
 	}
@@ -2211,6 +2249,15 @@ Sync. S/N threshold = %3.1f\n",
 
 	Type SignalToNoiseRatio(void) {
 			return SyncSNR;
+	}
+
+// wfview TCI Digi: S/N of the last block considered for output, without the
+// integrators, and how many blocks have been considered so far
+	Type BlockSignalToNoiseRatio(void) {
+			return SyncBlockSNR;
+	}
+	size_t BlockCount(void) {
+			return SyncBlockCount;
 	}
 
 	Type FrequencyOffset(void) {
@@ -2285,6 +2332,7 @@ private:
 					*SignalPtr = SyncSignal.AbsPtr(BlockPhase);
 
 				uint64_t *DecodeBlockPtr = DecodePipe[BlockPhase].CurrPtr();
+				Type *RawSignalPtr = RawSignalPipe[BlockPhase].CurrPtr();
 
 				size_t	BestSliceOffset = 0;
 				Type	BestSliceSignal = 0;
@@ -2303,6 +2351,7 @@ private:
 					NoiseEnergyPtr->Process(NoiseEnergy, SyncFilterWeight);
 
 					Signal = DecoderPtr->Signal;
+					RawSignalPtr[Offset] = Signal;
 					SignalPtr->Process(Signal, SyncFilterWeight);
 					Signal = SignalPtr->Output;
 
@@ -2318,6 +2367,7 @@ private:
 					SignalPtr++;
 				}
 				DecodePipe[BlockPhase] += 1;
+				RawSignalPipe[BlockPhase] += 1;
 
 				if (BlockPhase == SyncBestBlockPhase) {
 					SyncBestSignal = BestSliceSignal;
@@ -2337,6 +2387,9 @@ private:
 					Type BestNoise = sqrt( NoiseEnergyPtr->Output);
 					if (BestNoise == 0) SyncSNR = 0;
 					else SyncSNR = SyncBestSignal / BestNoise;
+					if (BestNoise == 0) SyncBlockSNR = 0;
+					else SyncBlockSNR = RawSignalPipe[SyncBestBlockPhase].CurrPtr()[SyncBestFreqOffset] / BestNoise;
+					SyncBlockCount++;
 //					printf(
 //					"%d, %6.3f/%6.3f = %5.2f\n", 
 //							SyncBestFreqOffset,

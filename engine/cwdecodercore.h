@@ -16,6 +16,7 @@
 #pragma once
 
 #include "cwhandkeydecoder.h"
+#include "squelch.h"
 #include "ggmorse/ggmorse.h"
 
 #include <algorithm>
@@ -37,6 +38,7 @@ public:
         float snrDb = 0.0f; // tracker peak / median, dB
         bool locked = false; // tracker has a steady carrier
         bool open = false; // squelch open
+        float levelDb = 0.0f; // what the squelch compares: last block at the pitch over the noise, dB
     };
 
     // ---- pitch control -----------------------------------------------------
@@ -96,10 +98,22 @@ public:
         }
     }
 
-    // Suppress decoded text while no steady tone is present.
+    // Squelch threshold, dB: each 0.25 s block's power at the decoding pitch
+    // over the noise median (noise alone reads up to about 5 dB). 0 = off.
+    // Opens after 0.5 s above, closes once it has been below for over 1 s.
+    void setSquelchDb(float db)
+    {
+        m_sqGate.setThreshold(db);
+        m_sqGate.setTiming({kOpenBlocks * kBlockSec, kSquelchHoldSec + kBlockSec, 0.0});
+    }
+    float squelchDb() const
+    {
+        return float(m_sqGate.threshold());
+    }
+    // Old on/off form: on = the original 7 dB.
     void setSquelch(bool on)
     {
-        m_squelch = on;
+        setSquelchDb(on ? kLockSnrDb : 0.0f);
     }
 
     void reset()
@@ -230,6 +244,7 @@ public:
         s.snrDb = m_snrDb;
         s.locked = (m_trackHz > 0.0f);
         s.open = squelchOpen();
+        s.levelDb = m_levelDb;
         return s;
     }
 
@@ -315,6 +330,8 @@ private:
         m_secSinceTone = 1e9f;
         m_toneRun = 0;
         m_gate = false;
+        m_levelDb = 0.0f;
+        m_sqGate.reset();
     }
 
     // A keyed tone is present now (independent of the Squelch checkbox): it
@@ -332,9 +349,11 @@ private:
 
     bool squelchOpen() const
     {
-        if (!m_squelch)
+        if (m_sqGate.off())
             return true;
-        return toneGate();
+        if (m_mode == Mode::Track && m_trackHz <= 0.0f)
+            return false;
+        return m_sqGate.open();
     }
 
     void trackPitch(const float *s, int n)
@@ -442,6 +461,8 @@ private:
             // pow is one block; m_avgPow mixes 0.35 of it per block (steady state = 1 block).
             const float instDb = 10.0f * std::log10(std::max(1e-12f, inst) / median);
             const bool now = instDb >= kLockSnrDb;
+            m_levelDb = std::max(0.0f, instDb);
+            m_sqGate.update(m_levelDb, kBlockSec);
             if (now)
             {
                 m_secSinceTone = 0.0f;
@@ -522,7 +543,13 @@ private:
     float m_trackLo = 200.0f;
     float m_trackHi = 1200.0f;
     float m_fallbackHz = -1.0f;
-    bool m_squelch = true;
+    squelch::Gate m_sqGate = [] {
+        squelch::Gate g;
+        g.setThreshold(kLockSnrDb);
+        g.setTiming({kOpenBlocks * kBlockSec, kSquelchHoldSec + kBlockSec, 0.0});
+        return g;
+    }();
+    float m_levelDb = 0.0f;
 
     // tracker state
     int m_decim = 0;

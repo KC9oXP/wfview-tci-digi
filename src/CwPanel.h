@@ -18,6 +18,7 @@ class QSettings;
 class QSpinBox;
 class QSplitter;
 class QTableWidget;
+class SquelchControl;
 
 class CwPanel : public QWidget
 {
@@ -56,7 +57,7 @@ private:
     QSpinBox *m_pitch = nullptr;
     QCheckBox *m_fixedSpeed = nullptr;
     QSpinBox *m_speed = nullptr;
-    QCheckBox *m_squelch = nullptr;
+    SquelchControl *m_squelch = nullptr;
     QCheckBox *m_multi = nullptr;
     QLabel *m_status = nullptr;
     QPlainTextEdit *m_text = nullptr;

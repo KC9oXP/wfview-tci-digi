@@ -1,6 +1,7 @@
 #include "oliviacore.h"
 
 #include "jalocha/pj_mfsk.h"
+#include "squelch.h"
 
 #include <algorithm>
 #include <cctype>
@@ -92,7 +93,7 @@ void OliviaDemodulator::setConfig(const olivia::Config &c)
         // As fldigi: a new carrier re-presets the receiver.
         d->rx.FirstCarrierMultiplier = float(firstCarrierMultiplier(m_cfg));
         d->rx.Preset();
-        d->rx.SyncThreshold = m_squelch;
+        d->rx.SyncThreshold = 0.0; // every block comes out; process() squelches
         return;
     }
     rebuild();
@@ -112,16 +113,27 @@ void OliviaDemodulator::rebuild()
     rx.FirstCarrierMultiplier = float(firstCarrierMultiplier(m_cfg));
     rx.Reverse = 0;
     rx.Preset();
-    rx.SyncThreshold = m_squelch; // after Preset, which raises it to 3
+    rx.SyncThreshold = 0.0; // after Preset, which raises it to 3; process() squelches
     m_escape = false;
+    m_open = false;
+    m_opening = false;
+    m_belowRun = 0;
+    m_held.clear();
 }
 
 void OliviaDemodulator::reset()
 {
     d->rx.Reset();
     m_escape = false;
-    m_peakSnr = 0.0;
-    m_openSec = 0.0;
+    m_open = false;
+    m_opening = false;
+    m_belowRun = 0;
+    m_held.clear();
+}
+
+double OliviaDemodulator::squelchDbOf(double snr)
+{
+    return std::max(0.0, squelch::ampDb(snr));
 }
 
 std::string OliviaDemodulator::process(const float *x, size_t n)
@@ -135,36 +147,13 @@ std::string OliviaDemodulator::process(const float *x, size_t n)
         return out;
     m_dbl.assign(m_buf8.begin(), m_buf8.end());
     MFSK_Receiver<double> &rx = d->rx;
-    rx.SyncThreshold = m_squelch;
+    const size_t blocksBefore = rx.BlockCount();
     rx.Process(m_dbl.data(), m_dbl.size());
+    const bool newBlock = rx.BlockCount() != blocksBefore;
     m_snr = rx.SignalToNoiseRatio();
+    m_blockSnr = rx.BlockSignalToNoiseRatio();
     m_offset = rx.FrequencyOffset();
-    // Squelch. The library keeps decoding after a signal ends (its own
-    // threshold does not stop that) while its S/N, averaged over several FEC
-    // blocks, is still falling: those are the junk characters seen after a
-    // transmission. So characters are printed only while the S/N is above the
-    // squelch (and has been for a moment) and within 15 % of the best S/N since the signal appeared; the
-    // best is forgotten when the S/N drops below the squelch (and slowly, so a
-    // weaker station after a strong one still prints).
-    const double dt = double(n) / m_fs;
-    m_peakSnr *= std::exp(-dt / 30.0);
-    if (m_snr < m_squelch)
-    {
-        m_peakSnr = 0.0;
-        m_openSec = 0.0;
-    }
-    else
-        m_peakSnr = std::max(m_peakSnr, m_snr);
-    // The block decoded as the S/N first crosses the squelch is only partly
-    // signal and prints a character or two of junk just before the text, so
-    // nothing is printed for the first quarter block after opening (the text
-    // itself follows two blocks later).
-    // Olivia only: Contestia's shorter blocks showed no such junk in the tests,
-    // and its text follows within a block, so a hold-off would cost a letter.
-    const bool settled = m_cfg.contestia || m_openSec >= 0.25 * olivia::blockSeconds(m_cfg);
-    if (m_snr >= m_squelch)
-        m_openSec += dt;
-    const bool open = m_squelch <= 0.0 || (settled && m_snr >= m_squelch && m_snr >= 0.85 * m_peakSnr);
+    std::string text;
     uint8_t ch = 0;
     while (rx.GetChar(ch) > 0)
     {
@@ -179,8 +168,50 @@ std::string OliviaDemodulator::process(const float *x, size_t n)
             m_escape = true;
             continue;
         }
-        if (open && (c == '\n' || (c >= 32 && c != 127)))
-            out.push_back(char(c));
+        if (c == '\n' || (c >= 32 && c != 127))
+            text.push_back(char(c));
+    }
+    if (!(m_squelch > 0.0))
+        return text;
+    // Characters only come out when a block is considered (once per block);
+    // the decision is made once per block, on that block's own S/N.
+    if (!newBlock)
+    {
+        if (m_open)
+            out = text;
+        return out;
+    }
+    if (squelchLevel() >= m_squelch)
+    {
+        if (m_open)
+            out = m_held + text; // m_held: a weak block bridged
+        else if (m_opening)
+        {
+            // Second good block: open. The first is printed too unless it was
+            // much weaker than this one (only partly signal: the block that
+            // catches the start of a transmission prints a junk letter).
+            out = (m_heldSnr >= 0.5 * m_blockSnr ? m_held : std::string()) + text;
+            m_open = true;
+            m_opening = false;
+        }
+        else
+        {
+            m_opening = true; // first good block: wait for the next
+            m_held = text;
+            m_heldSnr = m_blockSnr;
+            return out;
+        }
+        m_held.clear();
+        m_belowRun = 0;
+    }
+    else if (m_open && ++m_belowRun <= kBridgeBlocks)
+        m_held += text; // keep it: printed if a good block follows (a fade)
+    else
+    {
+        m_held.clear();
+        m_open = false;
+        m_opening = false;
+        m_belowRun = 0;
     }
     return out;
 }

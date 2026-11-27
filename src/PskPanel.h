@@ -6,6 +6,7 @@
 #include "ModemPanel.h"
 
 class PskEngine;
+class SquelchControl;
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
@@ -42,8 +43,7 @@ private:
     QDoubleSpinBox *m_freq = nullptr;
     QCheckBox *m_afc = nullptr;
     QCheckBox *m_autoSpeed = nullptr;
-    QSlider *m_squelch = nullptr;
-    QLabel *m_squelchValue = nullptr;
+    SquelchControl *m_squelch = nullptr;
     QProgressBar *m_qualityBar = nullptr;
     QLabel *m_level = nullptr;
     QPlainTextEdit *m_rx = nullptr;

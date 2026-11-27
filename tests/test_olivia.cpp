@@ -5,6 +5,7 @@
 #include "oliviacore.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <random>
 #include <string>
@@ -30,9 +31,13 @@ static std::string run(olivia::Config c,
                        size_t *echoOut,
                        double preroll = 0.5,
                        double leadNoiseSec = 0.5,
-                       unsigned seed = 5)
+                       unsigned seed = 5,
+                       double fadeDb = 0.0,
+                       double squelch = 5.0,
+                       bool squelchDb = false)
 {
     const double fs = 48000.0;
+    std::srand(seed); // the library's transmitter picks random tone phases with rand()
     OliviaModulator mod;
     mod.setConfig(c);
     mod.preroll(preroll);
@@ -58,14 +63,20 @@ static std::string run(olivia::Config c,
     audio.insert(audio.end(), size_t(12.0 * fs), 0.0f);
     std::mt19937 rng(seed);
     std::normal_distribution<float> nd(0.0f, float(noise));
-    for (float &v : audio)
-        v = 0.3f * v + nd(rng);
+    for (size_t i = 0; i < audio.size(); ++i)
+    {
+        // QSB: the signal fades by fadeDb and back every 8 s
+        const double t = double(i) / fs;
+        const double g = std::pow(10.0, -fadeDb / 20.0 * (0.5 - 0.5 * std::cos(2.0 * M_PI * t / 8.0)));
+        audio[i] = float(0.3 * g) * audio[i] + nd(rng);
+    }
 
     OliviaDemodulator dem;
     dem.setSampleRate(fs);
     olivia::Config rc = c;
     rc.centreHz = c.centreHz + rxOffset;
     dem.setConfig(rc);
+    dem.setSquelch(squelch, squelchDb);
     std::string out;
     for (size_t p = 0; p < audio.size(); p += 960)
         out += dem.process(audio.data() + p, std::min<size_t>(960, audio.size() - p));
@@ -159,6 +170,39 @@ int main()
             std::printf("  %s noise -> [%s]\n", olivia::name(nc).c_str(), out.c_str());
             CHECK(out.size() <= 1);
         }
+    }
+
+    std::printf("QSB: a fade of 10-15 dB every 8 s, noisy: the text through the fades prints as with the squelch "
+                "off, and nothing after it\n");
+    {
+        olivia::Config fc;
+        fc.centreHz = 1500;
+        const std::string longMsg = "CQ CQ CQ de KC9OXP KC9OXP KC9OXP EN71 pse k\n";
+        for (double fade : {10.0, 15.0})
+        {
+            const double pre = olivia::prerollSeconds(fc);
+            const std::string sq = run(fc, longMsg, 0.0, 0.9, nullptr, pre, 0.5, 5, fade);
+            const std::string off = run(fc, longMsg, 0.0, 0.9, nullptr, pre, 0.5, 5, fade, 0.0);
+            // Squelch off prints the same decode with noise before and after it.
+            const std::string body = sq.substr(0, sq.size() > 0 && sq.back() == '\n' ? sq.size() - 1 : sq.size());
+            CHECK(sq.size() > 25);
+            CHECK(off.find(body) != std::string::npos);
+            CHECK(sq.find("EN71 pse k") != std::string::npos);
+            CHECK(sq.size() <= longMsg.size() + 1);
+        }
+    }
+
+    std::printf("Squelch in dB (14 dB = 5) and squelch 0 (off: noise prints)\n");
+    {
+        olivia::Config dc;
+        dc.centreHz = 1500;
+        const std::string o = run(dc, msg, 0.0, 0.05, nullptr, 0.5, 0.5, 5, 0.0, 14.0, true);
+        CHECK(o.find("CQ CQ de KC9OXP KC9OXP pse k") != std::string::npos);
+        CHECK(o.size() <= msg.size() + 1);
+        const std::string off = run(dc, msg, 0.0, 0.05, nullptr, 0.5, 0.5, 5, 0.0, 0.0, false);
+        CHECK(off.find("CQ CQ de KC9OXP KC9OXP pse k") != std::string::npos);
+        CHECK(off.size() > msg.size() + 4); // junk from the noise after the text
+        CHECK(std::fabs(OliviaDemodulator::squelchDbOf(5.0) - 13.98) < 0.01);
     }
 
     std::printf("  Olivia 8/500 %.2f chars/s\n", olivia::charsPerSecond(olivia::Config {}));

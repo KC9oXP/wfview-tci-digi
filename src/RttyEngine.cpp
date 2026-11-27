@@ -63,7 +63,7 @@ void RttyDecoderWorker::applyConfig()
     if (m_cfg.sampleRate <= 0.0)
         return;
     m_demod.setConfig(m_cfg);
-    m_demod.setSquelch(m_squelch);
+    m_demod.setSquelch(m_squelch, m_squelchDb);
     m_scope.setConfig(m_cfg.sampleRate, m_cfg.markHz, m_cfg.spaceHz(), m_cfg.baud, m_cfg.shiftHz);
 }
 
@@ -148,6 +148,7 @@ void RttyDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
         emit statsUpdated(s.quality,
                           levelDb(s.markLevel, s.noiseLevel),
                           levelDb(s.spaceLevel, s.noiseLevel),
+                          s.squelchLevel,
                           s.squelchOpen,
                           m_cfg.sampleRate);
     }
@@ -159,7 +160,15 @@ void RttyDecoderWorker::setEasterEgg(bool on)
 }
 
 void RttyDecoderWorker::setParams(
-    double baud, double shiftHz, double markHz, bool reverse, double stopBits, bool usos, bool ita2, double squelch)
+    double baud,
+    double shiftHz,
+    double markHz,
+    bool reverse,
+    double stopBits,
+    bool usos,
+    bool ita2,
+    double squelch,
+    bool squelchDb)
 {
     m_cfg.baud = baud;
     m_cfg.shiftHz = shiftHz;
@@ -169,6 +178,7 @@ void RttyDecoderWorker::setParams(
     m_cfg.usos = usos;
     m_cfg.ita2 = ita2;
     m_squelch = squelch;
+    m_squelchDb = squelchDb;
     applyConfig();
     applyTxScopeConfig();
 }
@@ -252,7 +262,7 @@ void RttyEngine::loadSettings(QSettings *settings)
     m_stopBits = m_settings->value(QStringLiteral("StopBits"), m_stopBits).toDouble();
     m_usos = m_settings->value(QStringLiteral("USOS"), m_usos).toBool();
     m_ita2 = m_settings->value(QStringLiteral("ITA2"), m_ita2).toBool();
-    m_squelch = m_settings->value(QStringLiteral("Squelch"), m_squelch).toDouble();
+    m_sq.load(m_settings);
     m_diddle = m_settings->value(QStringLiteral("Diddle"), m_diddle).toBool();
     m_txLevel = m_settings->value(QStringLiteral("TxLevel"), m_txLevel).toDouble();
     m_myCall = m_settings->value(QStringLiteral("MyCall"), m_myCall).toString();
@@ -275,7 +285,6 @@ void RttyEngine::loadSettings(QSettings *settings)
     m_shift = std::clamp(m_shift, 20, 1000);
     m_markHz = std::clamp(m_markHz, 200, 3500);
     m_sideband = std::clamp(m_sideband, 0, 2);
-    m_squelch = std::clamp(m_squelch, 0.0, 0.95);
     m_txLevel = std::clamp(m_txLevel, 0.0, 1.0);
     applyConfig();
     QMetaObject::invokeMethod(m_worker, "setEasterEgg", Qt::QueuedConnection, Q_ARG(bool, m_easterEgg));
@@ -351,7 +360,8 @@ void RttyEngine::applyConfig()
                               Q_ARG(double, c.stopBits),
                               Q_ARG(bool, c.usos),
                               Q_ARG(bool, c.ita2),
-                              Q_ARG(double, m_squelch));
+                              Q_ARG(double, m_sq.value()),
+                              Q_ARG(bool, m_sq.inDb));
     m_tx->setConfig(c);
     m_tx->setLevel(static_cast<float>(m_txLevel));
     m_tx->setDiddle(m_diddle);
@@ -445,11 +455,19 @@ void RttyEngine::setStopBits(double bits)
 
 void RttyEngine::setSquelch(double q)
 {
-    q = std::clamp(q, 0.0, 0.95);
-    if (std::fabs(q - m_squelch) < 1e-6)
+    if (!m_sq.setValue(q))
         return;
-    m_squelch = q;
-    save("Squelch", m_squelch);
+    save(m_sq.inDb ? "SquelchDb" : "Squelch", m_sq.value());
+    applyConfig();
+    emit settingsChanged();
+}
+
+void RttyEngine::setSquelchInDb(bool on)
+{
+    if (on == m_sq.inDb)
+        return;
+    m_sq.inDb = on;
+    save("SquelchInDb", on);
     applyConfig();
     emit settingsChanged();
 }
@@ -516,7 +534,7 @@ void RttyEngine::setDecoding(bool on)
     }
     else
     {
-        m_quality = m_markDb = m_spaceDb = 0.0;
+        m_quality = m_markDb = m_spaceDb = m_squelchLevel = 0.0;
         m_squelchOpen = false;
         emit statsChanged();
         setStatus(tr("Off"));
@@ -547,7 +565,8 @@ void RttyEngine::onEasterEgg()
     m_atLineStart = true;
 }
 
-void RttyEngine::onStatsUpdated(double quality, double markDb, double spaceDb, bool squelchOpen, double sampleRate)
+void RttyEngine::onStatsUpdated(
+    double quality, double markDb, double spaceDb, double squelchLevel, bool squelchOpen, double sampleRate)
 {
     if (!m_decoding)
         return;
@@ -555,6 +574,7 @@ void RttyEngine::onStatsUpdated(double quality, double markDb, double spaceDb, b
     m_markDb = markDb;
     m_spaceDb = spaceDb;
     m_squelchOpen = squelchOpen;
+    m_squelchLevel = squelchLevel;
     emit statsChanged();
     if (!m_keyed && m_status == tr("Listening..."))
         setStatus(tr("Decoding at %1 Hz audio").arg(static_cast<int>(sampleRate)));
@@ -569,6 +589,7 @@ void RttyEngine::setStandard()
     setStopBits(1.5);
     setUsos(true);
     setIta2(false);
+    setSquelchInDb(false);
     setSquelch(0.5);
     // 2125/2295 Hz pair: USB puts mark on the higher tone, LSB on the lower.
     setMarkHz(usbEffective() ? 2295 : 2125);

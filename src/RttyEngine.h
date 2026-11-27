@@ -12,6 +12,7 @@
 // Transmit sends audio tones (AFSK) as TCI TX audio, so the radio must be in a
 // data/SSB mode that takes computer audio (USB-D / DIGU on Icom).
 
+#include "SquelchSetting.h"
 #include "rttycore.h"
 #include "stanagegg.h"
 
@@ -44,7 +45,8 @@ public slots:
                    double stopBits,
                    bool usos,
                    bool ita2,
-                   double squelch);
+                   double squelch,
+                   bool squelchDb);
     void resetDecoder();
     void findTones(double shiftHz);
     // Our own transmitted tones, for the scope while transmitting.
@@ -56,7 +58,8 @@ signals:
     void textDecoded(QString text);
     // STANAG 4481 Easteregg tripped (stanagegg.h)
     void easterEgg();
-    void statsUpdated(double quality, double markDb, double spaceDb, bool squelchOpen, double sampleRate);
+    void statsUpdated(
+        double quality, double markDb, double spaceDb, double squelchLevel, bool squelchOpen, double sampleRate);
     void tonesFound(bool found, double lowHz, double highHz, double levelDb);
     // Crossed-ellipse scope points, flat [x0, y0, x1, y1, ...] in -1..1, ~15 frames a second.
     void scopeUpdated(QVector<float> xy);
@@ -71,6 +74,7 @@ private:
 
     RttyConfig m_cfg;
     double m_squelch = 0.0;
+    bool m_squelchDb = false;
     RttyDemodulator m_demod;
     RttyScope m_scope;
     std::vector<RttyScope::Point> m_scopePts;
@@ -147,9 +151,19 @@ public:
     {
         return m_ita2;
     }
+    // Squelch on the scale in use: tone contrast 0..0.95, or S/N 0..30 dB
+    // with squelchInDb(). 0 = off.
     double squelch() const
     {
-        return m_squelch;
+        return m_sq.value();
+    }
+    bool squelchInDb() const
+    {
+        return m_sq.inDb;
+    }
+    double squelchLevel() const
+    {
+        return m_squelchLevel;
     }
     bool diddle() const
     {
@@ -223,6 +237,7 @@ public slots:
     void setUsos(bool on);
     void setIta2(bool on);
     void setSquelch(double q);
+    void setSquelchInDb(bool on);
     void setDiddle(bool on);
     void setTxLevel(double level);
     void setMyCall(const QString &c);
@@ -268,7 +283,8 @@ signals:
 private slots:
     void onTextDecoded(const QString &text);
     void onEasterEgg();
-    void onStatsUpdated(double quality, double markDb, double spaceDb, bool squelchOpen, double sampleRate);
+    void onStatsUpdated(
+        double quality, double markDb, double spaceDb, double squelchLevel, bool squelchOpen, double sampleRate);
     void onTonesFound(bool found, double lowHz, double highHz, double levelDb);
     void onScopeUpdated(const QVector<float> &xy);
     void onTxScopeUpdated(const QVector<float> &xy);
@@ -302,7 +318,8 @@ private:
     double m_stopBits = 1.5;
     bool m_usos = true;
     bool m_ita2 = false;
-    double m_squelch = 0.5;
+    SquelchSetting m_sq {0.50, 8.0, false, 0.95, 30.0};
+    double m_squelchLevel = 0.0;
     bool m_diddle = false;
     bool m_easterEgg = true;
     double m_txLevel = 0.5;

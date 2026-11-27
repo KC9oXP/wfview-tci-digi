@@ -2,6 +2,7 @@
 
 #include "PskEngine.h"
 #include "RxText.h"
+#include "SquelchControl.h"
 #include "UiStyle.h"
 #include "WaterfallWidget.h"
 
@@ -84,15 +85,19 @@ QWidget *PskPanel::buildTop()
     m_afc = new QCheckBox(tr("AFC"));
     m_afc->setToolTip(tr("Follow the signal's frequency (within one baud of where you tuned)."));
     r1->addWidget(m_afc);
-    r1->addWidget(new QLabel(tr("Squelch")));
-    m_squelch = new QSlider(Qt::Horizontal);
-    m_squelch->setRange(0, 95);
-    m_squelch->setMinimumWidth(70);
-    m_squelch->setToolTip(tr("Phase-quality squelch: noise reads about 0.1-0.3, a good signal near 1."));
-    r1->addWidget(m_squelch, 1);
-    m_squelchValue = new QLabel();
-    m_squelchValue->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("0.00")) + 4);
-    r1->addWidget(m_squelchValue);
+    {
+        SquelchControl::Scale q, db;
+        q.max = 0.95;
+        q.tip = tr("Phase-quality squelch: noise reads about 0.1-0.35, a good signal near 1. Default 0.30.");
+        db.max = 30.0;
+        db.step = 0.5;
+        db.decimals = 1;
+        db.unit = tr(" dB");
+        db.tip = tr("S/N squelch: signal-to-noise in the PSK symbol bandwidth, from the phase quality (noise "
+                    "alone reads below 3 dB, a clean signal 20-40 dB). Default 3 dB.");
+        m_squelch = new SquelchControl(q, db, false);
+        r1->addWidget(m_squelch, 1);
+    }
     auto *standard = new QPushButton(tr("Standard"));
     standard->setToolTip(tr("Back to the usual settings: BPSK31, AFC on, squelch 0.30 (the frequency is not "
                             "changed)."));
@@ -104,6 +109,7 @@ QWidget *PskPanel::buildTop()
             {
                 m_psk->setSpeed(psk::Bpsk31);
                 m_psk->setAfc(true);
+                m_psk->setSquelchInDb(false);
                 m_psk->setSquelch(0.3);
             });
     auto *clear = new QPushButton(tr("Clear"));
@@ -131,7 +137,8 @@ QWidget *PskPanel::buildTop()
     connect(m_afc, &QCheckBox::toggled, m_psk, &PskEngine::setAfc);
     connect(m_autoSpeed, &QCheckBox::toggled, m_psk, &PskEngine::setAutoSpeed);
     connect(detect, &QPushButton::clicked, m_psk, &PskEngine::detectSpeed);
-    connect(m_squelch, &QSlider::valueChanged, this, [this](int val) { m_psk->setSquelch(val / 100.0); });
+    connect(m_squelch, &SquelchControl::valueChanged, m_psk, &PskEngine::setSquelch);
+    connect(m_squelch, &SquelchControl::inDbToggled, m_psk, &PskEngine::setSquelchInDb);
     connect(clear, &QPushButton::clicked, this, [this]() { m_rx->clear(); });
     return top;
 }
@@ -144,15 +151,14 @@ double PskPanel::markerBandwidth() const
 void PskPanel::syncSettings()
 {
     ModemPanel::syncSettings();
-    const QSignalBlocker b1(m_decode), b2(m_speed), b3(m_freq), b4(m_afc), b5(m_squelch), b6(m_autoSpeed);
+    const QSignalBlocker b1(m_decode), b2(m_speed), b3(m_freq), b4(m_afc), b6(m_autoSpeed);
     m_autoSpeed->setChecked(m_psk->autoSpeed());
     m_decode->setChecked(m_psk->decoding());
     m_speed->setCurrentIndex(m_speed->findData(m_psk->speed()));
     if (!m_freq->hasFocus())
         m_freq->setValue(m_psk->carrierHz());
     m_afc->setChecked(m_psk->afc());
-    m_squelch->setValue(qRound(m_psk->squelch() * 100));
-    m_squelchValue->setText(QString::number(m_psk->squelch(), 'f', 2));
+    m_squelch->setSetting(m_psk->squelch(), m_psk->squelchInDb());
 }
 
 void PskPanel::syncStats()
@@ -162,6 +168,7 @@ void PskPanel::syncStats()
                                  .arg(m_psk->quality(), 0, 'f', 2)
                                  .arg(m_psk->squelchOpen() ? tr("open") : tr("closed")));
     m_level->setText(m_psk->decoding() ? tr("Level %1 dB").arg(qRound(m_psk->levelDb())) : QString());
+    m_squelch->setReading(m_psk->squelchLevel(), m_psk->squelchOpen(), m_psk->decoding());
 }
 
 void PskPanel::appendText(const QString &text)

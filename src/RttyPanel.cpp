@@ -4,6 +4,7 @@
 #include "RttyEngine.h"
 #include "RxText.h"
 #include "ScopeWidget.h"
+#include "SquelchControl.h"
 #include "TxLevelSlider.h"
 #include "TxTools.h"
 #include "UiStyle.h"
@@ -159,15 +160,19 @@ QWidget *RttyPanel::buildTop()
     m_decode = new UiStyle::DecodeButton();
     UiStyle::decodeButton(m_decode);
     r1->addWidget(m_decode);
-    r1->addWidget(new QLabel(tr("Squelch")));
-    m_squelch = new QSlider(Qt::Horizontal);
-    m_squelch->setRange(0, 95);
-    m_squelch->setMinimumWidth(70);
-    m_squelch->setToolTip(tr("Tone-contrast squelch. Noise reads up to about 0.44, a usable signal above 0.5."));
-    r1->addWidget(m_squelch, 1);
-    m_squelchValue = new QLabel();
-    m_squelchValue->setMinimumWidth(QFontMetrics(font()).horizontalAdvance(QStringLiteral("0.00")) + 4);
-    r1->addWidget(m_squelchValue);
+    {
+        SquelchControl::Scale q, db;
+        q.max = 0.95;
+        q.tip = tr("Tone-contrast squelch. Noise reads up to about 0.44, a usable signal above 0.5. Default 0.50.");
+        db.max = 30.0;
+        db.step = 0.5;
+        db.decimals = 1;
+        db.unit = tr(" dB");
+        db.tip = tr("S/N squelch: the tone over the noise in the mark/space filters (noise alone reads up to "
+                    "about 7 dB, a clean signal 14-20 dB). Default 8 dB.");
+        m_squelch = new SquelchControl(q, db, false);
+        r1->addWidget(m_squelch, 1);
+    }
     auto *tune = new QPushButton(tr("Auto-tune"));
     tune->setToolTip(tr("Find the mark/space pair in the last few seconds of audio and set Mark to it."));
     r1->addWidget(tune);
@@ -341,7 +346,8 @@ QWidget *RttyPanel::buildTop()
     // wiring
     connect(m_decode, &QPushButton::toggled, m_rtty, &RttyEngine::setDecoding);
     connect(m_decode, &QPushButton::toggled, this, &RttyPanel::updateScopeIdle);
-    connect(m_squelch, &QSlider::valueChanged, this, [this](int v) { m_rtty->setSquelch(v / 100.0); });
+    connect(m_squelch, &SquelchControl::valueChanged, m_rtty, &RttyEngine::setSquelch);
+    connect(m_squelch, &SquelchControl::inDbToggled, m_rtty, &RttyEngine::setSquelchInDb);
     connect(tune, &QPushButton::clicked, m_rtty, &RttyEngine::autoTune);
     connect(resync, &QPushButton::clicked, m_rtty, &RttyEngine::resync);
     connect(clear, &QPushButton::clicked, this, [this]() { m_rx->clear(); });
@@ -513,11 +519,10 @@ void RttyPanel::updateModeWarning()
 
 void RttyPanel::syncSettings()
 {
-    const QSignalBlocker b1(m_decode), b2(m_squelch), b3(m_reverse), b4(m_baud), b5(m_shift), b6(m_mark),
+    const QSignalBlocker b1(m_decode), b3(m_reverse), b4(m_baud), b5(m_shift), b6(m_mark),
         b7(m_sideband), b8(m_stopBits), b9(m_usos), b10(m_figures), b11(m_hold), b12(m_diddle);
     m_decode->setChecked(m_rtty->decoding());
-    m_squelch->setValue(qRound(m_rtty->squelch() * 100));
-    m_squelchValue->setText(QString::number(m_rtty->squelch(), 'f', 2));
+    m_squelch->setSetting(m_rtty->squelch(), m_rtty->squelchInDb());
     m_reverse->setChecked(m_rtty->reverse());
     if (!m_baud->lineEdit()->hasFocus())
         m_baud->setCurrentText(QString::number(m_rtty->baud(), 'g', 5));
@@ -581,6 +586,7 @@ void RttyPanel::syncStats()
     m_qualityBar->setToolTip(tr("Quality %1 (squelch %2)")
                                  .arg(m_rtty->quality(), 0, 'f', 2)
                                  .arg(m_rtty->squelchOpen() ? tr("open") : tr("closed")));
+    m_squelch->setReading(m_rtty->squelchLevel(), m_rtty->squelchOpen(), m_rtty->decoding());
 }
 
 void RttyPanel::syncTransmitting(bool on)
