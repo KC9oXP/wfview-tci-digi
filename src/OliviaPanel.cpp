@@ -80,20 +80,21 @@ QWidget *OliviaPanel::buildTop()
         n.step = 0.1;
         n.decimals = 1;
         n.tip = tr("Minimum S/N of each decoded block (the decoder's own S/N for that block, so printing stops "
-                   "as soon as the text ends). Noise reads up to about 3, a good signal 8-12. Default 5.0.\n"
-                   "It opens on two good blocks in a row; up to four weak blocks in a fade are held and printed "
-                   "when a good one follows.");
+                   "as soon as the text ends). Noise reads up to about 3, other signals in the passband (an RTTY "
+                   "pair) about 5, a good signal 8-12. Default 6.0.\n"
+                   "It opens on two good blocks in a row once the average S/N has got there too; up to four weak "
+                   "blocks in a fade are held and printed when a good one follows.");
         db.max = 30.0;
         db.step = 0.5;
         db.decimals = 1;
         db.unit = tr(" dB");
         db.tip = tr("The same block S/N in dB (20 log10): noise reads up to about 10 dB, a good signal 18-22 dB. "
-                    "Default 14 dB (= 5.0).");
+                    "Default 15.5 dB (about 6.0).");
         m_squelch = new SquelchControl(n, db, false);
         r1->addWidget(m_squelch, 1);
     }
     auto *standard = new QPushButton(tr("Standard"));
-    standard->setToolTip(tr("Back to the most used setting: Olivia 8 tones / 500 Hz, squelch 5.0 (the frequency "
+    standard->setToolTip(tr("Back to the most used setting: Olivia 8 tones / 500 Hz, squelch 6.0 (the frequency "
                             "is not changed)."));
     r1->addWidget(standard);
     connect(standard,
@@ -103,7 +104,7 @@ QWidget *OliviaPanel::buildTop()
             {
                 m_ol->setMode(false, 8, 500);
                 m_ol->setSquelchInDb(false);
-                m_ol->setSquelch(5.0);
+                m_ol->setSquelch(6.0);
             });
     auto *clear = new QPushButton(tr("Clear"));
     r1->addWidget(clear);

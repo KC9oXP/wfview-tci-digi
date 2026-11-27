@@ -33,7 +33,7 @@ static std::string run(olivia::Config c,
                        double leadNoiseSec = 0.5,
                        unsigned seed = 5,
                        double fadeDb = 0.0,
-                       double squelch = 5.0,
+                       double squelch = 6.0,
                        bool squelchDb = false)
 {
     const double fs = 48000.0;
@@ -146,7 +146,7 @@ int main()
         CHECK(clean == runs);
     }
 
-    std::printf("Squelch: 20 s of band noise prints nothing at squelch 5\n");
+    std::printf("Squelch: 20 s of band noise prints nothing at squelch 5 (and the default 6)\n");
     {
         const double fs = 48000.0;
         std::vector<float> audio(size_t(20 * fs));
@@ -172,6 +172,40 @@ int main()
         }
     }
 
+    std::printf("Squelch: an RTTY station (2125/2295 Hz, 45.45 baud) inside an Olivia 8/500 window at 2003 Hz "
+                "prints nothing at squelch 6 (or 15.5 dB, the defaults)\n");
+    {
+        const double fs = 48000.0;
+        std::vector<float> audio(size_t(60 * fs));
+        std::mt19937 rng(3);
+        std::normal_distribution<float> nd(0.0f, 0.05f);
+        std::uniform_int_distribution<int> bit(0, 1);
+        const size_t bitLen = size_t(fs / 45.45);
+        double ph = 0.0;
+        bool mark = true;
+        for (size_t i = 0; i < audio.size(); ++i)
+        {
+            if (i % bitLen == 0)
+                mark = bit(rng) != 0;
+            ph += 2.0 * M_PI * (mark ? 2125.0 : 2295.0) / fs;
+            audio[i] = float(0.3 * std::sin(ph)) + nd(rng);
+        }
+        for (bool db : {false, true})
+        {
+            OliviaDemodulator dem;
+            dem.setSampleRate(fs);
+            olivia::Config ic;
+            ic.centreHz = 2003.0;
+            dem.setConfig(ic);
+            dem.setSquelch(db ? 15.5 : 6.0, db);
+            std::string out;
+            for (size_t p = 0; p + 960 <= audio.size(); p += 960)
+                out += dem.process(audio.data() + p, 960);
+            std::printf("  %s: [%s] (S/N %.1f)\n", db ? "15.5 dB" : "6.0", out.c_str(), dem.snr());
+            CHECK(out.size() <= 1);
+        }
+    }
+
     std::printf("QSB: a fade of 10-15 dB every 8 s, noisy: the text through the fades prints as with the squelch "
                 "off, and nothing after it\n");
     {
@@ -192,11 +226,11 @@ int main()
         }
     }
 
-    std::printf("Squelch in dB (14 dB = 5) and squelch 0 (off: noise prints)\n");
+    std::printf("Squelch in dB (15.5 dB, about 6) and squelch 0 (off: noise prints)\n");
     {
         olivia::Config dc;
         dc.centreHz = 1500;
-        const std::string o = run(dc, msg, 0.0, 0.05, nullptr, 0.5, 0.5, 5, 0.0, 14.0, true);
+        const std::string o = run(dc, msg, 0.0, 0.05, nullptr, 0.5, 0.5, 5, 0.0, 15.5, true);
         CHECK(o.find("CQ CQ de KC9OXP KC9OXP pse k") != std::string::npos);
         CHECK(o.size() <= msg.size() + 1);
         const std::string off = run(dc, msg, 0.0, 0.05, nullptr, 0.5, 0.5, 5, 0.0, 0.0, false);

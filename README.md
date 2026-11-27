@@ -153,9 +153,9 @@ and a **squelch meter**.
   bandwidth worked out from the phase quality, Olivia the same block S/N as 20 log10). Each
   scale keeps its own setting, so ticking and unticking the box does not lose either one.
   CW and MT63 are in dB already (the box is shown ticked).
-- Defaults: CW 7 dB, RTTY 0.50 (8 dB), PSK 0.30 (3 dB), Olivia 5.0 (14 dB), MT63 5.5 dB.
+- Defaults: CW 7 dB, RTTY 0.50 (8 dB), PSK 0.30 (3 dB), Olivia 6.0 (15.5 dB), MT63 5.5 dB.
   Noise alone reads up to about: CW 5 dB, RTTY 0.44 / 7 dB, PSK 0.35 / 3 dB, Olivia 3 /
-  10 dB, MT63 5 dB.
+  10 dB (an RTTY pair inside the Olivia window about 5 / 14 dB), MT63 5 dB.
 - The **meter** shows the level the decoder measures now and a white marker at the setting
   it must reach. *Options > Squelch meter* picks the look for every tab: a light green **Bar**
   (bright green while the squelch is open), or a **Magic eye** whose dark wedge closes as the
@@ -164,7 +164,8 @@ and a **squelch meter**.
   PSK 4 symbols; a noise spike does not), and it rides through short dips (CW 1 s, RTTY
   1.5 characters, PSK 20 symbols), but never for longer than it has been open, so a spike
   that just opens it does not print junk for the whole hang. Olivia decides block by block:
-  it opens on two good blocks in a row and holds up to four weak blocks in a fade, printed
+  it opens on two good blocks in a row once the average S/N has reached the setting too
+  (other signals in the window do not open it), and holds up to four weak blocks in a fade, printed
   when a good block follows; at the end of a transmission it stops at once (no junk after
   the text). MT63 opens after 3/4 interleave and carries on to the end of the text.
 
@@ -205,7 +206,7 @@ and a **squelch meter**.
 - *Standard*: back to the amateur standard in one click (45.45 baud, 170 Hz, 2125/2295 Hz
   with mark on the side the sideband puts it, Sideband Auto, Reverse off, 1.5 stop bits,
   USOS, US TTY figures, squelch 0.50). PSK (BPSK31, AFC, squelch 0.30), Olivia (8/500,
-  squelch 5.0), NAVTEX (1000 Hz, Reverse off) and WEFAX (120 LPM, IOC 576, Auto start)
+  squelch 6.0), NAVTEX (1000 Hz, Reverse off) and WEFAX (120 LPM, IOC 576, Auto start)
   have one too. Frequencies, trims, calls, macros and TX level are not changed.
 - Sideband *Auto* follows the radio (USB/DIGU or LSB/DIGL), so mark lands on the right
   tone without touching Reverse.

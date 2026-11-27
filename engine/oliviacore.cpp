@@ -185,21 +185,41 @@ std::string OliviaDemodulator::process(const float *x, size_t n)
     {
         if (m_open)
             out = m_held + text; // m_held: a weak block bridged
-        else if (m_opening)
+        else if (!m_opening)
         {
-            // Second good block: open. The first is printed too unless it was
-            // much weaker than this one (only partly signal: the block that
-            // catches the start of a transmission prints a junk letter).
-            out = (m_heldSnr >= 0.5 * m_blockSnr ? m_held : std::string()) + text;
-            m_open = true;
-            m_opening = false;
+            m_opening = true; // first good block: wait for the next
+            m_first = text;
+            m_heldSnr = m_blockSnr;
+            m_held.clear();
+            m_openingBlocks = 1;
+            return out;
         }
         else
         {
-            m_opening = true; // first good block: wait for the next
-            m_held = text;
-            m_heldSnr = m_blockSnr;
-            return out;
+            // Opens on a second good block once the averaged S/N has reached
+            // the setting too: a single block's S/N scatters more, and on other
+            // signals in the passband (an RTTY pair, say) it crosses the
+            // setting now and then while the average stays below it. The
+            // first block is printed too unless it was much weaker than this
+            // one (only partly signal: the block that catches the start of a
+            // transmission prints a junk letter).
+            const double avg = m_squelchDb ? squelchDbOf(m_snr) : m_snr;
+            if (avg < m_squelch)
+            {
+                if (++m_openingBlocks > kOpeningBlocks)
+                {
+                    m_opening = false; // never got there: not a signal
+                    m_first.clear();
+                    m_held.clear();
+                }
+                else
+                    m_held += text;
+                return out;
+            }
+            out = (m_heldSnr >= 0.5 * m_blockSnr ? m_first : std::string()) + m_held + text;
+            m_first.clear();
+            m_open = true;
+            m_opening = false;
         }
         m_held.clear();
         m_belowRun = 0;
@@ -209,6 +229,7 @@ std::string OliviaDemodulator::process(const float *x, size_t n)
     else
     {
         m_held.clear();
+        m_first.clear();
         m_open = false;
         m_opening = false;
         m_belowRun = 0;

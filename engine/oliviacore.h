@@ -60,10 +60,13 @@ public:
     // S/N for that block alone, not the average over several blocks that
     // snr() shows, so it falls the moment the text ends) is at least this.
     // inDb: the same S/N in dB (20 log10). 0 = print everything (noise prints
-    // as random characters). Default 5 (14 dB); noise reads up to about 3.
-    // It opens on the second good block in a row (the first is printed then,
-    // unless it had less than half that block's S/N: the block that catches
-    // the start of a transmission is only partly signal). Up to four weak
+    // as random characters). Default 6 (15.5 dB); noise reads up to about 3,
+    // other signals in the passband (an RTTY pair) about 5.
+    // It opens on the second good block in a row once the averaged S/N
+    // (snr()) has reached the setting too, so other signals in the passband
+    // do not open it (the blocks waiting are printed then; the first only if
+    // it had at least half the S/N of the block that opens it: the block that
+    // catches the start of a transmission is only partly signal). Up to four weak
     // blocks in a row are held back and printed when a good block follows (a
     // fade: the text through it is printed as decoded, as with the squelch
     // off); a fifth, or a transmission that ends, drops them and closes it.
@@ -107,12 +110,15 @@ private:
     std::unique_ptr<Impl> d;
     olivia::Config m_cfg;
     double m_fs = 0.0;
-    double m_squelch = 5.0;
+    double m_squelch = 6.0;
     bool m_squelchDb = false;
     static constexpr int kBridgeBlocks = 4; // weak blocks in a row bridged (a fade)
     bool m_open = false; // last block printed
-    bool m_opening = false; // one good block seen while closed (in m_held)
-    double m_heldSnr = 0.0;
+    static constexpr int kOpeningBlocks = 6; // good blocks waiting for the average
+    bool m_opening = false; // good blocks seen while closed (m_first, then m_held)
+    int m_openingBlocks = 0;
+    std::string m_first; // the first of them
+    double m_heldSnr = 0.0; // its S/N
     int m_belowRun = 0; // blocks in a row below the squelch
     std::string m_held; // one weak block waiting for the next
     double m_snr = 0.0;

@@ -133,7 +133,7 @@ private:
     bool m_contestia = false;
     int m_tones = 8;
     int m_bandwidth = 500;
-    SquelchSetting m_sq {5.0, 14.0, false, 20.0, 30.0};
+    SquelchSetting m_sq {6.0, 15.5, false, 20.0, 30.0};
     double m_squelchLevel = 0.0;
     bool m_squelchOpen = false;
     double m_snr = 0.0;
