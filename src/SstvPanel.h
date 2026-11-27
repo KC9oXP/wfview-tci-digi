@@ -7,8 +7,12 @@
 //   Answer / Report / Thanks / 73 / Test / Custom, each editable; {MYCALL}
 //   {CALL} {RST} {GRID} {DATE} {TIME}), optional timestamp, preview,
 //   Send / Abort, level and progress
+//   Custom 1 / Custom 2 boxes (0.9.19): text (same placeholders) or a picture, anywhere on the
+//   picture; dragged and resized on the preview, one remembered layout (SSTV/Box1/*, SSTV/Box2/*)
 
+#include <QColor>
 #include <QImage>
+#include <QRectF>
 #include <QWidget>
 
 class ImageView;
@@ -21,7 +25,10 @@ class QLabel;
 class QLineEdit;
 class QListWidget;
 class QProgressBar;
+class QPainter;
 class QPushButton;
+class QToolButton;
+class QGroupBox;
 class QSettings;
 class QSlider;
 class TxLevelSlider;
@@ -59,6 +66,13 @@ private:
     QString fillText(QString text, const QDateTime &utc) const;
     void addThumb(const QString &path, const QImage &img);
     void updateMarkers();
+    // Custom boxes
+    QWidget *buildBoxes();
+    void loadBoxImage(int i);
+    void syncBoxUi(int i);
+    void saveBox(int i);
+    void pushEditBoxes();
+    void drawBox(QPainter &p, const QImage &out, int i, const QDateTime &utc) const;
 
     SstvEngine *m_sstv;
     QSettings *m_settings;
@@ -102,4 +116,26 @@ private:
     QLabel *m_txWarn = nullptr;
     QCheckBox *m_cwIdAfter = nullptr;
     TxToolButtons *m_tools = nullptr;
+
+    static constexpr int kBoxCount = 2;
+    struct TxBox
+    {
+        bool on = false;
+        bool picture = false;
+        QString text;
+        QString imagePath;
+        QImage image; // loaded picture (null: none or not found)
+        QColor colour = Qt::white;
+        bool background = true;
+        QRectF geom; // fractions of the picture
+        QCheckBox *onBox = nullptr;
+        QComboBox *kind = nullptr;
+        QLineEdit *edit = nullptr;
+        QPushButton *pick = nullptr;
+        QToolButton *colourBtn = nullptr;
+        QCheckBox *bg = nullptr;
+        QLabel *note = nullptr;
+    };
+    TxBox m_boxes[kBoxCount];
+    QGroupBox *m_boxGroup = nullptr;
 };

@@ -27,7 +27,9 @@
 #include "RttyEngine.h"
 #include "RxText.h"
 #include "SecretStore.h"
+#include "ImageView.h"
 #include "SstvEngine.h"
+#include "SstvPanel.h"
 #include "TciClient.h"
 #include "TxPowerWatch.h"
 #include "TxTools.h"
@@ -39,6 +41,7 @@
 #include "oliviacore.h"
 #include "rsidcore.h"
 #include "rttytxsource.h"
+#include "sstvboxes.h"
 #include "sstvcore.h"
 #include "wavfile.h"
 #include "wefaxcore.h"
@@ -56,6 +59,8 @@
 #include <QHostAddress>
 #include <QLineEdit>
 #include <QMouseEvent>
+#include <QLabel>
+#include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
@@ -962,6 +967,199 @@ static void runMacroMigration()
     PskEngine again;
     again.loadSettings(&settings);
     CHECK(again.macroNames().value(9) == QLatin1String("Ten") && again.macroNames().value(0) == QLatin1String("Mine1"));
+}
+
+// 0.9.19: SSTV Custom 1 / Custom 2 boxes: drag and resize on the preview, kept for the next start, text and
+// picture boxes in the composed picture, a missing picture left out, no editing while sending.
+static void mouse(QWidget *w, QEvent::Type t, QPoint pos, Qt::MouseButtons buttons)
+{
+    QMouseEvent e(t, QPointF(pos), w->mapToGlobal(QPointF(pos)), Qt::LeftButton, buttons, Qt::NoModifier);
+    QApplication::sendEvent(w, &e);
+}
+static void dragOn(QWidget *w, QPoint from, QPoint to)
+{
+    mouse(w, QEvent::MouseButtonPress, from, Qt::LeftButton);
+    for (int k = 1; k <= 4; ++k)
+        mouse(w, QEvent::MouseMove, from + (to - from) * k / 4, Qt::LeftButton);
+    mouse(w, QEvent::MouseButtonRelease, to, Qt::NoButton);
+    pump(50);
+}
+static int countPixels(const QImage &img, const QRect &r, const std::function<bool(QRgb)> &want)
+{
+    int n = 0;
+    const QRect c = r.intersected(img.rect());
+    for (int y = c.top(); y <= c.bottom(); ++y)
+        for (int x = c.left(); x <= c.right(); ++x)
+            n += want(img.pixel(x, y)) ? 1 : 0;
+    return n;
+}
+static QRect boxPixels(QSettings &s, int i, const QImage &img)
+{
+    const QString b = QStringLiteral("SSTV/Box%1/").arg(i + 1);
+    const sstvbox::PixRect p = sstvbox::toPixels(sstvbox::Frac{s.value(b + QStringLiteral("X")).toDouble(),
+                                                               s.value(b + QStringLiteral("Y")).toDouble(),
+                                                               s.value(b + QStringLiteral("W")).toDouble(),
+                                                               s.value(b + QStringLiteral("H")).toDouble()},
+                                                 img.width(),
+                                                 img.height());
+    return QRect(p.x, p.y, p.w, p.h);
+}
+
+static void runSstvBoxes()
+{
+    std::printf("\n=== 0.9.19: SSTV Custom 1 / Custom 2 boxes ===\n");
+    MockTciServer server;
+    server.listen();
+    QTemporaryDir tmp;
+    QSettings settings(tmp.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("TCI/Port"), server.port());
+    settings.setValue(QStringLiteral("TCI/ConnectOnStart"), true);
+    settings.setValue(QStringLiteral("Station/MyCall"), QStringLiteral("KC9OXP"));
+    settings.setValue(QStringLiteral("Paths/Data"), tmp.filePath(QStringLiteral("data")));
+    settings.setValue(QStringLiteral("SSTV/MsgChoice"), 0); // no bottom text
+    // A plain grey picture to send, and a red "logo" for box 2.
+    const QString pic = tmp.filePath(QStringLiteral("grey.png")), logo = tmp.filePath(QStringLiteral("logo.png"));
+    {
+        QImage g(320, 240, QImage::Format_RGB32);
+        g.fill(QColor(128, 128, 128));
+        g.save(pic);
+        QImage l(80, 40, QImage::Format_RGB32);
+        l.fill(QColor(255, 0, 0));
+        l.save(logo);
+    }
+    settings.setValue(QStringLiteral("SSTV/TxImage"), pic);
+    settings.setValue(QStringLiteral("SSTV/Box2/On"), true);
+    settings.setValue(QStringLiteral("SSTV/Box2/Kind"), QStringLiteral("picture"));
+    settings.setValue(QStringLiteral("SSTV/Box2/Image"), logo);
+    settings.setValue(QStringLiteral("SSTV/Box2/Background"), false);
+
+    const auto isRed = [](QRgb c) { return qRed(c) > 200 && qGreen(c) < 60 && qBlue(c) < 60; };
+    const auto isWhite = [](QRgb c) { return qRed(c) > 220 && qGreen(c) > 220 && qBlue(c) > 220; };
+    {
+        MainWindow w(&settings);
+        w.resize(1400, 900);
+        w.show();
+        auto *panel = w.findChild<SstvPanel *>();
+        CHECK(panel != nullptr);
+        if (!panel)
+            return;
+        auto *tabs = w.findChild<QTabWidget *>();
+        for (int i = 0; tabs && i < tabs->count(); ++i)
+            if (tabs->widget(i) == panel || tabs->widget(i)->isAncestorOf(panel))
+                tabs->setCurrentIndex(i);
+        auto *preview = panel->findChild<ImageView *>(QStringLiteral("sstvTxPreview"));
+        auto *on1 = panel->findChild<QCheckBox *>(QStringLiteral("sstvBox1On"));
+        auto *text1 = panel->findChild<QLineEdit *>(QStringLiteral("sstvBox1Text"));
+        CHECK(preview && on1 && text1);
+        if (!preview || !on1 || !text1)
+            return;
+        auto *client = w.findChild<TciClient *>();
+        CHECK(waitFor([&] { return client->isReady(); }, 5000));
+        pump(500);
+
+        CHECK(preview->boxOnScreen(0).isEmpty()); // box 1 off: no outline
+        CHECK(!preview->boxOnScreen(1).isEmpty());
+        QImage before = preview->image();
+        const QRect r2 = boxPixels(settings, 1, before);
+        std::printf("  box 2 (picture) at %d,%d %dx%d of %dx%d: %d red px\n",
+                    r2.x(), r2.y(), r2.width(), r2.height(), before.width(), before.height(), countPixels(before, r2, isRed));
+        CHECK(countPixels(before, r2, isRed) > r2.width() * r2.height() / 3);
+
+        // Box 1: text, on; text in white over a dark background.
+        on1->setChecked(true);
+        text1->setFocus();
+        text1->setText(QStringLiteral("{MYCALL}"));
+        emit text1->textEdited(text1->text());
+        pump(50);
+        CHECK(!preview->boxOnScreen(0).isEmpty());
+        QImage withText = preview->image();
+        const QRect r1 = boxPixels(settings, 0, withText);
+        const int white = countPixels(withText, r1, isWhite);
+        std::printf("  box 1 (text) at %d,%d %dx%d: %d white px\n", r1.x(), r1.y(), r1.width(), r1.height(), white);
+        CHECK(white > 50);
+
+        // Drag box 1 right and down by a quarter of the preview; then its bottom-right corner out.
+        const QRect s1 = preview->boxOnScreen(0);
+        const double x0 = settings.value(QStringLiteral("SSTV/Box1/X")).toDouble();
+        const double y0 = settings.value(QStringLiteral("SSTV/Box1/Y")).toDouble();
+        dragOn(preview, s1.center(), s1.center() + QPoint(40, 30));
+        const double x1 = settings.value(QStringLiteral("SSTV/Box1/X")).toDouble();
+        const double y1 = settings.value(QStringLiteral("SSTV/Box1/Y")).toDouble();
+        std::printf("  dragged box 1: %.3f,%.3f -> %.3f,%.3f\n", x0, y0, x1, y1);
+        CHECK(x1 > x0 + 0.02 && y1 > y0 + 0.02);
+        const QRect s1b = preview->boxOnScreen(0);
+        const double w0 = settings.value(QStringLiteral("SSTV/Box1/W")).toDouble();
+        dragOn(preview, s1b.bottomRight(), s1b.bottomRight() + QPoint(30, 10));
+        const double w1 = settings.value(QStringLiteral("SSTV/Box1/W")).toDouble();
+        std::printf("  resized box 1: width %.3f -> %.3f\n", w0, w1);
+        CHECK(w1 > w0 + 0.02);
+        CHECK(std::fabs(settings.value(QStringLiteral("SSTV/Box1/X")).toDouble() - x1) < 1e-9); // left edge stayed
+        // Drag far off the picture: stays inside.
+        const QRect s1c = preview->boxOnScreen(0);
+        dragOn(preview, s1c.center(), s1c.center() + QPoint(5000, 5000));
+        const double xe = settings.value(QStringLiteral("SSTV/Box1/X")).toDouble();
+        const double we = settings.value(QStringLiteral("SSTV/Box1/W")).toDouble();
+        std::printf("  dragged off the edge: x %.3f + w %.3f\n", xe, we);
+        CHECK(xe + we <= 1.0 + 1e-9 && xe >= 0.0);
+        {
+            const QImage img = preview->image();
+            const QRect r = boxPixels(settings, 0, img);
+            CHECK(countPixels(img, r, isWhite) > 50); // the text moved with the box
+            CHECK(countPixels(img, img.rect(), isWhite) == countPixels(img, r, isWhite));
+        }
+
+        // No editing while sending: the picture goes out as composed.
+        auto *sstvEng = w.findChild<SstvEngine *>();
+        sstvEng->setTxMode(sstv::Robot36);
+        sstvEng->sendImage(preview->image());
+        CHECK(waitFor([&] { return sstvEng->transmitting(); }, 2000));
+        CHECK(!preview->boxesEditable() && preview->boxOnScreen(0).isEmpty() && !on1->isEnabled());
+        const double xb = settings.value(QStringLiteral("SSTV/Box1/X")).toDouble();
+        dragOn(preview, s1c.center(), s1c.center() - QPoint(60, 0));
+        CHECK(std::fabs(settings.value(QStringLiteral("SSTV/Box1/X")).toDouble() - xb) < 1e-9);
+        sstvEng->abortTx();
+        CHECK(waitFor([&] { return !sstvEng->transmitting(); }, 3000));
+        CHECK(preview->boxesEditable() && on1->isEnabled());
+    }
+
+    // Next start: same places, same boxes.
+    {
+        MainWindow w(&settings);
+        w.show();
+        pump(300);
+        auto *panel = w.findChild<SstvPanel *>();
+        auto *preview = panel ? panel->findChild<ImageView *>(QStringLiteral("sstvTxPreview")) : nullptr;
+        CHECK(preview != nullptr);
+        if (!preview)
+            return;
+        const QImage img = preview->image();
+        const QRect r1 = boxPixels(settings, 0, img), r2 = boxPixels(settings, 1, img);
+        std::printf("  after restart: box 1 %d,%d %dx%d, box 2 %d,%d\n", r1.x(), r1.y(), r1.width(), r1.height(), r2.x(), r2.y());
+        // All the white (box 1 text) and red (box 2 logo) is inside the saved places.
+        CHECK(countPixels(img, r1, isWhite) > 50);
+        CHECK(countPixels(img, img.rect(), isWhite) == countPixels(img, r1, isWhite));
+        CHECK(countPixels(img, img.rect(), isRed) == countPixels(img, r2, isRed));
+        CHECK(countPixels(img, r2, isRed) > r2.width() * r2.height() / 3);
+    }
+
+    // Picture file gone: box left out with a note, nothing else breaks.
+    settings.setValue(QStringLiteral("SSTV/Box2/Image"), tmp.filePath(QStringLiteral("gone.png")));
+    {
+        MainWindow w(&settings);
+        w.show();
+        pump(300);
+        auto *panel = w.findChild<SstvPanel *>();
+        auto *preview = panel ? panel->findChild<ImageView *>(QStringLiteral("sstvTxPreview")) : nullptr;
+        auto *note = panel ? panel->findChild<QLabel *>(QStringLiteral("sstvBox2Note")) : nullptr;
+        CHECK(preview && note);
+        if (!preview || !note)
+            return;
+        std::printf("  missing picture note: %s\n", qPrintable(note->text()));
+        CHECK(note->text().contains(QStringLiteral("not found")));
+        const QImage img = preview->image();
+        CHECK(countPixels(img, boxPixels(settings, 1, img), isRed) == 0);
+        CHECK(countPixels(img, boxPixels(settings, 0, img), isWhite) > 50);
+    }
 }
 
 // WWV Time: 200 s of synthesized WWV straight into the engine (its own worker thread).
@@ -1887,6 +2085,7 @@ int main(int argc, char *argv[])
     runDecodeOnSend();
     runRcvdFromText();
     runMacroMigration();
+    runSstvBoxes();
     runWwv();
     runMemories();
     runRsidSideband();

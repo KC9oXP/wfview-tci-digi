@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.9.18
+VERSION = 0.9.19
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -105,6 +105,7 @@ HEADERS += \
     engine/memories.h \
     engine/audioresampler.h \
     engine/fmdemod.h \
+    engine/sstvboxes.h \
     engine/sstvcore.h \
     engine/wefaxcore.h \
     engine/navtexcore.h \

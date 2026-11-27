@@ -8,12 +8,14 @@
 #include "TxTools.h"
 #include "UiStyle.h"
 #include "WaterfallWidget.h"
+#include "sstvboxes.h"
 #include "sstvcore.h"
 
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QColorDialog>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -28,6 +30,7 @@
 #include <QListWidget>
 #include <QMimeData>
 #include <QPainter>
+#include <QPixmap>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QRadioButton>
@@ -75,6 +78,27 @@ const MsgChoice kMsgChoices[] = {
 };
 constexpr int kMsgCount = int(sizeof(kMsgChoices) / sizeof(kMsgChoices[0]));
 constexpr int kMsgNone = 0, kMsgAnswer = 2, kMsgCustom = kMsgCount - 1;
+
+// Custom 1 / Custom 2: settings keys and default places (side by side, a third of the way down: clear of
+// the timestamp at the top and the picture text at the bottom).
+QString boxKey(int i, const char *name)
+{
+    return QStringLiteral("SSTV/Box%1/%2").arg(i + 1).arg(QLatin1String(name));
+}
+const sstvbox::Frac kBoxDefault[] = {{0.04, 0.30, 0.42, 0.22}, {0.54, 0.30, 0.42, 0.22}};
+const char *const kBoxDefaultText[] = {"{MYCALL}", "{GRID}"};
+// Big pictures are kept at most this wide/high (an SSTV picture is 640 x 496 at the most).
+constexpr int kBoxImageMax = 1280;
+
+QIcon colourIcon(const QColor &c)
+{
+    QPixmap px(16, 16);
+    px.fill(c);
+    QPainter p(&px);
+    p.setPen(QColor(90, 90, 90));
+    p.drawRect(0, 0, 15, 15);
+    return QIcon(px);
+}
 
 QString msgKey(int i)
 {
@@ -468,6 +492,7 @@ QWidget *SstvPanel::buildTx()
     // Keeps its full height in a short window; the preview below gives way instead.
     msgBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     v->addWidget(msgBox);
+    v->addWidget(buildBoxes());
 
     // Which choice: saved, or worked out from the single text line of 0.5.0 and older.
     int choice = m_settings->value(QStringLiteral("SSTV/MsgChoice"), -1).toInt();
@@ -560,8 +585,23 @@ QWidget *SstvPanel::buildTx()
 
     m_preview = new ImageView(ImageView::Fit::Window);
     m_preview->setMinimumSize(160, 90);
-    m_preview->setToolTip(tr("What will be sent (shown at 4:3 like the receiving end)."));
+    m_preview->setObjectName(QStringLiteral("sstvTxPreview"));
+    m_preview->setToolTip(tr("What will be sent (shown at 4:3 like the receiving end). Drag a Custom box to move "
+                             "it, drag one of its corners to resize it."));
     v->addWidget(m_preview, 1);
+    m_preview->setBoxesEditable(true);
+    pushEditBoxes();
+    connect(m_preview,
+            &ImageView::boxMoved,
+            this,
+            [this](int i, const QRectF &r)
+            {
+                if (i < 0 || i >= kBoxCount)
+                    return;
+                m_boxes[i].geom = r;
+                updatePreview();
+            });
+    connect(m_preview, &ImageView::boxReleased, this, [this](int i) { saveBox(i); });
 
     auto *r5 = new QHBoxLayout();
     m_send = new QPushButton(tr("Send"));
@@ -726,7 +766,10 @@ QImage SstvPanel::composeTx() const
     const QDateTime utc = QDateTime::currentDateTimeUtc();
     const QString text = m_msgGroup->checkedId() > kMsgNone ? fillText(m_overlay->text(), utc) : QString();
     const bool stamp = m_stamp->isChecked();
-    if (text.isEmpty() && !stamp)
+    bool anyBox = false;
+    for (const TxBox &b : m_boxes)
+        anyBox = anyBox || b.on;
+    if (text.isEmpty() && !stamp && !anyBox)
         return out;
     QPainter p(&out);
     p.setRenderHint(QPainter::TextAntialiasing);
@@ -769,6 +812,9 @@ QImage SstvPanel::composeTx() const
             y += lineH;
         }
     }
+    // Custom 1 then Custom 2 (on top), over the picture text; the timestamp stays on top of all.
+    for (int i = 0; i < kBoxCount; ++i)
+        drawBox(p, out, i, utc);
     if (stamp)
     {
         const bool local = m_stampZone->currentData().toInt() == 1;
@@ -857,6 +903,10 @@ void SstvPanel::syncTx(bool on)
     }
     else
         m_preview->setMarkerLine(0.0);
+    // The picture is composed when Send is pressed: no box editing while it goes out.
+    m_preview->setBoxesEditable(!on);
+    if (m_boxGroup)
+        m_boxGroup->setEnabled(!on);
     m_wf->setTransmitting(on);
 }
 
@@ -905,4 +955,296 @@ void SstvPanel::updateTrimTxNote()
             tr("(%1 ppm moves a %2 picture %3 px: too small to matter)").arg(ppm).arg(name).arg(px, 0, 'f', 1));
     else
         m_trimTxNote->setText(tr("(%1 ppm: corrects about %2 px of lean on %3)").arg(ppm).arg(qRound(px)).arg(name));
+}
+
+QWidget *SstvPanel::buildBoxes()
+{
+    m_boxGroup = new QGroupBox(tr("Custom boxes"));
+    m_boxGroup->setToolTip(tr("Two more boxes on the picture, each with text or a picture (a logo, a photo, a "
+                              "picture of text). Drag a box on the preview below to move it, a corner to "
+                              "resize it. The layout is kept for the next picture and the next start."));
+    auto *g = new QGridLayout(m_boxGroup);
+    g->setColumnStretch(2, 1);
+    for (int i = 0; i < kBoxCount; ++i)
+    {
+        TxBox &b = m_boxes[i];
+        b.on = m_settings->value(boxKey(i, "On"), false).toBool();
+        b.picture = m_settings->value(boxKey(i, "Kind"), QStringLiteral("text")).toString() == QLatin1String("picture");
+        b.text = m_settings->value(boxKey(i, "Text"), QLatin1String(kBoxDefaultText[i])).toString();
+        b.imagePath = m_settings->value(boxKey(i, "Image")).toString();
+        const QColor c(m_settings->value(boxKey(i, "Colour"), QStringLiteral("#ffffff")).toString());
+        b.colour = c.isValid() ? c : QColor(Qt::white);
+        b.background = m_settings->value(boxKey(i, "Background"), true).toBool();
+        bool ok[4] = {false, false, false, false};
+        const sstvbox::Frac saved{m_settings->value(boxKey(i, "X")).toDouble(&ok[0]),
+                                  m_settings->value(boxKey(i, "Y")).toDouble(&ok[1]),
+                                  m_settings->value(boxKey(i, "W")).toDouble(&ok[2]),
+                                  m_settings->value(boxKey(i, "H")).toDouble(&ok[3])};
+        const sstvbox::Frac f
+            = (ok[0] && ok[1] && ok[2] && ok[3]) ? sstvbox::clamp(saved, kBoxDefault[i]) : kBoxDefault[i];
+        b.geom = QRectF(f.x, f.y, f.w, f.h);
+
+        const QString n = QString::number(i + 1);
+        b.onBox = new QCheckBox(tr("Custom %1").arg(i + 1));
+        b.onBox->setObjectName(QStringLiteral("sstvBox%1On").arg(n));
+        b.onBox->setChecked(b.on);
+        b.onBox->setToolTip(tr("Put box %1 on the picture.").arg(i + 1));
+        b.kind = new QComboBox();
+        b.kind->setObjectName(QStringLiteral("sstvBox%1Kind").arg(n));
+        b.kind->addItem(tr("Text"));
+        b.kind->addItem(tr("Picture"));
+        b.kind->setCurrentIndex(b.picture ? 1 : 0);
+        b.edit = new QLineEdit();
+        b.edit->setObjectName(QStringLiteral("sstvBox%1Text").arg(n));
+        b.pick = new QPushButton(tr("Pick..."));
+        b.pick->setObjectName(QStringLiteral("sstvBox%1Pick").arg(n));
+        b.pick->setToolTip(tr("Choose the picture for this box (shown whole, the shape kept)."));
+        b.colourBtn = new QToolButton();
+        b.colourBtn->setObjectName(QStringLiteral("sstvBox%1Colour").arg(n));
+        b.colourBtn->setToolTip(tr("Text colour"));
+        b.bg = new QCheckBox(tr("Background"));
+        b.bg->setObjectName(QStringLiteral("sstvBox%1Background").arg(n));
+        b.bg->setToolTip(tr("A dark see-through background behind the box, so it reads on any picture."));
+        b.bg->setChecked(b.background);
+        b.note = new QLabel();
+        b.note->setObjectName(QStringLiteral("sstvBox%1Note").arg(n));
+        b.note->setStyleSheet(QStringLiteral("color: #ffb060;"));
+        b.note->setWordWrap(true);
+        g->addWidget(b.onBox, i * 2, 0);
+        g->addWidget(b.kind, i * 2, 1);
+        g->addWidget(b.edit, i * 2, 2);
+        g->addWidget(b.pick, i * 2, 3);
+        g->addWidget(b.colourBtn, i * 2, 4);
+        g->addWidget(b.bg, i * 2, 5);
+        g->addWidget(b.note, i * 2 + 1, 0, 1, 6);
+        if (b.picture)
+            loadBoxImage(i);
+        syncBoxUi(i);
+
+        connect(b.onBox,
+                &QCheckBox::toggled,
+                this,
+                [this, i](bool on)
+                {
+                    m_boxes[i].on = on;
+                    saveBox(i);
+                    syncBoxUi(i);
+                    pushEditBoxes();
+                    updatePreview();
+                });
+        connect(b.kind,
+                &QComboBox::activated,
+                this,
+                [this, i](int k)
+                {
+                    m_boxes[i].picture = k == 1;
+                    if (m_boxes[i].picture)
+                        loadBoxImage(i);
+                    saveBox(i);
+                    syncBoxUi(i);
+                    updatePreview();
+                });
+        connect(b.edit,
+                &QLineEdit::textEdited,
+                this,
+                [this, i](const QString &t)
+                {
+                    if (m_boxes[i].picture)
+                        return;
+                    m_boxes[i].text = t;
+                    saveBox(i);
+                    updatePreview();
+                });
+        connect(b.pick,
+                &QPushButton::clicked,
+                this,
+                [this, i]()
+                {
+                    const QString start
+                        = m_boxes[i].imagePath.isEmpty()
+                              ? m_settings->value(QStringLiteral("SSTV/TxDir"), QDir::homePath()).toString()
+                              : QFileInfo(m_boxes[i].imagePath).absolutePath();
+                    const QString p = QFileDialog::getOpenFileName(this,
+                                                                   tr("Picture for Custom %1").arg(i + 1),
+                                                                   start,
+                                                                   tr("Pictures (*.png *.jpg *.jpeg *.bmp *.gif *.webp)"));
+                    if (p.isEmpty())
+                        return;
+                    m_boxes[i].imagePath = p;
+                    loadBoxImage(i);
+                    saveBox(i);
+                    syncBoxUi(i);
+                    updatePreview();
+                });
+        connect(b.colourBtn,
+                &QToolButton::clicked,
+                this,
+                [this, i]()
+                {
+                    const QColor c = QColorDialog::getColor(m_boxes[i].colour, this, tr("Text colour, Custom %1").arg(i + 1));
+                    if (!c.isValid())
+                        return;
+                    m_boxes[i].colour = c;
+                    saveBox(i);
+                    syncBoxUi(i);
+                    updatePreview();
+                });
+        connect(b.bg,
+                &QCheckBox::toggled,
+                this,
+                [this, i](bool on)
+                {
+                    m_boxes[i].background = on;
+                    saveBox(i);
+                    updatePreview();
+                });
+    }
+    m_boxGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    return m_boxGroup;
+}
+
+void SstvPanel::loadBoxImage(int i)
+{
+    TxBox &b = m_boxes[i];
+    b.image = QImage();
+    if (b.imagePath.isEmpty())
+        return;
+    QImage img(b.imagePath);
+    if (img.isNull())
+        return;
+    if (img.width() > kBoxImageMax || img.height() > kBoxImageMax)
+        img = img.scaled(kBoxImageMax, kBoxImageMax, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    b.image = img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+}
+
+void SstvPanel::syncBoxUi(int i)
+{
+    TxBox &b = m_boxes[i];
+    const QSignalBlocker blk(b.edit);
+    b.kind->setEnabled(b.on);
+    b.edit->setEnabled(b.on);
+    b.bg->setEnabled(b.on);
+    b.pick->setEnabled(b.on && b.picture);
+    b.colourBtn->setEnabled(b.on && !b.picture);
+    b.colourBtn->setIcon(colourIcon(b.colour));
+    if (b.picture)
+    {
+        b.edit->setReadOnly(true);
+        b.edit->setText(b.imagePath.isEmpty() ? QString() : QFileInfo(b.imagePath).fileName());
+        b.edit->setPlaceholderText(tr("Pick... a picture"));
+        b.edit->setToolTip(QDir::toNativeSeparators(b.imagePath));
+    }
+    else
+    {
+        b.edit->setReadOnly(false);
+        b.edit->setText(b.text);
+        b.edit->setPlaceholderText(tr("text, e.g. {MYCALL} {GRID}"));
+        b.edit->setToolTip(tr("{MYCALL} {CALL} {RST} {GRID} {DATE} {TIME} are filled in (date and time in UTC). "
+                              "The text is as big as the box allows."));
+    }
+    QString note;
+    if (b.on && b.picture && b.imagePath.isEmpty())
+        note = tr("Custom %1: pick a picture (left out until then).").arg(i + 1);
+    else if (b.on && b.picture && b.image.isNull())
+        note = tr("Custom %1: picture not found or not readable: %2 (box left out).")
+                   .arg(i + 1)
+                   .arg(QDir::toNativeSeparators(b.imagePath));
+    b.note->setText(note);
+    b.note->setVisible(!note.isEmpty());
+}
+
+void SstvPanel::saveBox(int i)
+{
+    const TxBox &b = m_boxes[i];
+    m_settings->setValue(boxKey(i, "On"), b.on);
+    m_settings->setValue(boxKey(i, "Kind"), b.picture ? QStringLiteral("picture") : QStringLiteral("text"));
+    m_settings->setValue(boxKey(i, "Text"), b.text);
+    m_settings->setValue(boxKey(i, "Image"), b.imagePath);
+    m_settings->setValue(boxKey(i, "Colour"), b.colour.name());
+    m_settings->setValue(boxKey(i, "Background"), b.background);
+    m_settings->setValue(boxKey(i, "X"), b.geom.x());
+    m_settings->setValue(boxKey(i, "Y"), b.geom.y());
+    m_settings->setValue(boxKey(i, "W"), b.geom.width());
+    m_settings->setValue(boxKey(i, "H"), b.geom.height());
+}
+
+void SstvPanel::pushEditBoxes()
+{
+    if (!m_preview)
+        return;
+    QVector<QRectF> v;
+    for (const TxBox &b : m_boxes)
+        v << (b.on ? b.geom : QRectF());
+    m_preview->setEditBoxes(v);
+}
+
+void SstvPanel::drawBox(QPainter &p, const QImage &out, int i, const QDateTime &utc) const
+{
+    const TxBox &b = m_boxes[i];
+    if (!b.on)
+        return;
+    const QString text = b.picture ? QString() : fillText(b.text, utc);
+    if (b.picture ? b.image.isNull() : text.isEmpty())
+        return;
+    const sstvbox::PixRect pr
+        = sstvbox::toPixels(sstvbox::Frac{b.geom.x(), b.geom.y(), b.geom.width(), b.geom.height()}, out.width(), out.height());
+    const QRect r(pr.x, pr.y, pr.w, pr.h);
+    p.save();
+    p.setClipRect(r);
+    if (b.background)
+        p.fillRect(r, QColor(0, 0, 0, 150));
+    if (b.picture)
+    {
+        const sstvbox::PixRect f = sstvbox::fitAspect(b.image.width(), b.image.height(), pr);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        p.drawImage(QRect(f.x, f.y, f.w, f.h), b.image);
+        p.restore();
+        return;
+    }
+    // Text: the biggest size whose lines fit the box, words kept whole where they can be.
+    const int pad = 3;
+    const int availW = std::max(4, r.width() - 2 * pad), availH = std::max(4, r.height() - 2 * pad);
+    QFont f(QStringLiteral("Arial"));
+    f.setBold(true);
+    QStringList lines;
+    int lineH = 1;
+    const QStringList words = text.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    bool fits = false;
+    for (int px = std::clamp(availH, 6, 200); px >= 6; --px)
+    {
+        f.setPixelSize(px);
+        const QFontMetrics fm(f);
+        bool wordsFit = true;
+        for (const QString &w : words)
+            wordsFit = wordsFit && fm.horizontalAdvance(w) <= availW;
+        if (!wordsFit && px > 8)
+            continue;
+        lines = wrapLines(text, f, availW);
+        lineH = fm.lineSpacing();
+        if (int(lines.size()) * lineH <= availH)
+        {
+            fits = true;
+            break;
+        }
+    }
+    if (!fits)
+    {
+        // Smallest size and still too long: keep what fits and end with "...".
+        const QFontMetrics fm(f);
+        const int maxLines = std::max(1, availH / std::max(1, lineH));
+        if (int(lines.size()) > maxLines)
+        {
+            lines = lines.mid(0, maxLines);
+            lines.last() = fm.elidedText(lines.last() + QStringLiteral(" ..."), Qt::ElideRight, availW);
+        }
+    }
+    p.setFont(f);
+    p.setPen(b.colour);
+    int y = r.top() + (r.height() - int(lines.size()) * lineH) / 2;
+    for (const QString &l : lines)
+    {
+        p.drawText(QRect(r.left() + pad, y, availW, lineH), Qt::AlignHCenter | Qt::AlignVCenter, l);
+        y += lineH;
+    }
+    p.restore();
 }

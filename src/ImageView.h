@@ -5,8 +5,12 @@
 //   FitWidth: scaled to the width, as tall as it needs (WEFAX, in a scroll area).
 // columnShift rotates every row left (WEFAX alignment). Clicks report the
 // picture coordinate.
+// Edit boxes (SSTV transmit preview, FitWindow only): outlines with corner handles over the picture,
+// moved by dragging inside and resized by dragging a corner. Kept as fractions of the picture.
 
 #include <QImage>
+#include <QRectF>
+#include <QVector>
 #include <QWidget>
 
 class ImageView : public QWidget
@@ -45,15 +49,34 @@ public:
     }
     int heightForWidth(int w) const override;
 
+    // Boxes to edit, as fractions of the picture (0..1); an empty rect leaves that number out.
+    // The outlines show only while editing is allowed (not while the picture is being sent).
+    void setEditBoxes(const QVector<QRectF> &boxes);
+    void setBoxesEditable(bool on);
+    bool boxesEditable() const
+    {
+        return m_boxEdit;
+    }
+    // Where box i is on screen (widget pixels), for tests; empty if not shown.
+    QRect boxOnScreen(int i) const;
+
 signals:
     void clicked(QPoint imagePos);
+    // While dragging: the box's new place (fractions). boxReleased when the mouse button comes up.
+    void boxMoved(int index, QRectF fraction);
+    void boxReleased(int index);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
     QRect target() const;
+    bool showBoxes() const;
+    // Top-most box under pos and what part of it; -1 if none.
+    int boxAt(const QPointF &pos, int *grip) const;
 
     Fit m_fit;
     QImage m_img;
@@ -61,4 +84,10 @@ private:
     int m_shift = 0;
     QString m_placeholder;
     double m_marker = -1.0;
+    QVector<QRectF> m_boxes;
+    bool m_boxEdit = false;
+    int m_dragBox = -1;
+    int m_dragGrip = 0;
+    QPointF m_dragFrom;
+    QRectF m_dragStart;
 };

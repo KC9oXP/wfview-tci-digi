@@ -42,6 +42,7 @@ HEADERS += \
     ../src/SessionLog.h \
     ../src/QsoLog.h \
     ../src/ImageView.h \
+    ../engine/sstvboxes.h \
     ../src/OliviaEngine.h \
     ../src/OliviaPanel.h \
     ../src/Mt63Engine.h \

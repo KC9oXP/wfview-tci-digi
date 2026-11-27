@@ -35,7 +35,7 @@ wfview reaches the radio over LAN or over USB.
 | **Feld Hell** | yes | yes | Painted receive with auto column alignment and 30 minutes of scrollback |
 | **Olivia / Contestia** | yes | yes | All the usual tone/bandwidth settings; interoperates with fldigi |
 | **MT63** | yes | yes | 500 / 1000 / 2000 Hz, short or long interleave (MT63-1KL for net traffic); fldigi's code |
-| **SSTV** | yes | yes | Martin, Scottie, Robot, PD modes; auto start, auto slant, auto offset; send a picture with CQ / answer / report / 73 text and a timestamp |
+| **SSTV** | yes | yes | Martin, Scottie, Robot, PD modes; auto start, auto slant, auto offset; send a picture with CQ / answer / report / 73 text, a timestamp and two custom text or picture boxes |
 | **AMTOR FEC** | yes | yes | Mode B (SITOR-B style), 100 baud |
 | **WSPR** | yes | yes (beacon) | WSJT-X's decoder; 2-minute slots, TX %, band hopping, finds free offsets, uploads to WSPRnet / PSK Reporter / GridTracker |
 | **NAVTEX** | yes | - | 518 / 490 kHz and SITOR-B on HF |
@@ -272,6 +272,14 @@ reply is copied; *Tune* and *CW ID* leave it as it is. Only one tab transmits at
   lines and the dark band grows upward (up to half the picture; only past that does the
   size step down a little, and what still does not fit ends in "...").
 - *Timestamp*: date and time (UTC or local) in a top corner, taken when Send is pressed.
+- *Custom boxes* (0.9.19): *Custom 1* and *Custom 2*, two more boxes anywhere on the
+  picture. Each holds text (the same `{MYCALL}` `{CALL}` ... placeholders, as big as the
+  box allows, in the colour you pick) or a picture (a logo, a photo, a picture of text;
+  shown whole, its shape kept). *Background* puts a dark see-through box behind it. Drag a
+  box on the preview to move it, drag a corner to resize it. The layout is kept as a share
+  of the picture, so it stays put in every mode and for the next picture and the next start.
+  The boxes go over the picture text; the timestamp stays on top. A missing picture file
+  leaves the box out (with a note) instead of stopping the send. No editing while sending.
 
 ### AMTOR FEC (receive and transmit)
 
