@@ -1,6 +1,7 @@
 #include "PskEngine.h"
 
 #include "modemtxsource.h"
+#include "pskmultidecoder.h"
 
 #include <QMetaType>
 #include <QSettings>
@@ -13,6 +14,9 @@ namespace
 constexpr int statsIntervalMs = 150;
 constexpr double historySeconds = 5.0; // audio kept for click-to-tune and speed detection
 constexpr double centreSeconds = 2.0; // the part used to find a signal's centre
+constexpr int multiIntervalMs = 300;
+constexpr double multiLoHz = 200.0;
+constexpr double multiHiHz = 3000.0;
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -23,6 +27,25 @@ PskDecoderWorker::PskDecoderWorker(QObject *parent)
     : QObject(parent)
 {
     m_statsTimer.start();
+    m_multiTimer.start();
+}
+
+PskDecoderWorker::~PskDecoderWorker() = default;
+
+void PskDecoderWorker::setMulti(bool on)
+{
+    if (on && !m_multi)
+    {
+        m_multi = std::make_unique<PskMultiDecoder>();
+        m_multi->setRange(multiLoHz, multiHiHz);
+        m_multi->setBaud(m_baud);
+        m_multi->setSquelch(m_squelch, m_squelchDb);
+    }
+    else if (!on && m_multi)
+    {
+        m_multi.reset();
+        emit multiUpdated({});
+    }
 }
 
 void PskDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
@@ -38,6 +61,28 @@ void PskDecoderWorker::pushAudio(QVector<float> mono, float sampleRate)
     const std::string out = m_demod.process(mono.constData(), size_t(mono.size()));
     if (!out.empty())
         emit textDecoded(QString::fromLatin1(out.data(), int(out.size())));
+
+    if (m_multi)
+    {
+        m_multi->feed(mono.constData(), size_t(mono.size()), m_fs);
+        if (m_multiTimer.elapsed() >= multiIntervalMs)
+        {
+            m_multiTimer.restart();
+            QVector<PskChannelInfo> list;
+            for (const auto &c : m_multi->channels())
+            {
+                PskChannelInfo i;
+                i.id = c.id;
+                i.hz = c.hz;
+                i.snrDb = c.snrDb;
+                i.active = c.active;
+                i.text = QString::fromLatin1(c.text.data(), int(c.text.size()));
+                i.total = c.total;
+                list.push_back(i);
+            }
+            emit multiUpdated(list);
+        }
+    }
 
     m_history.insert(m_history.end(), mono.constBegin(), mono.constEnd());
     const size_t keep = size_t(historySeconds * m_fs);
@@ -63,6 +108,13 @@ void PskDecoderWorker::setParams(
     m_demod.setCarrier(carrierHz);
     m_demod.setAfc(afc);
     m_demod.setSquelch(squelch, squelchDb);
+    m_squelch = squelch;
+    m_squelchDb = squelchDb;
+    if (m_multi)
+    {
+        m_multi->setBaud(baud); // a new speed starts the list afresh
+        m_multi->setSquelch(squelch, squelchDb);
+    }
 }
 
 void PskDecoderWorker::resetDecoder()
@@ -103,6 +155,8 @@ PskEngine::PskEngine(QObject *parent)
     setDecodeOnSend(true);
     qRegisterMetaType<QVector<float>>("QVector<float>");
     qRegisterMetaType<PskDemodulator::Rsq>("PskDemodulator::Rsq");
+    qRegisterMetaType<PskChannelInfo>("PskChannelInfo");
+    qRegisterMetaType<QVector<PskChannelInfo>>("QVector<PskChannelInfo>");
     m_thread = new QThread(this);
     m_thread->setObjectName(QStringLiteral("pskDecoder"));
     m_worker = new PskDecoderWorker();
@@ -122,6 +176,7 @@ PskEngine::PskEngine(QObject *parent)
             });
     connect(m_worker, &PskDecoderWorker::centerFound, this, &PskEngine::onCenter);
     connect(m_worker, &PskDecoderWorker::speedDetected, this, &PskEngine::onSpeed);
+    connect(m_worker, &PskDecoderWorker::multiUpdated, this, &PskEngine::onMulti);
     m_thread->start(QThread::LowPriority);
     applyConfig();
 }
@@ -141,8 +196,10 @@ void PskEngine::loadSettings(QSettings *s)
         m_afc = s->value(QStringLiteral("AFC"), m_afc).toBool();
         m_sq.load(s);
         m_autoSpeed = s->value(QStringLiteral("AutoSpeed"), m_autoSpeed).toBool();
+        m_multi = s->value(QStringLiteral("Multi"), m_multi).toBool();
         s->endGroup();
     }
+    QMetaObject::invokeMethod(m_worker, "setMulti", Qt::QueuedConnection, Q_ARG(bool, m_multi));
     ModemEngine::loadSettings(s); // applies
 }
 
@@ -296,4 +353,73 @@ void PskEngine::onStats(
     if (m_afc && !transmitting())
         trackCarrier(carrierHz);
     emit statsChanged();
+}
+
+void PskEngine::onDecodingChanged(bool on)
+{
+    ModemEngine::onDecodingChanged(on);
+    if (!on)
+    {
+        m_channelSeen.clear();
+        emit channelsChanged({});
+    }
+}
+
+void PskEngine::setMultiSignal(bool on)
+{
+    if (on == m_multi)
+        return;
+    m_multi = on;
+    save("Multi", m_multi);
+    QMetaObject::invokeMethod(m_worker, "setMulti", Qt::QueuedConnection, Q_ARG(bool, on));
+    if (!on)
+    {
+        m_channelSeen.clear();
+        emit channelsChanged({});
+    }
+    emit settingsChanged();
+}
+
+void PskEngine::decodeChannel(double hz, const QString &history)
+{
+    if (hz < kMinHz || hz > kMaxHz)
+        return;
+    if (std::fabs(hz - m_pickedHz) < 0.5 && m_picked.isValid() && m_picked.elapsed() < 1500)
+        return; // the second click of a double-click
+    m_pickedHz = hz;
+    m_picked.start();
+    setCarrierHz(hz); // resets the receiver
+    const QString h = history.trimmed();
+    const int shown = qRound(hz);
+    if (h.isEmpty())
+        deliverText(tr("\n[now decoding %1 Hz]\n").arg(shown));
+    else
+        deliverText(tr("\n[now decoding %1 Hz; copied so far:]\n%2\n").arg(shown).arg(h));
+    setStatus(tr("Decoding %1 Hz from the multi-signal list").arg(shown));
+}
+
+void PskEngine::onMulti(const QVector<PskChannelInfo> &channels)
+{
+    const bool on = m_multi && decoding();
+    if (!on)
+    {
+        m_channelSeen.clear();
+        emit channelsChanged({});
+        return;
+    }
+    if (transmitting())
+        return; // keep the list as it was; our own signal is not a station
+    emit channelsChanged(channels);
+    // Pass each row's new text on (call sign spotting); forget closed rows.
+    QHash<int, quint64> seen;
+    for (const PskChannelInfo &c : channels)
+    {
+        const quint64 before = m_channelSeen.value(c.id, 0);
+        seen.insert(c.id, c.total);
+        if (c.total <= before)
+            continue;
+        const int fresh = int(qMin<quint64>(c.total - before, quint64(c.text.size())));
+        emit channelText(c.id, c.hz, c.text.right(fresh));
+    }
+    m_channelSeen = seen;
 }

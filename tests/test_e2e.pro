@@ -173,6 +173,7 @@ SOURCES += \
     ../engine/rttycore.cpp \
     ../engine/rttytxsource.cpp \
     ../engine/pskcore.cpp \
+    ../engine/pskmultidecoder.cpp \
     ../engine/rsidcore.cpp \
     ../engine/hellcore.cpp \
     ../engine/cwtxcore.cpp \

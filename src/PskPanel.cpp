@@ -1,23 +1,31 @@
 #include "PskPanel.h"
 
-#include "PskEngine.h"
+#include "ModemTxBox.h"
 #include "RxText.h"
 #include "SquelchControl.h"
 #include "UiStyle.h"
 #include "WaterfallWidget.h"
+#include "callspot.h"
 
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QEvent>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QLabel>
+#include <QMenu>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QSplitter>
+#include <QStyle>
+#include <QTableWidget>
 #include <QTextCursor>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -26,7 +34,35 @@
 namespace
 {
 constexpr int maxRxChars = 1000000;
+
+// The word at character index i of text (letters, digits and '/').
+QString wordAt(const QString &text, int i)
+{
+    if (i < 0 || i >= text.size())
+        return QString();
+    const auto part = [](QChar ch) { return ch.isLetterOrNumber() || ch == QLatin1Char('/'); };
+    int a = i, b = i;
+    while (a > 0 && part(text.at(a - 1)))
+        --a;
+    while (b < text.size() && part(text.at(b)))
+        ++b;
+    return text.mid(a, b - a);
 }
+
+// Call signs in a row's text, newest first, each once.
+QStringList callsIn(const QString &text)
+{
+    QStringList out;
+    const QStringList words = text.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    for (auto it = words.crbegin(); it != words.crend() && out.size() < 6; ++it)
+    {
+        const QString w = it->toUpper();
+        if (!out.contains(w) && callspot::isCallsign(w.toStdString()))
+            out << w;
+    }
+    return out;
+}
+} // namespace
 
 PskPanel::PskPanel(PskEngine *engine, QSettings *settings, QWidget *parent)
     : ModemPanel(engine, settings, QStringLiteral("PSK"), parent)
@@ -47,8 +83,116 @@ PskPanel::PskPanel(PskEngine *engine, QSettings *settings, QWidget *parent)
     connect(m_psk, &ModemEngine::statsChanged, this, &PskPanel::syncStats);
     connect(m_psk, &ModemEngine::textAppended, this, &PskPanel::appendText);
     connect(waterfall(), &WaterfallWidget::clicked, m_psk, &PskEngine::tuneTo);
-    finishLayout(top, m_rx);
+
+    // Multi-signal list under the receive pane.
+    m_table = new QTableWidget(0, 3);
+    m_table->setObjectName(QStringLiteral("pskMultiTable"));
+    m_table->setHorizontalHeaderLabels({tr("Freq"), tr("SNR"), tr("Text")});
+    m_table->verticalHeader()->setVisible(false);
+    m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    m_table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_table->setFont(f);
+    m_table->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_table->viewport()->installEventFilter(this);
+    m_table->setToolTip(tr("Every PSK signal at this speed in 200-3000 Hz, each on its own row.\nClick a row to "
+                           "decode that station above (what the row copied so far is put there first). "
+                           "Double-click a call sign in the Text column to log it; right-click for both."));
+    m_rxSplit = new QSplitter(Qt::Vertical);
+    m_rxSplit->setChildrenCollapsible(false);
+    m_rxSplit->addWidget(m_rx);
+    m_rxSplit->addWidget(m_table);
+    m_rxSplit->setStretchFactor(0, 3);
+    m_rxSplit->setStretchFactor(1, 2);
+    if (settings)
+        m_rxSplit->restoreState(settings->value(QStringLiteral("PSK/MultiSplit")).toByteArray());
+
+    connect(m_psk, &PskEngine::channelsChanged, this, &PskPanel::showChannels);
+    connect(m_table, &QTableWidget::cellClicked, this, [this](int row, int) { decodeRow(row); });
+    connect(m_table,
+            &QWidget::customContextMenuRequested,
+            this,
+            [this](const QPoint &pos)
+            {
+                const int row = m_table->rowAt(pos.y());
+                auto *freq = m_table->item(row, 0);
+                auto *text = m_table->item(row, 2);
+                if (!freq)
+                    return;
+                QMenu menu(this);
+                const double hz = freq->data(Qt::UserRole).toDouble();
+                const QString history = text ? text->data(Qt::UserRole).toString() : QString();
+                menu.addAction(tr("Decode this station above (%1 Hz)").arg(qRound(hz)),
+                               this,
+                               [this, hz, history]() { m_psk->decodeChannel(hz, history); });
+                const QStringList calls = callsIn(history);
+                if (!calls.isEmpty())
+                    menu.addSeparator();
+                for (const QString &c : calls)
+                    menu.addAction(tr("Log %1 (QSO log)").arg(c),
+                                   this,
+                                   [this, c, hz, history]()
+                                   {
+                                       m_psk->decodeChannel(hz, history);
+                                       pickCall(c);
+                                   });
+                menu.exec(m_table->viewport()->mapToGlobal(pos));
+            });
+
+    finishLayout(top, m_rxSplit);
     syncStats();
+}
+
+void PskPanel::saveState()
+{
+    ModemPanel::saveState();
+    if (m_settings && m_rxSplit)
+        m_settings->setValue(QStringLiteral("PSK/MultiSplit"), m_rxSplit->saveState());
+}
+
+void PskPanel::decodeRow(int row)
+{
+    auto *freq = m_table->item(row, 0);
+    auto *text = m_table->item(row, 2);
+    if (freq)
+        m_psk->decodeChannel(freq->data(Qt::UserRole).toDouble(),
+                             text ? text->data(Qt::UserRole).toString() : QString());
+}
+
+void PskPanel::pickCall(const QString &call)
+{
+    emit RxCalls::instance() -> callPicked(call, QStringLiteral("PSK")); // QSO log: call + lookup
+    txBox()->offerCall(call);
+}
+
+void PskPanel::showChannels(const QVector<PskChannelInfo> &channels)
+{
+    m_table->setRowCount(channels.size());
+    const QColor dim = palette().color(QPalette::Disabled, QPalette::Text);
+    const QColor normal = palette().color(QPalette::Text);
+    for (int r = 0; r < channels.size(); ++r)
+    {
+        const PskChannelInfo &c = channels[r];
+        const QStringList cells
+            = {QString::number(qRound(c.hz)), QString::number(c.snrDb, 'f', 0), c.text.right(160)};
+        for (int col = 0; col < cells.size(); ++col)
+        {
+            auto *it = m_table->item(r, col);
+            if (!it)
+            {
+                it = new QTableWidgetItem();
+                m_table->setItem(r, col, it);
+            }
+            it->setText(cells[col]);
+            it->setForeground(c.active ? normal : dim);
+            if (col == 0)
+                it->setData(Qt::UserRole, c.hz);
+            if (col == 2)
+                it->setData(Qt::UserRole, c.text); // all of it, for a pick and the right-click call list
+        }
+    }
 }
 
 QWidget *PskPanel::buildTop()
@@ -117,6 +261,12 @@ QWidget *PskPanel::buildTop()
     v->addLayout(r1);
 
     auto *r2 = new QHBoxLayout();
+    m_multi = new QCheckBox(tr("Multi-signal"));
+    m_multi->setObjectName(QStringLiteral("pskMulti"));
+    m_multi->setToolTip(tr("List every PSK signal at this speed in the passband (200-3000 Hz), each copied on its "
+                           "own row.\nClick a row to decode that station above: what the row copied so far is put "
+                           "there first. Rows use the squelch setting, but never looser than the defaults."));
+    r2->addWidget(m_multi);
     r2->addWidget(new QLabel(tr("Quality")));
     m_qualityBar = new QProgressBar();
     m_qualityBar->setRange(0, 100);
@@ -136,6 +286,7 @@ QWidget *PskPanel::buildTop()
     connect(m_freq, &QDoubleSpinBox::valueChanged, m_psk, &ModemEngine::setCarrierHz);
     connect(m_afc, &QCheckBox::toggled, m_psk, &PskEngine::setAfc);
     connect(m_autoSpeed, &QCheckBox::toggled, m_psk, &PskEngine::setAutoSpeed);
+    connect(m_multi, &QCheckBox::toggled, m_psk, &PskEngine::setMultiSignal);
     connect(detect, &QPushButton::clicked, m_psk, &PskEngine::detectSpeed);
     connect(m_squelch, &SquelchControl::valueChanged, m_psk, &PskEngine::setSquelch);
     connect(m_squelch, &SquelchControl::inDbToggled, m_psk, &PskEngine::setSquelchInDb);
@@ -151,7 +302,9 @@ double PskPanel::markerBandwidth() const
 void PskPanel::syncSettings()
 {
     ModemPanel::syncSettings();
-    const QSignalBlocker b1(m_decode), b2(m_speed), b3(m_freq), b4(m_afc), b6(m_autoSpeed);
+    const QSignalBlocker b1(m_decode), b2(m_speed), b3(m_freq), b4(m_afc), b6(m_autoSpeed), b7(m_multi);
+    m_multi->setChecked(m_psk->multiSignal());
+    m_table->setVisible(m_psk->multiSignal());
     m_autoSpeed->setChecked(m_psk->autoSpeed());
     m_decode->setChecked(m_psk->decoding());
     m_speed->setCurrentIndex(m_speed->findData(m_psk->speed()));
@@ -183,6 +336,28 @@ void PskPanel::addNote(const QString &text)
 
 bool PskPanel::eventFilter(QObject *obj, QEvent *event)
 {
+    if (m_table && obj == m_table->viewport() && event->type() == QEvent::MouseButtonDblClick)
+    {
+        const QPoint pos = static_cast<QMouseEvent *>(event)->position().toPoint();
+        const QModelIndex idx = m_table->indexAt(pos);
+        if (!idx.isValid())
+            return true;
+        if (idx.column() == 2)
+        {
+            // The word under the mouse (fixed-width font, drawn from the left after a small margin).
+            const QString shown = m_table->item(idx.row(), 2) ? m_table->item(idx.row(), 2)->text() : QString();
+            const QRect r = m_table->visualRect(idx);
+            const int margin = m_table->style()->pixelMetric(QStyle::PM_FocusFrameHMargin, nullptr, m_table) + 1;
+            const int cw = std::max(1, m_table->fontMetrics().horizontalAdvance(QLatin1Char('M')));
+            const QString w = wordAt(shown, (pos.x() - r.left() - margin) / cw).toUpper();
+            decodeRow(idx.row()); // the station whose call is picked goes above too
+            if (callspot::isCallsign(w.toStdString()))
+                pickCall(w);
+            return true;
+        }
+        decodeRow(idx.row());
+        return true;
+    }
     if (m_rx && obj == m_rx->viewport() && event->type() == QEvent::MouseButtonDblClick)
     {
         const bool handled = ModemPanel::eventFilter(obj, event);

@@ -3,7 +3,10 @@
 // PSK (BPSK31/63/125) receive and transmit.
 //
 //   TciClient::rxAudio --pushAudio [queued]--> PskDecoderWorker (own QThread)
-//       --textDecoded / statsUpdated / centerFound [queued]--> PskEngine (GUI thread)
+//       --textDecoded / statsUpdated / centerFound / multiUpdated [queued]--> PskEngine (GUI thread)
+//
+// Multi-signal (optional): PskMultiDecoder in the same worker lists every PSK
+// signal at the tab's speed, each copied on its own row.
 //
 // AFC moves the receive frequency; transmit uses the same frequency, like
 // fldigi. Clicking the waterfall tunes there and snaps to the signal's centre.
@@ -13,9 +16,23 @@
 #include "pskcore.h"
 
 #include <QElapsedTimer>
+#include <QHash>
+#include <memory>
 #include <vector>
 
 class QThread;
+class PskMultiDecoder;
+
+struct PskChannelInfo
+{
+    int id = 0;
+    double hz = 0.0;
+    double snrDb = 0.0;
+    bool active = false;
+    QString text;
+    quint64 total = 0; // characters ever added to this channel's text
+};
+Q_DECLARE_METATYPE(PskChannelInfo)
 
 class PskDecoderWorker : public QObject
 {
@@ -23,6 +40,7 @@ class PskDecoderWorker : public QObject
 
 public:
     explicit PskDecoderWorker(QObject *parent = nullptr);
+    ~PskDecoderWorker() override;
 
 public slots:
     void pushAudio(QVector<float> mono, float sampleRate);
@@ -30,6 +48,7 @@ public slots:
     void resetDecoder();
     void findCenter(double approxHz);
     void detectSpeed(double approxHz);
+    void setMulti(bool on);
 
 signals:
     void textDecoded(QString text);
@@ -38,6 +57,7 @@ signals:
     void centerFound(double hz, double approxHz);
     void speedDetected(int speed, double approxHz, double s31, double s63, double s125);
     void rsqUpdated(PskDemodulator::Rsq rsq, int generation);
+    void multiUpdated(QVector<PskChannelInfo> channels);
 
 private:
     PskDemodulator m_demod;
@@ -47,6 +67,10 @@ private:
     std::vector<float> m_history;
     QElapsedTimer m_statsTimer;
     int m_rsqTick = 0;
+    double m_squelch = 0.3;
+    bool m_squelchDb = false;
+    std::unique_ptr<PskMultiDecoder> m_multi;
+    QElapsedTimer m_multiTimer;
 };
 
 class PskEngine : public ModemEngine
@@ -113,6 +137,11 @@ public:
     {
         return m_rsqTimer.isValid() ? m_rsqTimer.elapsed() : -1;
     }
+    // List every PSK signal in the passband at this speed (default off).
+    bool multiSignal() const
+    {
+        return m_multi;
+    }
 
 public slots:
     void pushAudio(const QVector<float> &mono, float sampleRate) override;
@@ -126,10 +155,20 @@ public slots:
     void tuneTo(double hz);
     // Works out BPSK31/63/125 from the last 5 s of audio at the receive frequency.
     void detectSpeed();
+    void setMultiSignal(bool on);
+    // Decode the station at hz (from the multi-signal list); history is what the
+    // list copied from it so far, put in the receive pane first.
+    void decodeChannel(double hz, const QString &history = QString());
+
+signals:
+    void channelsChanged(QVector<PskChannelInfo> channels);
+    // New text on one multi-signal row (call sign spotting).
+    void channelText(int id, double hz, QString text);
 
 protected:
     void applyConfig() override;
     void resetReceiver() override;
+    void onDecodingChanged(bool on) override;
     QString levelKey() const override
     {
         return QString::fromLatin1(psk::speedName(m_speed));
@@ -148,6 +187,7 @@ private slots:
         double quality, double levelDb, double carrierHz, double squelchLevel, bool squelchOpen, int generation);
     void onCenter(double hz, double approxHz);
     void onSpeed(int speed, double approxHz, double s31, double s63, double s125);
+    void onMulti(const QVector<PskChannelInfo> &channels);
 
 private:
     QThread *m_thread = nullptr;
@@ -164,6 +204,10 @@ private:
     int m_generation = 0;
     PskDemodulator::Rsq m_rsq;
     QElapsedTimer m_rsqTimer;
+    bool m_multi = false;
+    QHash<int, quint64> m_channelSeen; // per row id: characters already passed on
+    double m_pickedHz = 0.0; // last station picked from the list, and when
+    QElapsedTimer m_picked;
 };
 
 Q_DECLARE_METATYPE(PskDemodulator::Rsq)

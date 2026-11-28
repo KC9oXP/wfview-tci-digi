@@ -8,7 +8,7 @@ QT += widgets websockets network
 CONFIG += c++17
 CONFIG -= console
 
-VERSION = 0.9.20
+VERSION = 0.9.21
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 win32 {
@@ -129,6 +129,7 @@ HEADERS += \
     engine/squelch.h \
     engine/rttytxsource.h \
     engine/pskcore.h \
+    engine/pskmultidecoder.h \
     engine/rsidcore.h \
     engine/sidebandfix.h \
     engine/hellcore.h \
@@ -217,6 +218,7 @@ SOURCES += \
     engine/rttycore.cpp \
     engine/rttytxsource.cpp \
     engine/pskcore.cpp \
+    engine/pskmultidecoder.cpp \
     engine/rsidcore.cpp \
     engine/hellcore.cpp \
     engine/cwtxcore.cpp \

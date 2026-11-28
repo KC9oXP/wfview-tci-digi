@@ -49,6 +49,7 @@
 #include "wefaxcore.h"
 #include "wwvcore.h"
 
+#include <random>
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
@@ -600,6 +601,112 @@ static void runNewModes()
             CHECK(cwText.contains(QStringLiteral("[now decoding 733 Hz; copied so far:]")));
             CHECK(cwText.count(QStringLiteral("CQ CQ DE W1AW W1AW K")) == 1);
             CHECK(cwDec->fixedPitch() && cwDec->pitchHz() == 733);
+        }
+    }
+
+    // 0.9.21: PSK multi-signal list: two stations in, two rows out; picking a row copies
+    // what it decoded so far into the main pane, once, and tunes there.
+    {
+        QWidget *pskTab = nullptr;
+        for (int i = 0; i < tabs->count(); ++i)
+            if (tabs->tabText(i) == QStringLiteral("PSK"))
+                pskTab = tabs->widget(i);
+        auto *psk = w.findChild<PskEngine *>();
+        CHECK(pskTab != nullptr && psk != nullptr);
+        if (pskTab && psk)
+        {
+            tabs->setCurrentWidget(pskTab);
+            auto *multiBox = pskTab->findChild<QCheckBox *>(QStringLiteral("pskMulti"));
+            auto *table = pskTab->findChild<QTableWidget *>(QStringLiteral("pskMultiTable"));
+            CHECK(multiBox != nullptr && table != nullptr);
+            if (multiBox && table)
+            {
+                CHECK(!multiBox->isChecked() && !table->isVisible()); // off by default
+                const bool wasDecoding = psk->decoding();
+                psk->setSpeed(psk::Bpsk31);
+                psk->setDecoding(true);
+                multiBox->setChecked(true);
+                pump(50);
+                CHECK(psk->multiSignal() && table->isVisible());
+
+                const double fs = 12000.0;
+                std::vector<float> x(size_t(16.0 * fs), 0.0f);
+                const struct
+                {
+                    const char *text;
+                    double hz;
+                } st[2] = {{"CQ CQ DE W1AW W1AW K", 900.0}, {"KC9OXP DE N0CALL BTU", 1600.0}};
+                for (const auto &one : st)
+                {
+                    PskModulator m;
+                    m.setBaud(31.25);
+                    m.setCarrier(one.hz);
+                    m.preroll(1.0);
+                    for (const char *c = one.text; *c; ++c)
+                        m.queueChar(*c);
+                    m.tail(0.3);
+                    std::vector<float> b(1024);
+                    size_t at = size_t(0.5 * fs);
+                    while (!m.idle() && at < x.size())
+                    {
+                        m.render(b.data(), b.size(), fs);
+                        for (size_t i = 0; i < b.size() && at + i < x.size(); ++i)
+                            x[at + i] += 0.2f * b[i];
+                        at += b.size();
+                    }
+                }
+                std::mt19937 rng(21);
+                std::normal_distribution<double> nd(0.0, 0.05);
+                for (float &v : x)
+                    v = float(v + nd(rng));
+                for (size_t i = 0; i < x.size(); i += 1200)
+                {
+                    QVector<float> chunk(int(std::min<size_t>(1200, x.size() - i)));
+                    std::copy(x.begin() + long(i), x.begin() + long(i) + chunk.size(), chunk.begin());
+                    psk->pushAudio(chunk, float(fs));
+                    if (i % 24000 == 0)
+                        pump(5);
+                }
+                const auto rowText = [&](int r) { return table->item(r, 2) ? table->item(r, 2)->text() : QString(); };
+                // Audio keeps coming (noise), as from the radio: the list is sent on with it.
+                QElapsedTimer feedTimer;
+                feedTimer.start();
+                CHECK(waitFor(
+                    [&]
+                    {
+                        if (feedTimer.elapsed() >= 100)
+                        {
+                            feedTimer.restart();
+                            QVector<float> quiet(1200);
+                            for (float &v : quiet)
+                                v = float(nd(rng));
+                            psk->pushAudio(quiet, float(fs));
+                        }
+                        return table->rowCount() == 2 && rowText(0).contains(QStringLiteral("W1AW W1AW K"))
+                               && rowText(1).contains(QStringLiteral("N0CALL BTU"));
+                    },
+                    10000));
+                for (int r = 0; r < table->rowCount(); ++r)
+                    std::printf("  PSK row %s Hz: [%s]\n",
+                                qPrintable(table->item(r, 0) ? table->item(r, 0)->text() : QString()),
+                                qPrintable(rowText(r)));
+                if (table->rowCount() == 2)
+                {
+                    const QString picked = table->item(1, 2)->data(Qt::UserRole).toString();
+                    const double hz = table->item(1, 0)->data(Qt::UserRole).toDouble();
+                    psk->decodeChannel(hz, picked);
+                    psk->decodeChannel(hz, picked); // 2nd click of a double-click
+                    pump(100);
+                    const QString pane = paneText(pskTab);
+                    CHECK(pane.contains(QStringLiteral("[now decoding %1 Hz; copied so far:]").arg(qRound(hz))));
+                    CHECK(pane.count(QStringLiteral("KC9OXP DE N0CALL BTU")) == 1);
+                    CHECK(std::fabs(psk->carrierHz() - 1600.0) < 3.0);
+                }
+                multiBox->setChecked(false);
+                pump(50);
+                CHECK(!psk->multiSignal() && table->rowCount() == 0 && !table->isVisible());
+                psk->setDecoding(wasDecoding);
+            }
         }
     }
 

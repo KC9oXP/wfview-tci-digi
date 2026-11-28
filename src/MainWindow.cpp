@@ -2746,6 +2746,16 @@ void MainWindow::wirePskReporter()
                 feedPskr(
                     QStringLiteral("PSK"), QString::fromLatin1(psk::speedName(m_psk->speed())), t, m_psk->carrierHz());
             });
+    // Every station in the PSK multi-signal list, each on its own.
+    connect(m_psk,
+            &PskEngine::channelText,
+            this,
+            [this](int id, double hz, const QString &t)
+            {
+                const QString speed = QString::fromLatin1(psk::speedName(m_psk->speed()));
+                feedSpotters(
+                    QStringLiteral("PSK#%1").arg(id), PskReporter::modeFor(QStringLiteral("PSK"), speed), t, hz);
+            });
     connect(m_olivia,
             &ModemEngine::textAppended,
             this,

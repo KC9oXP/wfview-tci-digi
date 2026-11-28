@@ -229,6 +229,18 @@ and a **squelch meter**.
   no clear answer (noise, or not PSK).
 - Transmit on the receive frequency: idle reversals before the text and a shaped fade-out
   after it, so no key clicks.
+- *Multi-signal*: every PSK signal at the tab's speed from 200 to 3000 Hz, each copied on its
+  own row with its frequency, SNR (over the noise beside it on the spectrum) and text, like
+  fldigi's signal browser. Each row has its own receiver with its own AFC; a new row first
+  decodes the last 2 seconds of audio, so the start of the over is copied. Rows use the
+  tab's squelch, but never looser than the defaults (0.30 or 3 dB), so the list does not
+  fill with noise. A row is dropped 30 s after its signal goes (4 s if it never printed:
+  carriers and other tones are left out). Click a row to decode that station above: what the
+  row copied so far (its last ~2000 characters) is put in the main pane first. Double-click
+  a call sign in the Text column to put it in the QSO log and the Call box (that station
+  goes above too); right-click a row for both. Each row's text also goes to the PSK Reporter
+  auto-detect spotter and GridTracker as a station of its own. One speed at a time: changing
+  the speed starts the list afresh. Up to 24 rows; under 1 % of one core in the tests.
 
 ### Feld Hell (receive and transmit)
 
@@ -735,6 +747,7 @@ g++ -std=c++17 -O2 -Isrc -Iengine tests/test_protocol.cpp src/tciprotocol.cpp en
 g++ -std=c++17 -O2 -Isrc -Iengine -Iengine/ggmorse/include tests/test_cw.cpp src/tciprotocol.cpp engine/ggmorse/src/ggmorse.cpp engine/ggmorse/src/resampler.cpp -o test_cw
 # PSK and Feld Hell
 g++ -std=c++17 -O2 -Iengine tests/test_psk.cpp engine/pskcore.cpp -o test_psk
+g++ -std=c++17 -O2 -Iengine tests/test_pskmulti.cpp engine/pskmultidecoder.cpp engine/pskcore.cpp engine/spectrum.cpp -o test_pskmulti
 g++ -std=c++17 -O2 -Iengine tests/test_hell.cpp engine/hellcore.cpp -o test_hell
 # CW transmit (keyer timing, key clicks, prosigns, loopback through the CW decoder)
 g++ -std=c++17 -O2 -Isrc -Iengine -Iengine/ggmorse/include tests/test_cwtx.cpp engine/cwtxcore.cpp engine/modemtxsource.cpp engine/pskcore.cpp engine/hellcore.cpp engine/ggmorse/src/ggmorse.cpp engine/ggmorse/src/resampler.cpp -o test_cwtx
