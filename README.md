@@ -31,7 +31,7 @@ wfview reaches the radio over LAN or over USB.
 |---|:-:|:-:|---|
 | **CW** | yes | yes (audio CW) | Two decoders (keyer and hand key), auto pitch and speed, a list of every CW signal in the passband |
 | **RTTY** | yes | yes (AFSK) | Any baud and shift, crossed-ellipse tuning scope, auto-tune, presets |
-| **PSK** | yes | yes | BPSK31, BPSK63, BPSK125; click a signal on the waterfall to tune it |
+| **PSK** | yes | yes | BPSK31, BPSK63, BPSK125; click a signal on the waterfall to tune it; a list of every PSK signal in the passband |
 | **Feld Hell** | yes | yes | Painted receive with auto column alignment and 30 minutes of scrollback |
 | **Olivia / Contestia** | yes | yes | All the usual tone/bandwidth settings; interoperates with fldigi |
 | **MT63** | yes | yes | 500 / 1000 / 2000 Hz, short or long interleave (MT63-1KL for net traffic); fldigi's code |
@@ -74,9 +74,12 @@ above v2.25 (GitHub's "Latest" label still points at the v2 line, so look past i
 3. Put the radio in a **data mode whose audio input matches how wfview connects** (LAN or
    USB). This is radio-specific; see
    [Radio data mode and modulation input](#radio-data-mode-and-modulation-input).
-4. Start **wfview TCI Digi**, enter `127.0.0.1` (or the computer running wfview) and
+4. **Set wfview's TX codec to LPCM 16-bit; 8-bit adds spurs about 30-40 dB down.** In
+   wfview: *Settings > Radio Connection > TX codec* = `LPCM 1ch 16bit`. µ-law and PCM 8-bit
+   are fine for voice but not for data (see [Troubleshooting](#troubleshooting)).
+5. Start **wfview TCI Digi**, enter `127.0.0.1` (or the computer running wfview) and
    `50001`, and press **Connect**. The button turns green ("Disconnect") when connected.
-5. Pick a tab and press **Push To Decode**. To transmit, set *My call*, then type and
+6. Pick a tab and press **Push To Decode**. To transmit, set *My call*, then type and
    press *Send* (or use the F1-F10 macros). Start with a low *TX level* and keep ALC near
    zero.
 
@@ -695,6 +698,9 @@ up) but never sends TCI audio, so the status bar stays at "RX audio: none".
 1. **Settings > External Control > TCI Server Port**: set a port to enable the TCI server
    (0 = disabled). The default is **50001**.
 2. Set up wfview's receive audio as usual (LAN audio, or the radio's USB audio codec).
+   **Set wfview's TX codec to LPCM 16-bit; 8-bit adds spurs about 30-40 dB down.** Over LAN
+   this is *Settings > Radio Connection > TX codec* = `LPCM 1ch 16bit` (see
+   [Troubleshooting](#troubleshooting)).
 3. For transmit: tick **Settings > User Interface > Enable PTT Controls**, and put the
    radio in a data mode (**DIGU** / USB-D or **DIGL** / LSB-D). The program warns if the
    radio is in a mode that does not take computer audio.
@@ -727,6 +733,38 @@ to **Data 1**, whatever data mode the radio was in (see the notes below).
 
 A radio's data mode can also narrow its receive audio. On the FT-991A in DATA-U the audio
 was cut above about 1.5-1.8 kHz, which spoils SSTV; plain USB was fine.
+
+## Troubleshooting
+
+**Spurs or a wide skirt around the transmit signal: check wfview's TX codec first.**
+Set wfview's TX codec to LPCM 16-bit; 8-bit adds spurs about 30-40 dB down. µ-law and
+PCM 8-bit (*Settings > Radio Connection > TX codec*) keep only about 38 dB between the
+signal and the rounding error. On a steady tone that error repeats, so it shows as
+discrete spurs either side of the tone; on RTTY, PSK and the other modes it spreads into
+a skirt across the TX passband. Lowering the level does not help: the error stays the same
+distance below the signal. This program cannot see wfview's codec (it is not sent over
+TCI), so it cannot warn you.
+
+Example: the SSTV *Tune* tone (a steady 1750 Hz) from an IC-7610 over LAN, received on a
+HackRF in SDRangel (37.5 kHz span). On µ-law 1ch 8bit, spurs about 600 Hz apart sit 25-35 dB
+below the tone; on LPCM 1ch 16bit the same tone is a single clean line.
+
+| TX codec µ-law 1ch 8bit | TX codec LPCM 1ch 16bit |
+|---|---|
+| ![Tune tone on 8-bit: spurs both sides](docs/screenshots/codec-8bit-hackrf.png) | ![Tune tone on 16-bit: one clean line](docs/screenshots/codec-16bit-hackrf.png) |
+
+Note: the radio's own scope draws its transmit signal worse than it is (a ragged skirt
+30-40 dB down that is not on the air). Check with a second receiver before chasing it.
+
+**The radio keys up but puts out no power.** The data mode's modulation input does not
+match how wfview connects; see
+[Radio data mode and modulation input](#radio-data-mode-and-modulation-input). On the
+IC-7610 over LAN, wfview v3.0-beta3 also gave no RF with LPCM 16-bit; use beta4 or newer
+(and check the version line at the top of wfview's log, an older installed copy is easy
+to start by mistake).
+
+**Before an on-air test:** go through [docs/ON-AIR-TEST.md](docs/ON-AIR-TEST.md); the first
+line is the TX codec.
 
 ## Building
 

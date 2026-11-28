@@ -710,6 +710,15 @@ static void runNewModes()
         }
     }
 
+    // 0.9.21: Help > Setup checklist (wfview TX codec LPCM 16-bit and the rest)
+    {
+        bool found = false;
+        for (QAction *a : w.findChildren<QAction *>())
+            if (a->text() == QStringLiteral("Setup checklist..."))
+                found = true;
+        CHECK(found);
+    }
+
     // Options > Language: System language (the default, checked) and English
     {
         int found = 0;

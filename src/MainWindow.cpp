@@ -1194,6 +1194,27 @@ void MainWindow::buildMenus()
 
     QMenu *help = menuBar()->addMenu(tr("&Help"));
     help->addAction(tr("Check for updates..."), m_update, &UpdateCheck::checkNow);
+    help->addAction(tr("Setup checklist..."),
+                    this,
+                    [this]()
+                    {
+                        QMessageBox::information(
+                            this,
+                            tr("Setup checklist"),
+                            tr("<b>Before transmitting</b><ol>"
+                               "<li>wfview: <i>Settings &gt; External Control &gt; TCI Server Port</i> set (50001), "
+                               "and <i>Settings &gt; User Interface &gt; Enable PTT Controls</i> ticked.</li>"
+                               "<li><b>Set wfview's TX codec to LPCM 16-bit; 8-bit adds spurs about 30-40 dB "
+                               "down.</b> Over LAN: <i>Settings &gt; Radio Connection &gt; TX codec</i> = "
+                               "LPCM 1ch 16bit. (This program cannot see wfview's codec.)</li>"
+                               "<li>The radio in the data mode whose modulation input matches how wfview "
+                               "connects (LAN or USB). IC-7610 over LAN: Data 2 = LAN, or let wfview set the "
+                               "inputs on connect.</li>"
+                               "<li>Start with a low TX level and keep ALC at or near zero.</li>"
+                               "</ol>More in the README: Quick start, Troubleshooting and "
+                               "<a href=\"https://github.com/KC9oXP/wfview-tci-digi/blob/main/docs/ON-AIR-TEST.md\">"
+                               "the on-air test sheet</a>."));
+                    });
     help->addAction(tr("About"),
                     this,
                     [this]()
